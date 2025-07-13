@@ -37,7 +37,7 @@ You can get a new Digital Ocean account [here](https://try.digitalocean.com/free
 
 After registering successfully, on the dashboard, click the **Create Droplet** button. A droplet is a virtual computer with a public IP address that is hosted by Digital Ocean.
 
-![Create Droplet Menu](images/document/digital-ocean-create-menu.png)
+![Create Droplet Menu](/images/document/digital-ocean-create-menu.png)
 
 ### Step 2: Configure Your Droplet
 
@@ -48,7 +48,7 @@ Here are my recommended configurations:
 - **Size:** Choose the cheapest option (1 CPU, 1GB RAM, $6/month)
 - **Authentication Method:** SSH (Set up SSH for remote access)
 
-![Create Droplet Screen](images/document/digital-ocean-create-droplet.png)
+![Create Droplet Screen](/images/document/digital-ocean-create-droplet.png)
 
 # Creating a New Flutter Web Project
 
@@ -77,13 +77,13 @@ If you trigger the build process using this command:
 flutter build web --release
 ```
 
-You will see a `build/web/index.html` file in the output directory. This directory contains the contents of your webpage, with `index.html` as the entry point.
+You will see a build/web/index.html file in the output directory. This directory contains the contents of your webpage, with index.html as the entry point.
 
-![Flutter Web Directory](images/document/flutter-web-directory.png)
+![Flutter Web Directory](/images/document/flutter-web-directory.png)
 
 ### Step 1: Setting Up Nginx
 
-Create file ``nginx.conf``, copy and paste the following configuration:
+Create file nginx.conf, copy and paste the following configuration:
 
 ```nginx
 api {
@@ -100,9 +100,9 @@ api {
 
 If you're not familiar with Docker, you can learn more [here](https://docs.docker.com/get-started/overview).
 
-Now, in your project directory, create a file called `Dockerfile`.
+Now, in your project directory, create a file called Dockerfile.
 
-![Dockerfile in Project](images/document/dockerfile-in-project.png)
+![Dockerfile in Project](/images/document/dockerfile-in-project.png)
 
 Here's a breakdown of the Dockerfile instructions:
 
@@ -203,7 +203,7 @@ cat ~/.ssh/id_rsa
 
 Copy the output, then open your GitHub repository settings, and navigate to **Secrets and Variables**.
 
-![GitHub Secrets](images/document/github_secret.png)
+![GitHub Secrets](/images/document/github_secret.png)
 
 Create a new repository secret and enter the following information:
 
@@ -212,15 +212,15 @@ Create a new repository secret and enter the following information:
 - **DOCKER_REGISTRY_USERNAME:** Your Docker Hub username
 - **DOCKER_REGISTRY_PASSWORD:** Your Docker Hub password
 
-![GitHub New Secret](images/document/github_action_new_secret.png)
+![GitHub New Secret](/images/document/github_action_new_secret.png)
 
 ### Step 2: Creating the GitHub Workflow
 
-In your project directory, create a `.github/workflows/ci.yaml` file.
+In your project directory, create a .github/workflows/ci.yaml file.
 
-![CI Folder](images/document/ci-folder.png)
+![CI Folder](/images/document/ci-folder.png)
 
-Here's an example `ci.yaml` file:
+Here's an example ci.yaml file:
 
 ```yaml
 on:
@@ -261,7 +261,7 @@ jobs:
 ```
 
 Now, let's push the code to Github. Then we should able to see the our workflow available in tab **Actions**
-![GitHub Workflow](images/github-action-workflow.jpg)
+![GitHub Workflow](/images/github-action-workflow.jpg)
 
 Start your workflow, and I wish you best luck !
 

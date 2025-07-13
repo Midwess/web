@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 import { Author, Post as PostEntity } from '@devlog/schema-ts';
-import { defineDocumentType, makeSource } from 'contentlayer/source-files';
+import { defineDocumentType, makeSource } from 'contentlayer2/source-files';
 import fs from 'fs';
 import GithubSlugger from 'github-slugger';
 import readingTime from 'reading-time';
@@ -101,9 +101,9 @@ export const Post = defineDocumentType(() => ({
 }));
 
 const codeOptions = {
+  theme: 'light-plus', // Or 'github-dark', 'dracula', etc.
   grid: true,
-  keepBackground: true,
-  lineNumber: true,
+  keepBackground: false,
 };
 
 export default makeSource({
@@ -117,4 +117,4 @@ export default makeSource({
     ],
   },
   documentTypes: [Post],
-});
+})

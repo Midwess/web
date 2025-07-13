@@ -1,8 +1,8 @@
 import React from 'react';
 
 import { allPosts } from 'contentlayer/generated';
-
 import PostPageContent from '@/app/posts/[slug]/content';
+import CreamContainer from '@/components/layout/cream-container';
 import { siteMetadata } from '@/utils/site-meta-data';
 
 export async function generateStaticParams() {
@@ -13,10 +13,9 @@ export async function generateStaticParams() {
   });
 }
 
-export async function generateMetadata(props: object) {
-  const {
-    params: { slug },
-  } = props as never;
+export async function generateMetadata(props: any) {
+  const params = props.params.await || {};
+  const { slug } = params;
 
   const post = allPosts.find((post) => post.slug === slug);
   if (!post) {
@@ -65,14 +64,13 @@ export async function generateMetadata(props: object) {
   };
 }
 
-export default function PostPage(props: object) {
+export default async function PostPage({ params }: any) {
+  const { slug } = await params;
   return (
     <>
-      <div className={'h-screen'}>
-        <div className={`absolute top-0 left-0 z-0 bg-white`}>
-          <PostPageContent {...props} />
-        </div>
-      </div>
+      <CreamContainer>
+        <PostPageContent slug={slug} />
+      </CreamContainer>
     </>
   );
 }

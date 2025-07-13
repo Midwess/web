@@ -129,7 +129,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head />
       <body
-        className={`h-screen ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
+        className={`flex flex-col h-screen ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"
@@ -138,7 +138,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Navbar />
-          <main className="">{children}</main>
+          <main>{children}</main>
           <Footer />
         </ThemeProvider>
       </body>

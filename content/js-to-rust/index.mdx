@@ -26,7 +26,7 @@ But we all make mistakes sometimes, right? Other languages like Java, .NET, Go, 
 
 > Always use Lodash
 
-That's what I said to my self everytime I touch Javascript, from accessing nesting variable like `a.b.c.d` or working with array and collection. To prevent errors like `Cannot read property of undefined.`
+That's what I said to my self everytime I touch Javascript, from accessing nesting variable like a.b.c.d or working with array and collection. To prevent errors like Cannot read property of undefined.
 
 Whenever I have a pull request with more than 200 lines, I always carefully review line by line, even that still not get me a good sleep... Such a very stressful experience !
 
@@ -59,7 +59,7 @@ In JavaScript, a decorator is a specialized function that modifies or enhances t
 It serves as a wrapper around the original implementation, enabling you to extend functionality without directly modifying the original code.
 
 Decorators are commonly used for tasks such as logging, performing authorization checks, or attaching metadata.
-They are applied using the `@` syntax and were introduced as part of an ECMAScript proposal to improve code readability, reusability, and maintainability.
+They are applied using the @ syntax and were introduced as part of an ECMAScript proposal to improve code readability, reusability, and maintainability.
 
 Here is an example:
 
@@ -67,7 +67,7 @@ Here is an example:
 function instrument(target, key, descriptor) {
     const originalMethod = descriptor.value;
     descriptor.value = function (...args) {
-        console.log(`Calling ${key} with arguments:`, args);
+        console.log(Calling ${key} with arguments:, args);
         return originalMethod.apply(this, args);
     };
     return descriptor;
@@ -76,7 +76,7 @@ function instrument(target, key, descriptor) {
 class Example {
     @instrument
     sayHello(name) {
-        return `Hello, ${name}!`;
+        return Hello, ${name}!;
     }
 }
 
@@ -206,7 +206,7 @@ export function value(it) {
     }
   }
   else {
-    throw new Error(`Unsupported type: ${typeof value}`)
+    throw new Error(Unsupported type: ${typeof value})
   }
 
   return protoValue
@@ -253,7 +253,7 @@ export function Migrated(fn: (...args: any) => any) {
 }
 ```
 
-The code above defines a decorator called Migrated. This decorator accepts a function and toggles between the new and old implementations based on the environment variable `USE_MIGRATED_CODE`.
+The code above defines a decorator called Migrated. This decorator accepts a function and toggles between the new and old implementations based on the environment variable USE_MIGRATED_CODE.
 This setup allows for seamless switching back to the old implementation if any issues arise.
 
 ### Bring them all together

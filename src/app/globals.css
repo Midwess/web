@@ -103,7 +103,19 @@
   .font-sans {
     font-family: var(--font-dm-sans), sans-serif;
   }
-  h1,
+  h1 {
+    font-size: xx-large;
+    font-weight: bold;
+  }
+  h2 {
+    font-size: x-large;
+    font-weight: bold;
+  }
+  h3 {
+    font-size: large;
+    font-weight: bold;
+  }
+  h1
   h2 {
     font-family: var(--font-dm-sans), sans-serif;
     -webkit-font-feature-settings:
@@ -207,4 +219,28 @@ body {
 }
 body {
   position: relative;
+}
+
+article img {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+article ul {
+  list-style-type: disc;
+  margin-left: 0.5rem;
+  padding-left: 1rem;
+  padding-top: 1rem;
+}
+
+article li {
+  margin-bottom: 0.5em;
+}
+
+strong {
+  color: var(--color-muted-foreground) !important;
+}
+
+article li::marker {
+  color: var(--color-muted-foreground);
 }

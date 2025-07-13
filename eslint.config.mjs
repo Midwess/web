@@ -28,6 +28,7 @@ const eslintConfig = [
   {
     rules: {
       '@next/next/no-html-link-for-pages': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
       'react/jsx-key': 'off',
       'react/display-name': 'off',
       'import/no-named-as-default-member': 'off',

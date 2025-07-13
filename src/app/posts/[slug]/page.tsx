@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { allPosts } from 'contentlayer/generated';
+
 import PostPageContent from '@/app/posts/[slug]/content';
 import CreamContainer from '@/components/layout/cream-container';
 import { siteMetadata } from '@/utils/site-meta-data';

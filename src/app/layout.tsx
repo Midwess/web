@@ -129,7 +129,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head />
       <body
-        className={`flex flex-col h-screen ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
+        className={`flex h-screen flex-col ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 const features = [
   {
     title: 'Sharing',
-    description: 'I share my experience and knowledge to this website',
+    description: 'I share my experience and knowledge on this website',
     icon: CircleDot,
   },
   {
@@ -31,12 +31,11 @@ export default function Hero() {
         {/* Left side - Main content */}
         <div className="flex-1">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl md:whitespace-nowrap lg:text-6xl">
-            Hi! I'm Tien 👋
+            Hi! 👋
           </h1>
 
           <p className="text-muted-foreground mt-5 font-sans text-2xl font-medium md:text-3xl lg:text-4xl">
-            Welcome to my studio, I'm working as a indie developer, productivity
-            software.
+            Welcome to my studio. I’m an indie developer creating productivity software.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">

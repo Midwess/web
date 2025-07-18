@@ -4,6 +4,7 @@
   "author": "Shadcnblocks.com",
   "private": true,
   "scripts": {
+    "schema:compile": "pnpm --dir ./schema/typescript build; rm -r node_modules/schema-ts; pnpm install -f ./schema/typescript",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
@@ -11,7 +12,8 @@
     "content:build": "yarn contentlayer build"
   },
   "dependencies": {
-    "@devlog/schema-ts": "link:../devblog-next-rs/libs/schema/typescript",
+    "@bufbuild/protobuf": "^2.2.2",
+    "@devlog/schema-ts": "link:schema/typescript",
     "@hookform/resolvers": "^3.10.0",
     "@lottiefiles/dotlottie-web": "^0.48.0",
     "@mdx-js/loader": "^3.1.0",
@@ -42,10 +44,13 @@
     "react-dom": "^19.1.0",
     "react-fast-marquee": "^1.6.5",
     "react-hook-form": "^7.60.0",
+    "react-hot-toast": "^2.5.2",
     "react-icons": "^5.5.0",
+    "schema-ts": "./schema/typescript",
     "tailwind-merge": "^2.6.0",
     "three": "0.164.1",
     "three-custom-shader-material": "5.4.0",
+    "uuid": "^11.1.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

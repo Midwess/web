@@ -107,7 +107,7 @@ const Navbar = () => {
         <div className="flex items-center gap-2.5">
           <Link href="/login" className="max-lg:hidden">
             <Button variant="outline">
-              <span className="relative z-10">Login</span>
+              <span className="relative z-10">Signin</span>
             </Button>
           </Link>
 

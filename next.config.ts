@@ -5,6 +5,9 @@ import { withContentlayer } from 'next-contentlayer2';
 const nextConfig: NextConfig = {
   pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx'],
   output: 'export',
+  experimental: {
+    clientInstrumentationHook: true
+  },
   turbopack: {
     rules: {
       '*.{glsl,vs,fs,vert,frag}': {

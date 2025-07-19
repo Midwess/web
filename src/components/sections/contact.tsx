@@ -18,17 +18,17 @@ const contactInfo = [
         <div>
           <p className="">Direct email</p>
           <Link
-            href="mailto:team@devlog.studio"
+            href="mailto:team@westrise.studio"
             className="text-muted-foreground hover:text-foreground"
           >
-            team@devlog.studio
+            team@westrise.studio
           </Link>
         </div>
       </div>
     ),
   },
   {
-    title: 'Follow me',
+    title: 'Follow us',
     content: (
       <div className="mt-3 flex gap-6 lg:gap-10">
         <Link href="#" className="text-muted-foreground hover:text-foreground">
@@ -47,11 +47,11 @@ export default function Contact() {
     <section className="py-28 lg:py-32 lg:pt-44">
       <div className="container max-w-2xl">
         <h1 className="text-center text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
-          Contact me
+          Contact us
         </h1>
         <p className="text-muted-foreground mt-4 text-center leading-snug font-medium lg:mx-auto">
-          I'm listening to your feedback. If you have any questions, please do
-          not hesitate to contact me. I will be happy to help you.
+          We are listening to your feedback. If you have any questions, please do
+          not hesitate to contact us. We will be happy to help you.
         </p>
 
         <div className="mt-10 flex justify-between gap-8 max-sm:flex-col md:mt-14 lg:mt-20 lg:gap-12">

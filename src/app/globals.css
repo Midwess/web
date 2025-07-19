@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 @plugin '@nobie-org/tailwindcss-animate';
 @plugin '@tailwindcss/typography';
@@ -64,6 +65,15 @@
     to {
       height: 0;
     }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }
 
@@ -177,6 +187,15 @@
     --chart-3: 197 37% 24%; /* #264653 */
     --chart-4: 43 74% 66%; /* #E9C46A */
     --chart-5: 27 87% 67%; /* #F4A261 */
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
   }
 
   .dark {

@@ -24,7 +24,7 @@ export function Footer() {
           Let's get in touch 👋
         </h2>
         <p className="text-muted-foreground mx-auto max-w-xl leading-snug font-medium text-balance">
-          Let me know your thoughts about my product, or anything we could
+          Let us know your thoughts about our product, or anything we could
           improve to make it even better.
         </p>
         <div>
@@ -60,7 +60,7 @@ export function Footer() {
       </nav>
       <Image
         src="/footer.svg"
-        alt="Mainline"
+        alt="Westrise"
         width={1570}
         height={375}
         className="mt-10 md:mt-14 lg:mt-20"

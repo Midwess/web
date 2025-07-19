@@ -7,16 +7,16 @@ import { Button } from '@/components/ui/button';
 const features = [
   {
     title: 'Sharing',
-    description: 'I share my experience and knowledge on this website',
+    description: 'We share our experience and knowledge on this website',
     icon: CircleDot,
   },
   {
     title: `Let's connect`,
     description: (
       <div className={'flex flex-col gap-1'}>
-        <p>Stay connected and get my latest updates</p>
+        <p>Stay connected and get our latest updates</p>
         <a href={'https://x.com'} className={'underline'}>
-          My X account
+          Our X account
         </a>
       </div>
     ),
@@ -35,11 +35,11 @@ export default function Hero() {
           </h1>
 
           <p className="text-muted-foreground mt-5 font-sans text-2xl font-medium md:text-3xl lg:text-4xl">
-            Welcome to my studio. I’m an indie developer creating productivity software.
+            Welcome to our studio. We are creating productivity software.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <Button>Join my waiting list</Button>
+            <Button>Join our waiting list</Button>
           </div>
         </div>
 

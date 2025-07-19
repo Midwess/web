@@ -20,10 +20,10 @@ export const BlogPosts = () => {
         {/* Content */}
         <div className="mx-auto mt-10 grid items-center gap-8 md:gap-0 lg:mt-24 lg:grid-cols-2">
           <h2 className="pr-16 text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
-            I'm a Rust lover, mobile software developer, and a product builder.
+            We are a Rust lover, mobile software developer, and a product builder.
           </h2>
           <p className="text-muted-foreground leading-snug font-medium">
-            I mainly used Rust to written all of my projects, So I will share my
+            We mainly used Rust to written all of our projects, So we will share our
             Rust experience with you.
           </p>
         </div>

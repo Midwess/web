@@ -85,7 +85,7 @@ export const FAQ = ({
               </h2>
             )}
             <p className="text-muted-foreground max-w-md leading-snug font-medium lg:mx-auto">
-              Let me know your thoughts about my product, or anything we could
+              Let us know your thoughts about our product, or anything we could
               improve to make it even better.,{' '}
               <Link href="/contact" className="underline underline-offset-4">
                 get in touch

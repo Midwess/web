@@ -18,6 +18,7 @@ import {
   NavigationMenuTrigger,
 } from '@/components/ui/navigation-menu';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '../animate-ui/base/popover';
 
 const ITEMS = [
   {
@@ -105,11 +106,18 @@ const Navbar = () => {
 
         {/* Auth Buttons */}
         <div className="flex items-center gap-2.5">
-          <Link href="/login" className="max-lg:hidden">
-            <Button variant="outline">
-              <span className="relative z-10">Signin</span>
-            </Button>
-          </Link>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline">
+                <span className="relative z-10">Signin</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent>
+              <div className="flex flex-row gap-2">
+                <Link className='w-full' href="/products/bitbridge/signin">Bit Bridge</Link>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* Hamburger Menu Button (Mobile Only) */}
           <button

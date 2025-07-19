@@ -1,6 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
-import { Author, Post as PostEntity } from '@devlog/schema-ts';
 import { defineDocumentType, makeSource } from 'contentlayer2/source-files';
 import fs from 'fs';
 import GithubSlugger from 'github-slugger';
@@ -74,27 +73,6 @@ export const Post = defineDocumentType(() => ({
         );
 
         return headings;
-      },
-    },
-    entity: {
-      type: 'json',
-      resolve: (content: unknown) => {
-        const author = new Author();
-        author.email = content.authorEmail;
-        author.fullName = content.authorFullName;
-        author.displayName = content.authorDisplayName;
-
-        const postEntity = new PostEntity();
-        postEntity.title = content.title;
-        postEntity.description = content.description;
-        postEntity.author = author;
-        postEntity.url = url(content);
-        fs.mkdirSync('./.contentlayer/generated/bumped', { recursive: true });
-        fs.writeFileSync(
-          `./.contentlayer/generated/bumped/${content.title.toLowerCase().replaceAll(' ', '-')}.bin`,
-          postEntity.toBinary(),
-          'binary',
-        );
       },
     },
   },

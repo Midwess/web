@@ -63,8 +63,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Mainline - Modern Next.js Template',
-    template: '%s | Mainline',
+    default: 'Westrise',
+    template: '%s | Westrise',
   },
   description:
     'A modern, fully featured Next.js template built with Shadcn/UI, TailwindCSS and TypeScript, perfect for your next web application.',
@@ -78,9 +78,9 @@ export const metadata: Metadata = {
     'Shadcn/UI',
     'Web Development',
   ],
-  authors: [{ name: 'Mainline Team' }],
-  creator: 'Mainline Team',
-  publisher: 'Mainline',
+  authors: [{ name: 'Westrise Team' }],
+  creator: 'Westrise Team',
+  publisher: 'Westrise',
   robots: {
     index: true,
     follow: true,
@@ -97,26 +97,26 @@ export const metadata: Metadata = {
     shortcut: [{ url: '/favicon/favicon.ico' }],
   },
   openGraph: {
-    title: 'Mainline - Modern Next.js Template',
+    title: 'Westrise',
     description:
-      'A modern, fully featured Next.js template built with Shadcn/UI, TailwindCSS and TypeScript, perfect for your next web application.',
-    siteName: 'Mainline',
+      'Startup from west side of vietnam',
+    siteName: 'Westrise',
     images: [
       {
         url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'Mainline - Modern Next.js Template',
+        alt: 'Westrise',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mainline - Modern Next.js Template',
+    title: 'Westrise',
     description:
-      'A modern, fully featured Next.js template built with Shadcn/UI, TailwindCSS and TypeScript, perfect for your next web application.',
+      'Startup from west side of vietnam',
     images: ['/og-image.jpg'],
-    creator: '@mainline',
+    creator: '@westrise',
   },
 };
 

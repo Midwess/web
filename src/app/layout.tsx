@@ -98,8 +98,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Westrise',
-    description:
-      'Startup from west side of vietnam',
+    description: 'Startup from west side of vietnam',
     siteName: 'Westrise',
     images: [
       {
@@ -113,8 +112,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Westrise',
-    description:
-      'Startup from west side of vietnam',
+    description: 'Startup from west side of vietnam',
     images: ['/og-image.jpg'],
     creator: '@westrise',
   },

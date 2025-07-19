@@ -9,7 +9,7 @@ import Lottie from '@/components/lottie';
 
 export default function PostPageContent(props: any) {
   return (
-    <div className={'w-screen'}>
+    <div className={'bg-cream/30 w-screen'}>
       <div className={'w-screen'}>
         <HtmlDom slug={props.slug} />
       </div>
@@ -39,7 +39,7 @@ function HtmlDom(props: any) {
               <TableOfContent post={post} />
             </div>
             <div className="cols-span-full col-span-full mt-2 flex flex-col items-center md:mt-8 lg:col-span-6 lg:justify-start lg:pl-16">
-              <article className="px-auto [&>p]:text-muted-foreground [&>h3]:text-foreground [&>h2]:text-foreground container overflow-visible rounded-xl !pt-0 font-sans backdrop-blur-lg [&>figure]:w-2xl [&>figure]:overflow-x-scroll [&>figure]:py-4 [&>h1]:py-5 [&>h1]:text-3xl [&>h1]:font-semibold [&>h2]:py-5 [&>h3]:py-4 [&>img]:overflow-clip [&>img]:rounded-4xl [&>p]:py-3 [&>p]:text-lg [&>p]:font-medium">
+              <article className="px-auto [&>p]:text-muted-foreground [&>h3]:text-foreground [&>h2]:text-foreground max-w-[80vw] overflow-visible rounded-xl !pt-0 font-sans backdrop-blur-lg [&>figure]:w-2xl [&>figure]:overflow-x-scroll [&>figure]:py-4 [&>h1]:py-5 [&>h1]:text-3xl [&>h1]:font-semibold [&>h2]:py-5 [&>h3]:py-4 [&>img]:overflow-clip [&>img]:rounded-4xl [&>p]:py-3 [&>p]:text-lg [&>p]:font-medium">
                 <Content components={{ Lottie }} />
               </article>
             </div>

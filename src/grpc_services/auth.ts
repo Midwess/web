@@ -1,9 +1,18 @@
-import { Platform, AuthService as AuthClient, Client, AuthMethod, DeviceType, SigninRequestSchema, RegisteringDeviceSchema } from 'schema-ts';
 import { create } from '@bufbuild/protobuf';
+import {
+  Platform,
+  AuthService as AuthClient,
+  Client,
+  AuthMethod,
+  DeviceType,
+  SigninRequestSchema,
+  RegisteringDeviceSchema,
+} from 'schema-ts';
+
 import { generateUUIDv4 } from '@/utils/uuid';
 
 export enum App {
-  BitBridge = 'BitBridge'
+  BitBridge = 'BitBridge',
 }
 
 export function getAppName(str: string) {
@@ -33,6 +42,6 @@ export default class AuthService extends Client.Base<typeof AuthClient> {
     });
 
     const response = await this.client.signin(request);
-    return response.signinUrl
+    return response.signinUrl;
   }
 }

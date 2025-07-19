@@ -8,7 +8,12 @@ import { usePathname } from 'next/navigation';
 
 import { ChevronRight } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../animate-ui/base/popover';
+
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -18,7 +23,6 @@ import {
   NavigationMenuTrigger,
 } from '@/components/ui/navigation-menu';
 import { cn } from '@/lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from '../animate-ui/base/popover';
 
 const ITEMS = [
   {
@@ -107,14 +111,14 @@ const Navbar = () => {
         {/* Auth Buttons */}
         <div className="flex items-center gap-2.5">
           <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <span className="relative z-10">Signin</span>
-              </Button>
+            <PopoverTrigger className="rounded-xl border bg-white px-5 py-2 font-medium shadow-xs">
+              <span className="relative z-10">Signin</span>
             </PopoverTrigger>
             <PopoverContent>
-              <div className="flex flex-row gap-2">
-                <Link className='w-full' href="/products/bitbridge/signin">Bit Bridge</Link>
+              <div className="hover:bg-muted flex flex-row gap-2 rounded-lg px-2 py-2">
+                <Link className="w-full" href="/products/bitbridge/signin">
+                  Bit Bridge
+                </Link>
               </div>
             </PopoverContent>
           </Popover>

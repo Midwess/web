@@ -18,7 +18,7 @@ export function Footer() {
   ];
 
   return (
-    <footer className="flex flex-col items-center gap-14 pt-28 lg:pt-32">
+    <footer className="flex flex-col items-center gap-2 pt-28 lg:pt-32">
       <div className="container space-y-3 text-center">
         <h2 className="text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
           Let's get in touch 👋

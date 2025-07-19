@@ -50,8 +50,8 @@ export default function Contact() {
           Contact us
         </h1>
         <p className="text-muted-foreground mt-4 text-center leading-snug font-medium lg:mx-auto">
-          We are listening to your feedback. If you have any questions, please do
-          not hesitate to contact us. We will be happy to help you.
+          We are listening to your feedback. If you have any questions, please
+          do not hesitate to contact us. We will be happy to help you.
         </p>
 
         <div className="mt-10 flex justify-between gap-8 max-sm:flex-col md:mt-14 lg:mt-20 lg:gap-12">

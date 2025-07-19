@@ -21,7 +21,7 @@ const About = () => {
           title="The team"
           paragraphs={[
             'We started building our team in the late 2024, and launch our first product BitBridge in the late 2025.',
-            "We are 100% founder and team-owned, profitable, and we keep our team lean.",
+            'We are 100% founder and team-owned, profitable, and we keep our team lean.',
           ]}
         />
       </div>
@@ -30,9 +30,9 @@ const About = () => {
       <div className="flex flex-col gap-8 lg:gap-16 xl:gap-20">
         <TextSection
           paragraphs={[
-            "When creating a new product, we always start with the end user in mind. We want to build a product that is easy to use, easy to understand, and easy to love.",
-            "We believe that the best products are not the ones that are the most feature-rich or the one that not have been exists",
-            "but the one that is the most useful and the one that can help users to save time and money.",
+            'When creating a new product, we always start with the end user in mind. We want to build a product that is easy to use, easy to understand, and easy to love.',
+            'We believe that the best products are not the ones that are the most feature-rich or the one that not have been exists',
+            'but the one that is the most useful and the one that can help users to save time and money.',
           ]}
         />
         <ImageSection

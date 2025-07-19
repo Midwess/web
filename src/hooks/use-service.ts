@@ -1,12 +1,15 @@
-import { usePromise } from '@/hooks/use-promise';
 import AuthService from '@/grpc_services/auth';
+import { usePromise } from '@/hooks/use-promise';
 
 const authService = new AuthService();
 
 export default function useService() {
   return {
     auth: {
-      signinWithGoogle: usePromise(authService.signinWithGoogle.bind(authService), ['app', 'currentUrl'])
-    }
-  }
+      signinWithGoogle: usePromise(
+        authService.signinWithGoogle.bind(authService),
+        ['app', 'currentUrl'],
+      ),
+    },
+  };
 }

@@ -1,4 +1,6 @@
-'use client'
+'use client';
+import { useEffect } from 'react';
+
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -7,21 +9,22 @@ import { FcGoogle } from 'react-icons/fc';
 import CreamContainer from '@/components/layout/cream-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import useService from '@/hooks/use-service';
 import { getAppName } from '@/grpc_services/auth';
-import { useEffect } from 'react';
+import useService from '@/hooks/use-service';
 
 export default function Signin({ slug }: any) {
   const backgroundImage = `/illusional-backgrounds/${slug}.jpg`;
   const signinService = useService().auth.signinWithGoogle;
-  signinService.setApp(getAppName(slug))
+  signinService.setApp(getAppName(slug));
 
   useEffect(() => {
-    signinService.setCurrentUrl(window.location.href)
-  }, [])
+    signinService.setCurrentUrl(window.location.href);
+  });
 
   useEffect(() => {
-    console.log(signinService.data)
+    if (signinService.data) {
+      window.open(signinService.data, '_blank');
+    }
   }, [signinService.data]);
 
   return (
@@ -52,7 +55,11 @@ export default function Signin({ slug }: any) {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4">
-                    <Button onClick={signinService.trigger} variant="outline" className="w-full">
+                    <Button
+                      onClick={signinService.trigger}
+                      variant="outline"
+                      className="w-full"
+                    >
                       <FcGoogle className="mr-2 size-5" />
                       Sign in with Google
                     </Button>
@@ -71,4 +78,4 @@ export default function Signin({ slug }: any) {
       </section>
     </CreamContainer>
   );
-};
+}

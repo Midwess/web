@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+
 import { Popover as PopoverPrimitive } from '@base-ui-components/react/popover';
 import {
   AnimatePresence,
@@ -135,7 +136,7 @@ function PopoverContent({
               data-slot="popover-popup"
               {...popupProps}
               className={cn(
-                'w-72 rounded-lg border bg-popover p-4 text-popover-foreground shadow-md outline-hidden',
+                'bg-popover text-popover-foreground w-72 rounded-lg border p-4 shadow-md outline-hidden',
                 className,
               )}
               render={

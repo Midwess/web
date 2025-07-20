@@ -1,5 +1,4 @@
-'use client';
-import { useEffect } from 'react';
+'use client'
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -9,26 +8,26 @@ import { FcGoogle } from 'react-icons/fc';
 import CreamContainer from '@/components/layout/cream-container';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { getAppName } from '@/grpc_services/auth';
 import useService from '@/hooks/use-service';
+import { getAppName } from '@/grpc_services/auth';
+import { useEffect } from 'react';
 import { useUrlState } from '@/hooks/use-url';
 
-export default function Signin({ slug }: any) {
+const Signup = ({ slug }: any) => {
   const backgroundImage = `/illusional-backgrounds/${slug}.jpg`;
-  const signinService = useService().auth.signinWithGoogle;
+  const signupService = useService().auth.signupWithGoogle;
+  signupService.setApp(getAppName(slug));
   const [urlState, setUrlState] = useUrlState(['message', 'code']);
 
-  signinService.setApp(getAppName(slug));
-
   useEffect(() => {
-    signinService.setCurrentUrl(window.location.href);
+    signupService.setCurrentUrl(window.location.href);
   });
 
   useEffect(() => {
-    if (signinService.data) {
-      window.open(signinService.data, '_blank');
+    if (signupService.data) {
+      window.open(signupService.data, '_blank');
     }
-  }, [signinService.data]);
+  }, [signupService.data]);
 
   return (
     <CreamContainer className={'flex h-screen flex-row'}>
@@ -54,23 +53,23 @@ export default function Signin({ slug }: any) {
                     height={18}
                     className="mb-7 dark:invert"
                   />
-                  <p className="mb-2 text-2xl font-bold">Welcome back</p>
+                  <p className="mb-2 text-2xl font-bold">Hi!</p>
+                  <p className="text-muted-foreground">
+                    Sign up in less than 5 seconds.
+                  </p>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-4">
-                    <Button
-                      onClick={signinService.trigger}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <FcGoogle className="mr-2 size-5" />
-                      Sign in with Google
-                    </Button>
+                  <Button variant="outline" className="w-full" onClick={signupService.trigger}>
+                    <FcGoogle className="mr-2 size-5" />
+                    Sign up with Google
+                  </Button>
+                  <div>
+                    <p className={"text-sm text-red-600 py-2 text-center"}>{urlState.message}</p>
                   </div>
                   <div className="text-muted-foreground mx-auto mt-8 flex justify-center gap-1 text-sm">
-                    <p>Don&apos;t have an account?</p>
-                    <Link href="./signup" className="text-primary font-medium">
-                      Sign up
+                    <p>Already have an account?</p>
+                    <Link href="./signin" className="text-primary font-medium">
+                      Sign in
                     </Link>
                   </div>
                 </CardContent>
@@ -81,4 +80,6 @@ export default function Signin({ slug }: any) {
       </section>
     </CreamContainer>
   );
-}
+};
+
+export default Signup;

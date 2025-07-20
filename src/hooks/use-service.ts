@@ -10,6 +10,10 @@ export default function useService() {
         authService.signinWithGoogle.bind(authService),
         ['app', 'currentUrl'],
       ),
+      signupWithGoogle: usePromise(
+        authService.signupWithGoogle.bind(authService),
+        ['app', 'currentUrl'],
+      ),
     },
   };
 }

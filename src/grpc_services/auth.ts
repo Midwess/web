@@ -7,6 +7,7 @@ import {
   DeviceType,
   SigninRequestSchema,
   RegisteringDeviceSchema,
+  SignupRequestSchema
 } from 'schema-ts';
 
 import { generateUUIDv4 } from '@/utils/uuid';
@@ -43,5 +44,22 @@ export default class AuthService extends Client.Base<typeof AuthClient> {
 
     const response = await this.client.signin(request);
     return response.signinUrl;
+  }
+
+  public async signupWithGoogle(app: App, currentUrl: string) {
+    const request = create(SignupRequestSchema, {
+      method: AuthMethod.GOOGLE,
+      appName: app,
+      originalWebPageUrl: currentUrl,
+      device: create(RegisteringDeviceSchema, {
+        deviceName: navigator.userAgent,
+        deviceType: DeviceType.OtherLaptop,
+        platform: Platform.Web,
+        deviceUniqueKey: generateUUIDv4(),
+      }),
+    });
+
+    const response = await this.client.signup(request);
+    return response.signupUrl;
   }
 }

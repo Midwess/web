@@ -75,10 +75,8 @@ export async function registerApiGateway() {
   });
 
   await createOrUpdate('/services/website/routes', '/routes/website-route', {
-    paths: ['~/'],
+    expression: `http.path ^= "/" && http.host == "${DOMAIN}"`,
     name: 'website-route',
-    hosts: [DOMAIN],
-    regex_priority: 0,
-    methods: ['GET'],
+    priority: 0,
   });
 }

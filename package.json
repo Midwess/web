@@ -1,15 +1,16 @@
 {
   "name": "website",
-  "version": "1.1.0",
-  "author": "Shadcnblocks.com",
+  "version": "1.0.0",
+  "author": "Westrise",
   "private": true,
   "scripts": {
     "preinstall": "pnpm -F @devlog/schema-ts install && pnpm -F @devlog/schema-ts schema:compile",
-    "dev": "next dev --turbopack",
+    "dev": "deno task deno-next --turbopack",
+    "deno-next": "deno run --allow-all --unstable-unsafe-proto --unstable-detect-cjs npm:next@15.3.5",
     "build": "next build",
-    "start": "next start",
+    "start": "deno task deno-next start --turbopack",
     "lint": "next lint --fix",
-    "content:build": "yarn contentlayer2 build"
+    "content:build": "pnpm contentlayer2 build"
   },
   "dependencies": {
     "@base-ui-components/react": "1.0.0-beta.1",

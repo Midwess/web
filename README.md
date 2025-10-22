@@ -1,9 +1,15 @@
+## Westrise website
+This is the website of Westrise
 ## Getting Started
 
 ```bash
-npm install
+git submodule update --init
 ```
 
 ```bash
-npm run dev
+pnpm install
+```
+
+```bash
+pnpm dev
 ```

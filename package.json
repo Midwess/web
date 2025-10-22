@@ -4,7 +4,7 @@
   "author": "Shadcnblocks.com",
   "private": true,
   "scripts": {
-    "schema:compile": "pnpm --dir ./schema/typescript build; rm -r node_modules/schema-ts; pnpm install -f ./schema/typescript",
+    "preinstall": "pnpm -F @devlog/schema-ts install && pnpm -F @devlog/schema-ts schema:compile",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",

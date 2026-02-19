@@ -9,12 +9,6 @@ import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '../animate-ui/base/popover';
-
-import {
   NavigationMenu,
   NavigationMenuContent,
   NavigationMenuItem,
@@ -108,43 +102,27 @@ const Navbar = () => {
           </NavigationMenuList>
         </NavigationMenu>
 
-        {/* Auth Buttons */}
-        <div className="flex items-center gap-2.5">
-          <Popover>
-            <PopoverTrigger className="rounded-xl border bg-white px-5 py-2 font-medium shadow-xs">
-              <span className="relative z-10">Signin</span>
-            </PopoverTrigger>
-            <PopoverContent>
-              <div className="hover:bg-muted flex flex-row gap-2 rounded-lg px-2 py-2">
-                <Link className="w-full" href="/products/bitbridge/signin">
-                  Bit Bridge
-                </Link>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Hamburger Menu Button (Mobile Only) */}
-          <button
-            className="text-muted-foreground relative flex size-8 lg:hidden"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-          >
-            <span className="sr-only">Open main menu</span>
-            <div className="absolute top-1/2 left-1/2 block w-[18px] -translate-x-1/2 -translate-y-1/2">
-              <span
-                aria-hidden="true"
-                className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? 'rotate-45' : '-translate-y-1.5'}`}
-              ></span>
-              <span
-                aria-hidden="true"
-                className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? 'opacity-0' : ''}`}
-              ></span>
-              <span
-                aria-hidden="true"
-                className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? '-rotate-45' : 'translate-y-1.5'}`}
-              ></span>
-            </div>
-          </button>
-        </div>
+        {/* Hamburger Menu Button (Mobile Only) */}
+        <button
+          className="text-muted-foreground relative flex size-8 lg:hidden"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+        >
+          <span className="sr-only">Open main menu</span>
+          <div className="absolute top-1/2 left-1/2 block w-[18px] -translate-x-1/2 -translate-y-1/2">
+            <span
+              aria-hidden="true"
+              className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? 'rotate-45' : '-translate-y-1.5'}`}
+            ></span>
+            <span
+              aria-hidden="true"
+              className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? 'opacity-0' : ''}`}
+            ></span>
+            <span
+              aria-hidden="true"
+              className={`absolute block h-0.5 w-full rounded-full bg-current transition duration-500 ease-in-out ${isMenuOpen ? '-rotate-45' : 'translate-y-1.5'}`}
+            ></span>
+          </div>
+        </button>
       </div>
 
       {/*  Mobile Menu Navigation */}

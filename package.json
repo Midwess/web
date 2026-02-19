@@ -4,7 +4,6 @@
   "author": "Westrise",
   "private": true,
   "scripts": {
-    "preinstall": "pnpm -F @devlog/schema-ts install && pnpm -F @devlog/schema-ts schema:compile",
     "dev": "deno task deno-next --turbopack",
     "deno-next": "deno run --allow-all --unstable-unsafe-proto --unstable-detect-cjs npm:next@15.3.5",
     "build": "next build",
@@ -14,8 +13,6 @@
   },
   "dependencies": {
     "@base-ui-components/react": "1.0.0-beta.1",
-    "@bufbuild/protobuf": "^2.2.2",
-    "@devlog/schema-ts": "link:schema/typescript",
     "@hookform/resolvers": "^3.10.0",
     "@lottiefiles/dotlottie-web": "^0.48.0",
     "@mdx-js/loader": "^3.1.0",
@@ -49,7 +46,6 @@
     "react-hook-form": "^7.60.0",
     "react-hot-toast": "^2.5.2",
     "react-icons": "^5.5.0",
-    "schema-ts": "./schema/typescript",
     "tailwind-merge": "^2.6.0",
     "three": "0.164.1",
     "three-custom-shader-material": "5.4.0",

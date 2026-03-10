@@ -1,9 +1,13 @@
 // This file only allowed to be run on server side
-import { promises as fs } from 'fs';
-import path from 'path';
-import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
-import mime from 'mime-types';
+import {
+  S3Client,
+  PutObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
 import Bluebird from 'bluebird';
+import { promises as fs } from 'fs';
+import mime from 'mime-types';
+import path from 'path';
 
 if (typeof window !== 'undefined') {
   throw new Error('This file should only be used on the server side.');
@@ -20,7 +24,6 @@ export function register() {
 
 export async function setupCDN(): Promise<void> {
   if (!VERSION || !S3_CDN_PREFIX || S3_CDN_PREFIX === '/') {
-    // eslint-disable-next-line no-console
     console.warn('Invalid configuration: VERSION or S3_CDN_PREFIX is missing.');
     return;
   }
@@ -28,13 +31,11 @@ export async function setupCDN(): Promise<void> {
   try {
     const entry = `${__dirname}/../../`;
     const ns = 'cdn-uploader';
-    // eslint-disable-next-line no-console
     console.log(ns, 'Entry point:', entry);
 
     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
-    const publicDir = path.resolve(entry, 'public');
-    const nextStaticDir = path.resolve(entry, '.next/static');
+    const outDir = path.resolve(entry, 'out');
     const bucketBase = `midwess/bytover/web/commit-${VERSION}`;
     const acl = 'public-read';
 
@@ -98,7 +99,6 @@ export async function setupCDN(): Promise<void> {
             });
 
             await s3.send(command);
-            // eslint-disable-next-line no-console
             console.log(
               ns,
               `Uploaded: ${s3Key} with Content-Type: ${contentType}`,
@@ -109,12 +109,9 @@ export async function setupCDN(): Promise<void> {
       );
     };
 
-    await uploadDirectory(publicDir, `${bucketBase}`);
-    await uploadDirectory(nextStaticDir, `${bucketBase}/_next/static`);
-    // eslint-disable-next-line no-console
+    await uploadDirectory(outDir, `${bucketBase}`);
     console.log(ns, 'Upload completed successfully.');
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error('Error uploading to CDN:', error);
     throw error;
   }

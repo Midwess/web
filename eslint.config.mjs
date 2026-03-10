@@ -26,6 +26,12 @@ const eslintConfig = [
     'plugin:jsx-a11y/recommended',
   ),
   {
+    files: ['src/instrumentation.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     rules: {
       '@next/next/no-html-link-for-pages': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -46,7 +52,7 @@ const eslintConfig = [
       'jsx-a11y/heading-has-content': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',
       'react/no-unescaped-entities': 'off',
-      'no-console': 'error',
+      'no-console': ['error', { allow: ['warn', 'error', 'log'] }],
       'import/order': [
         'error',
         {

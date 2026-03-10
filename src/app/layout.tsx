@@ -87,10 +87,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon/favicon.ico', sizes: 'any' },
-      { url: '/favicon/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon/favicon.ico?v=1', sizes: 'any' },
+      { url: '/favicon/favicon.svg?v=1', type: 'image/svg+xml' },
     ],
-    apple: [{ url: '/favicon/apple-touch-icon.png', sizes: '180x180' }],
+    apple: [{ url: '/favicon/apple-touch-icon.png?v=1', sizes: '180x180' }],
   },
   manifest: '/favicon/site.webmanifest',
   openGraph: {

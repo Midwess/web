@@ -2,9 +2,15 @@ import createMDX from '@next/mdx';
 import type { NextConfig } from 'next';
 import { withContentlayer } from 'next-contentlayer2';
 
+const VERSION = process.env.VERSION || process.env.RAILWAY_GIT_COMMIT_SHA;
+
 const nextConfig: NextConfig = {
   pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx'],
   output: 'export',
+  env: {
+    NEXT_PUBLIC_S3_CDN_PREFIX: process.env.S3_CDN_PREFIX || '',
+    NEXT_PUBLIC_VERSION: VERSION || '',
+  },
   experimental: {
     clientInstrumentationHook: true
   },

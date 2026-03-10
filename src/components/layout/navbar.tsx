@@ -50,7 +50,9 @@ const Navbar = () => {
             width={50}
             className="dark:invert"
           />
-          <span className="font-sans text-lg font-bold tracking-tight">Midwess</span>
+          <span className="font-sans text-lg font-bold tracking-tight">
+            Midwess
+          </span>
         </Link>
 
         {/* Desktop Navigation */}

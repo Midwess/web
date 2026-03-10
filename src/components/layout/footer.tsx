@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+
 import { Twitter, Linkedin, Github } from 'lucide-react';
 
 export function Footer() {
@@ -23,25 +24,33 @@ export function Footer() {
   return (
     <>
       {/* Catching Brand Section - Separate from Footer */}
-      <section className="w-full py-20 lg:py-32 border-t bg-background">
+      <section className="bg-background w-full border-t py-20 lg:py-32">
         <div className="container mx-auto px-6">
-          <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tighter text-foreground leading-[1.05] max-w-5xl">
-            Midwess <span className="text-muted-foreground/30 font-medium">builds high-performance, secure software that empowers teams to innovate without friction.</span>
+          <h2 className="text-foreground max-w-5xl text-4xl leading-[1.05] font-bold tracking-tighter md:text-6xl lg:text-7xl">
+            Midwess{' '}
+            <span className="text-muted-foreground/30 font-medium">
+              builds high-performance, secure software that empowers teams to
+              innovate without friction.
+            </span>
           </h2>
-          <p className="mt-8 text-lg md:text-xl text-muted-foreground max-w-2xl leading-relaxed">
-            We are dedicated to building user-centric solutions that enable modern engineering teams 
-            to achieve more through reliable, high-speed tools.
+          <p className="text-muted-foreground mt-8 max-w-2xl text-lg leading-relaxed md:text-xl">
+            We are dedicated to building user-centric solutions that enable
+            modern engineering teams to achieve more through reliable,
+            high-speed tools.
           </p>
         </div>
       </section>
 
       {/* Professional Compact Footer */}
-      <footer className="w-full bg-secondary/50 border-t py-12 lg:py-16">
+      <footer className="bg-secondary/50 w-full border-t py-12 lg:py-16">
         <div className="container mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-start gap-12">
+          <div className="flex flex-col items-start justify-between gap-12 md:flex-row">
             {/* Logo and Tagline */}
             <div className="flex flex-col gap-4">
-              <Link href="/" className="inline-block transition-opacity hover:opacity-80">
+              <Link
+                href="/"
+                className="inline-block transition-opacity hover:opacity-80"
+              >
                 <Image
                   src="/logo.svg"
                   alt="Midwess"
@@ -50,21 +59,24 @@ export function Footer() {
                   className="dark:invert"
                 />
               </Link>
-              <p className="text-[13px] text-muted-foreground max-w-[240px] leading-relaxed">
-                Empowering the next generation of engineers with intelligent file sharing solutions.
+              <p className="text-muted-foreground max-w-[240px] text-[13px] leading-relaxed">
+                Empowering the next generation of engineers with intelligent
+                file sharing solutions.
               </p>
             </div>
 
             {/* Navigation - End Aligned */}
-            <div className="flex flex-wrap gap-x-16 gap-y-10 md:text-end ml-auto">
+            <div className="ml-auto flex flex-wrap gap-x-16 gap-y-10 md:text-end">
               <div className="flex flex-col gap-5">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Product</h4>
+                <h4 className="text-foreground text-[10px] font-bold tracking-[0.2em] uppercase">
+                  Product
+                </h4>
                 <nav className="flex flex-col gap-3">
                   {productLinks.map((link) => (
-                    <Link 
-                      key={link.name} 
-                      href={link.href} 
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    <Link
+                      key={link.name}
+                      href={link.href}
+                      className="text-muted-foreground hover:text-foreground text-sm transition-colors"
                     >
                       {link.name}
                     </Link>
@@ -73,13 +85,15 @@ export function Footer() {
               </div>
 
               <div className="flex flex-col gap-5">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Company</h4>
+                <h4 className="text-foreground text-[10px] font-bold tracking-[0.2em] uppercase">
+                  Company
+                </h4>
                 <nav className="flex flex-col gap-3">
                   {companyLinks.map((link) => (
-                    <Link 
-                      key={link.name} 
-                      href={link.href} 
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    <Link
+                      key={link.name}
+                      href={link.href}
+                      className="text-muted-foreground hover:text-foreground text-sm transition-colors"
                     >
                       {link.name}
                     </Link>
@@ -88,8 +102,10 @@ export function Footer() {
               </div>
 
               <div className="flex flex-col gap-5">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-foreground">Connect</h4>
-                <div className="flex items-center md:justify-end gap-5">
+                <h4 className="text-foreground text-[10px] font-bold tracking-[0.2em] uppercase">
+                  Connect
+                </h4>
+                <div className="flex items-center gap-5 md:justify-end">
                   {socialLinks.map((link) => (
                     <Link
                       key={link.name}
@@ -106,13 +122,13 @@ export function Footer() {
           </div>
 
           {/* Bottom Bar */}
-          <div className="mt-16 pt-8 border-t border-border/40 flex flex-col md:flex-row justify-between items-center gap-6">
-            <p className="text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wider">
+          <div className="border-border/40 mt-16 flex flex-col items-center justify-between gap-6 border-t pt-8 md:flex-row">
+            <p className="text-muted-foreground/60 text-[11px] font-medium tracking-wider uppercase">
               © {new Date().getFullYear()} Midwess LLC. All rights reserved.
             </p>
-            <div className="flex items-center gap-3 text-[9px] uppercase tracking-[0.3em] font-bold text-muted-foreground/20 select-none">
+            <div className="text-muted-foreground/20 flex items-center gap-3 text-[9px] font-bold tracking-[0.3em] uppercase select-none">
               <span>Midwestern Heart</span>
-              <span className="w-1 h-1 rounded-full bg-current" />
+              <span className="h-1 w-1 rounded-full bg-current" />
               <span>Global Reach</span>
             </div>
           </div>

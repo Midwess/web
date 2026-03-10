@@ -36,6 +36,7 @@ async function createOrUpdate(
     });
 
     if (response.status === 409) {
+      // eslint-disable-next-line no-console
       console.warn(`${endpoint} already exists, updating.`);
       const updateResponse = await fetch(
         `${KONG_ADMIN_URL}${updateEndpoint || endpoint}`,
@@ -53,6 +54,7 @@ async function createOrUpdate(
         );
       }
 
+      // eslint-disable-next-line no-console
       console.log(`${endpoint} updated successfully.`);
     } else if (!response.ok) {
       const errorData = await response.json();
@@ -60,9 +62,11 @@ async function createOrUpdate(
         `Failed to create ${endpoint}: ${JSON.stringify(errorData)}`,
       );
     } else {
+      // eslint-disable-next-line no-console
       console.log(`${endpoint} created successfully.`);
     }
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error(`Error handling ${endpoint}:`, error);
   }
 }

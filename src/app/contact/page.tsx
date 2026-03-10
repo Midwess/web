@@ -8,7 +8,7 @@ import Contact from '@/components/sections/contact';
 const Page = () => {
   return (
     <PageFrame>
-      <div className="min-h-screen bg-background">
+      <div className="bg-background min-h-screen">
         <DottedBackground showGlow={false}>
           <GridSection showTopBorder showBottomBorder>
             <Contact />

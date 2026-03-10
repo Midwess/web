@@ -1,5 +1,6 @@
-import { cn } from "@/lib/utils";
-import { ReactNode } from "react";
+import { ReactNode } from 'react';
+
+import { cn } from '@/lib/utils';
 
 interface GridSectionProps {
   children: ReactNode;
@@ -23,47 +24,61 @@ const GridSection = ({
   return (
     <section
       id={id}
-      className={cn("relative my-12 first:mt-0 last:mb-0", className)}
+      className={cn('relative my-12 first:mt-0 last:mb-0', className)}
     >
       {showTopBorder && (
-        <div className="absolute top-0 left-0 right-0 flex justify-center">
+        <div className="absolute top-0 right-0 left-0 flex justify-center">
           <div
             className="w-full max-w-[1330px]"
             style={{
               height: '1px',
-              background: 'repeating-linear-gradient(90deg, hsl(0 0% 89.8% / 0.8) 0, hsl(0 0% 89.8% / 0.8) 12px, transparent 12px, transparent 24px)',
+              background:
+                'repeating-linear-gradient(90deg, hsl(0 0% 89.8% / 0.8) 0, hsl(0 0% 89.8% / 0.8) 12px, transparent 12px, transparent 24px)',
             }}
           />
         </div>
       )}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className={cn("relative", innerClassName)}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className={cn('relative', innerClassName)}>
           <div
-            className="absolute -top-1 -left-1 w-3 h-3"
-            style={{ borderLeft: '1px solid hsl(0 0% 89.8% / 0.8)', borderTop: '1px solid hsl(0 0% 89.8% / 0.8)' }}
+            className="absolute -top-1 -left-1 h-3 w-3"
+            style={{
+              borderLeft: '1px solid hsl(0 0% 89.8% / 0.8)',
+              borderTop: '1px solid hsl(0 0% 89.8% / 0.8)',
+            }}
           />
           <div
-            className="absolute -top-1 -right-1 w-3 h-3"
-            style={{ borderRight: '1px solid hsl(0 0% 89.8% / 0.8)', borderTop: '1px solid hsl(0 0% 89.8% / 0.8)' }}
+            className="absolute -top-1 -right-1 h-3 w-3"
+            style={{
+              borderRight: '1px solid hsl(0 0% 89.8% / 0.8)',
+              borderTop: '1px solid hsl(0 0% 89.8% / 0.8)',
+            }}
           />
           <div
-            className="absolute -bottom-1 -left-1 w-3 h-3"
-            style={{ borderLeft: '1px solid hsl(0 0% 89.8% / 0.8)', borderBottom: '1px solid hsl(0 0% 89.8% / 0.8)' }}
+            className="absolute -bottom-1 -left-1 h-3 w-3"
+            style={{
+              borderLeft: '1px solid hsl(0 0% 89.8% / 0.8)',
+              borderBottom: '1px solid hsl(0 0% 89.8% / 0.8)',
+            }}
           />
           <div
-            className="absolute -bottom-1 -right-1 w-3 h-3"
-            style={{ borderRight: '1px solid hsl(0 0% 89.8% / 0.8)', borderBottom: '1px solid hsl(0 0% 89.8% / 0.8)' }}
+            className="absolute -right-1 -bottom-1 h-3 w-3"
+            style={{
+              borderRight: '1px solid hsl(0 0% 89.8% / 0.8)',
+              borderBottom: '1px solid hsl(0 0% 89.8% / 0.8)',
+            }}
           />
-          <div className={cn("flex-1", contentClassName)}>{children}</div>
+          <div className={cn('flex-1', contentClassName)}>{children}</div>
         </div>
       </div>
       {showBottomBorder && (
-        <div className="absolute bottom-0 left-0 right-0 flex justify-center">
+        <div className="absolute right-0 bottom-0 left-0 flex justify-center">
           <div
             className="w-full max-w-[1330px]"
             style={{
               height: '1px',
-              background: 'repeating-linear-gradient(90deg, hsl(0 0% 89.8% / 0.8) 0, hsl(0 0% 89.8% / 0.8) 12px, transparent 12px, transparent 24px)',
+              background:
+                'repeating-linear-gradient(90deg, hsl(0 0% 89.8% / 0.8) 0, hsl(0 0% 89.8% / 0.8) 12px, transparent 12px, transparent 24px)',
             }}
           />
         </div>

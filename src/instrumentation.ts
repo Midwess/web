@@ -1,86 +1,121 @@
 // This file only allowed to be run on server side
+import { promises as fs } from 'fs';
+import path from 'path';
+import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import mime from 'mime-types';
+import Bluebird from 'bluebird';
+
 if (typeof window !== 'undefined') {
   throw new Error('This file should only be used on the server side.');
 }
 
-const KONG_ADMIN_URL =
-  process.env.DEVLOG_KONG_GATEWAY_ADMIN_URL || 'http://localhost:8001';
-const HOST_NAME = process.env.DEVLOG_SERVICE_HOST || 'host.docker.internal';
-const PORT = process.env.PORT;
-const DOMAIN = 'devlog.local';
-
-let isRegistered = false;
+const S3_CDN_PREFIX = process.env.S3_CDN_PREFIX || '';
+const VERSION = process.env.VERSION || process.env.RAILWAY_GIT_COMMIT_SHA;
 
 export function register() {
-  if (!PORT)
-    throw new Error(
-      `This service is only support static port, the env PORT or DEVLOG_SERVICE_PORT must be defined`,
-    );
-
-  if (KONG_ADMIN_URL && !isRegistered) {
-    isRegistered = true;
-    registerApiGateway();
+  if (VERSION && S3_CDN_PREFIX) {
+    setupCDN();
   }
 }
 
-async function createOrUpdate(
-  endpoint: string,
-  updateEndpoint: string | null,
-  data: any,
-) {
+export async function setupCDN(): Promise<void> {
+  if (!VERSION || !S3_CDN_PREFIX || S3_CDN_PREFIX === '/') {
+    // eslint-disable-next-line no-console
+    console.warn('Invalid configuration: VERSION or S3_CDN_PREFIX is missing.');
+    return;
+  }
+
   try {
-    const response = await fetch(`${KONG_ADMIN_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const entry = `${__dirname}/../../`;
+    const ns = 'cdn-uploader';
+    // eslint-disable-next-line no-console
+    console.log(ns, 'Entry point:', entry);
 
-    if (response.status === 409) {
-      // eslint-disable-next-line no-console
-      console.warn(`${endpoint} already exists, updating.`);
-      const updateResponse = await fetch(
-        `${KONG_ADMIN_URL}${updateEndpoint || endpoint}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        },
-      );
+    const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
-      if (!updateResponse.ok) {
-        const errorData = await updateResponse.json();
-        throw new Error(
-          `Failed to update ${endpoint}: ${JSON.stringify(errorData)}`,
+    const publicDir = path.resolve(entry, 'public');
+    const nextStaticDir = path.resolve(entry, '.next/static');
+    const bucketBase = `midwess/bytover/web/commit-${VERSION}`;
+    const acl = 'public-read';
+
+    const fileExistsInS3 = async (
+      bucket: string,
+      key: string,
+    ): Promise<boolean> => {
+      try {
+        await s3.send(
+          new HeadObjectCommand({
+            Bucket: bucket,
+            Key: key,
+          }),
         );
+        return true;
+      } catch (error: unknown) {
+        const err = error as { name?: string };
+        if (err.name === 'NotFound') {
+          return false;
+        }
+        throw error;
       }
+    };
 
-      // eslint-disable-next-line no-console
-      console.log(`${endpoint} updated successfully.`);
-    } else if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to create ${endpoint}: ${JSON.stringify(errorData)}`,
+    const uploadDirectory = async (
+      dirPath: string,
+      s3Path: string,
+    ): Promise<void> => {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+      await Bluebird.map(
+        entries,
+        async (entry: unknown) => {
+          const e = entry as { name: string; isDirectory: () => boolean };
+          const fullPath = path.join(dirPath, e.name);
+          const s3Key = `${s3Path}/${e.name}`;
+
+          if (e.isDirectory()) {
+            await uploadDirectory(fullPath, s3Key);
+          } else {
+            const fileAlreadyExists = await fileExistsInS3(
+              process.env.AWS_S3_BUCKET_NAME!,
+              s3Key,
+            );
+
+            if (fileAlreadyExists) {
+              return;
+            }
+
+            const contentType =
+              mime.lookup(fullPath) || 'application/octet-stream';
+
+            const fileContent = await fs.readFile(fullPath);
+
+            const command = new PutObjectCommand({
+              Bucket: process.env.AWS_S3_BUCKET_NAME!,
+              Key: s3Key,
+              Body: fileContent,
+              ACL: acl,
+              ContentType: contentType,
+            });
+
+            await s3.send(command);
+            // eslint-disable-next-line no-console
+            console.log(
+              ns,
+              `Uploaded: ${s3Key} with Content-Type: ${contentType}`,
+            );
+          }
+        },
+        { concurrency: 30 },
       );
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(`${endpoint} created successfully.`);
-    }
+    };
+
+    await uploadDirectory(publicDir, `${bucketBase}`);
+    await uploadDirectory(nextStaticDir, `${bucketBase}/_next/static`);
+    // eslint-disable-next-line no-console
+    console.log(ns, 'Upload completed successfully.');
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error(`Error handling ${endpoint}:`, error);
+    console.error('Error uploading to CDN:', error);
+    throw error;
   }
-}
-
-export async function registerApiGateway() {
-  await createOrUpdate('/services', '/services/website', {
-    name: 'website',
-    url: `http://${HOST_NAME}:${PORT}`,
-    path: '/',
-  });
-
-  await createOrUpdate('/services/website/routes', '/routes/website-route', {
-    expression: `http.path ^= "/" && http.host == "${DOMAIN}"`,
-    name: 'website-route',
-    priority: 1,
-  });
 }

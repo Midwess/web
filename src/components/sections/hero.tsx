@@ -13,12 +13,12 @@ export default function Hero() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
               </span>
-              Est. 2024 • West Vietnam
+              Est. 2024 • South Vietnam
             </div>
 
             <div className="space-y-4 text-left">
               <h1 className="text-balance font-sans text-4xl font-extrabold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl uppercase leading-[1]">
-                Crafting the <span className="text-orange-500">Future of Software</span> from the West
+                Crafting the <span className="text-orange-500">Future of Software</span> from the South
               </h1>
               <p className="text-muted-foreground max-w-[600px] text-lg sm:text-xl leading-relaxed">
                 Midwess is a boutique startup studio and open knowledge base. We build high-performance productivity tools while documenting the journey for the next generation of engineers.
@@ -71,7 +71,7 @@ export default function Hero() {
   "mission": "Co-create intelligence",
   "vision": "Scale through knowledge",
   "craft": ["Rust", "Next.js", "AI"],
-  "location": "West Side of Vietnam",
+  "location": "South of Vietnam",
   "status": "Building the future"
 }`}</code>
               </pre>

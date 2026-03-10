@@ -74,10 +74,10 @@ export const Features = () => {
 
           {/* Page 2: Feature Introduction (MiniMax Style) */}
           <div className="flex-[0_0_100%] min-w-0 px-4 md:px-8 lg:px-12">
-            <div className="mx-auto max-w-[1400px] relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-blue-500/20 bg-blue-600 shadow-2xl flex items-center">
-              
+            <div className="mx-auto max-w-[1400px] relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-white/10 shadow-2xl flex items-center">
+
               {/* Background Image Layer */}
-              <div className="absolute inset-0 -z-10">
+              <div className="absolute inset-0">
                 <Image
                   src="/images/bytover-background.png"
                   alt="Background"
@@ -86,9 +86,9 @@ export const Features = () => {
                   priority
                 />
               </div>
-              
-              {/* Creative Grid Overlay */}
-              <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:60px_60px]" />
+
+              {/* Dark overlay for readability */}
+              <div className="absolute inset-0 bg-black/40" />
 
               <div className="grid lg:grid-cols-2 w-full p-12 md:p-20 relative z-10">
                 <div className="flex flex-col justify-center space-y-8 text-white">

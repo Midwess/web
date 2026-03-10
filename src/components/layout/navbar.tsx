@@ -25,7 +25,7 @@ const ITEMS = [
     dropdownItems: [
       {
         title: 'Bytover',
-        href: '/#our-products',
+        href: '/products/bytover',
         description:
           'High-speed, secure file sharing and localized data intelligence for the next generation of engineers.',
       },

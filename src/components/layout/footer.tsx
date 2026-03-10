@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import DottedBackground from './dotted-background';
+import GridSection from './grid-section';
 
 export function Footer() {
   const navigation = [
@@ -18,53 +20,59 @@ export function Footer() {
   ];
 
   return (
-    <footer className="flex flex-col items-center gap-2 pt-28 lg:pt-32">
-      <div className="container space-y-3 text-center">
-        <h2 className="text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
-          Let's get in touch 👋
-        </h2>
-        <p className="text-muted-foreground mx-auto max-w-xl leading-snug font-medium text-balance">
-          Let us know your thoughts about our product, or anything we could
-          improve to make it even better.
-        </p>
-        <div>
-          <Button size="lg" className="mt-4">
-            Get in touch
-          </Button>
-        </div>
-      </div>
+    <footer className="flex flex-col items-center gap-2">
+      <DottedBackground showGlow={false}>
+        <GridSection showTopBorder showBottomBorder>
+          <div className="flex flex-col items-center gap-2 pt-28 lg:pt-32">
+            <div className="container space-y-3 text-center">
+              <h2 className="text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
+                Let's get in touch 👋
+              </h2>
+              <p className="text-muted-foreground mx-auto max-w-xl leading-snug font-medium text-balance">
+                Let us know your thoughts about our product, or anything we could
+                improve to make it even better.
+              </p>
+              <div>
+                <Button size="lg" className="mt-4">
+                  Get in touch
+                </Button>
+              </div>
+            </div>
 
-      <nav className="container flex flex-col items-center gap-4">
-        <ul className="flex flex-wrap items-center justify-center gap-6">
-          {navigation.map((item) => (
-            <li key={item.name}>
-              <Link
-                href={item.href}
-                className="font-medium transition-opacity hover:opacity-75"
-              >
-                {item.name}
-              </Link>
-            </li>
-          ))}
-          {social.map((item) => (
-            <li key={item.name}>
-              <Link
-                href={item.href}
-                className="flex items-center gap-0.5 font-medium transition-opacity hover:opacity-75"
-              >
-                {item.name} <ArrowUpRight className="size-4" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <Image
-        src="/footer.svg"
-        alt="Midwess"
-        width={1570}
-        height={375}
-        className="mt-10 md:mt-14 lg:mt-20"
-      />
+            <nav className="container flex flex-col items-center gap-4">
+              <ul className="flex flex-wrap items-center justify-center gap-6">
+                {navigation.map((item) => (
+                  <li key={item.name}>
+                    <Link
+                      href={item.href}
+                      className="font-medium transition-opacity hover:opacity-75"
+                    >
+                      {item.name}
+                    </Link>
+                  </li>
+                ))}
+                {social.map((item) => (
+                  <li key={item.name}>
+                    <Link
+                      href={item.href}
+                      className="flex items-center gap-0.5 font-medium transition-opacity hover:opacity-75"
+                    >
+                      {item.name} <ArrowUpRight className="size-4" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <Image
+              src="/footer.svg"
+              alt="Midwess"
+              width={1570}
+              height={375}
+              className="mt-10 md:mt-14 lg:mt-20"
+            />
+          </div>
+        </GridSection>
+      </DottedBackground>
     </footer>
   );
 }

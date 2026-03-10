@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ArrowRight, Shield, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -41,37 +42,39 @@ export const Features = () => {
         <div className="flex">
           
           {/* Page 1: Video Showcase */}
-          <div className="flex-[0_0_100%] min-w-0 px-4 md:px-12 lg:px-24">
-            <div className="relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-white/10 bg-black group shadow-2xl">
+          <div className="flex-[0_0_100%] min-w-0 px-4 md:px-8 lg:px-12">
+            <div className="mx-auto max-w-[1400px] relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-white/10 bg-black group shadow-2xl">
               <video
                 src="/video/bytover-space.mp4"
                 autoPlay
                 loop
                 muted
                 playsInline
-                className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
+                className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-80"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
               
               <div className="absolute bottom-12 left-12 right-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-                <div className="max-w-xl space-y-4">
+                <div className="max-w-2xl space-y-4">
                   <h3 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-white leading-none">
-                    Bytover <span className="text-orange-500">Visual</span>
+                    Bytover <span className="text-orange-500">Direct</span>
                   </h3>
-                  <p className="text-gray-300 text-lg md:text-xl">
-                    Experience the ultimate decentralized environment for high-speed data orchestration.
+                  <p className="text-gray-300 text-lg md:text-xl font-medium">
+                    Skip the cloud. Stream entire folders instantly via ultra-fast P2P. No zipping, no uploading, no latency—just raw throughput.
                   </p>
                 </div>
-                <Button size="lg" className="rounded-full bg-white text-black hover:bg-gray-200 h-16 px-10 font-bold shadow-xl">
-                  Watch Demo
-                </Button>
+                <Link href="https://bytover.com" target="_blank">
+                  <Button size="lg" className="rounded-full bg-white text-black hover:bg-gray-200 h-16 px-10 font-bold shadow-xl">
+                    Visit Website
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
 
           {/* Page 2: Feature Introduction (MiniMax Style) */}
-          <div className="flex-[0_0_100%] min-w-0 px-4 md:px-12 lg:px-24">
-            <div className="relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-blue-500/20 bg-blue-600 shadow-2xl flex items-center">
+          <div className="flex-[0_0_100%] min-w-0 px-4 md:px-8 lg:px-12">
+            <div className="mx-auto max-w-[1400px] relative aspect-[21/9] w-full overflow-hidden rounded-[3rem] border border-blue-500/20 bg-blue-600 shadow-2xl flex items-center">
               
               {/* Background Image Layer */}
               <div className="absolute inset-0 -z-10">
@@ -91,10 +94,10 @@ export const Features = () => {
                 <div className="flex flex-col justify-center space-y-8 text-white">
                   <div className="space-y-4">
                     <h3 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-[0.8]">
-                      Bytover <br/> <span className="text-orange-400">Features</span>
+                      Bytover <br/> <span className="text-orange-400">Core</span>
                     </h3>
                     <p className="text-blue-50 text-xl leading-relaxed max-w-lg opacity-90">
-                      Unleashing high-performance protocols for secure, zero-friction collaboration.
+                      The raw power of Peer-to-Peer. High-speed transfers that never touch a server. Your data, your rules, your speed.
                     </p>
                   </div>
 
@@ -103,21 +106,23 @@ export const Features = () => {
                       <div className="rounded-full bg-orange-400/20 p-2">
                         <Zap className="h-6 w-6 text-orange-400" />
                       </div>
-                      <span className="font-bold text-lg uppercase tracking-wider">Fast</span>
+                      <span className="font-bold text-lg uppercase tracking-wider">Zero-Zip</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="rounded-full bg-blue-400/20 p-2">
                         <Shield className="h-6 w-6 text-blue-300" />
                       </div>
-                      <span className="font-bold text-lg uppercase tracking-wider">Secure</span>
+                      <span className="font-bold text-lg uppercase tracking-wider">Local-First</span>
                     </div>
                   </div>
 
                   <div>
-                    <Button size="lg" className="bg-white text-blue-900 hover:bg-blue-50 px-12 h-16 text-xl font-black rounded-full transition-all group shadow-2xl">
-                      Explore Core
-                      <ArrowRight className="ml-2 h-6 w-6 transition-transform group-hover:translate-x-1" />
-                    </Button>
+                    <Link href="https://bytover.com" target="_blank">
+                      <Button size="lg" className="bg-white text-blue-900 hover:bg-blue-50 px-12 h-16 text-xl font-black rounded-full transition-all group shadow-2xl">
+                        Visit Website
+                        <ArrowRight className="ml-2 h-6 w-6 transition-transform group-hover:translate-x-1" />
+                      </Button>
+                    </Link>
                   </div>
                 </div>
 

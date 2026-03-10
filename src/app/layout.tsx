@@ -63,8 +63,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Westrise',
-    template: '%s | Westrise',
+    default: 'Midwess',
+    template: '%s | Midwess',
   },
   description:
     'A modern, fully featured Next.js template built with Shadcn/UI, TailwindCSS and TypeScript, perfect for your next web application.',
@@ -78,9 +78,9 @@ export const metadata: Metadata = {
     'Shadcn/UI',
     'Web Development',
   ],
-  authors: [{ name: 'Westrise Team' }],
-  creator: 'Westrise Team',
-  publisher: 'Westrise',
+  authors: [{ name: 'Midwess Team' }],
+  creator: 'Midwess Team',
+  publisher: 'Midwess',
   robots: {
     index: true,
     follow: true,
@@ -97,24 +97,24 @@ export const metadata: Metadata = {
     shortcut: [{ url: '/favicon/favicon.ico' }],
   },
   openGraph: {
-    title: 'Westrise',
+    title: 'Midwess',
     description: 'Startup from west side of vietnam',
-    siteName: 'Westrise',
+    siteName: 'Midwess',
     images: [
       {
         url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'Westrise',
+        alt: 'Midwess',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Westrise',
+    title: 'Midwess',
     description: 'Startup from west side of vietnam',
     images: ['/og-image.jpg'],
-    creator: '@westrise',
+    creator: '@midwess',
   },
 };
 

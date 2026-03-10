@@ -1,7 +1,7 @@
 {
   "name": "website",
   "version": "1.0.0",
-  "author": "Westrise",
+  "author": "Midwess",
   "private": true,
   "scripts": {
     "dev": "deno task deno-next --turbopack",

@@ -1,5 +1,5 @@
-## Westrise website
-This is the website of Westrise
+## Midwess website
+This is the website of Midwess
 ## Getting Started
 
 ```bash

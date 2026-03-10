@@ -60,7 +60,7 @@ export function Footer() {
       </nav>
       <Image
         src="/footer.svg"
-        alt="Westrise"
+        alt="Midwess"
         width={1570}
         height={375}
         className="mt-10 md:mt-14 lg:mt-20"

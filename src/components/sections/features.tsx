@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import Link from 'next/link';
 
 import { ChevronRight } from 'lucide-react';
@@ -9,10 +8,10 @@ import { Card, CardContent } from '@/components/ui/card';
 
 const items = [
   {
-    title: 'Bit bridge',
-    image: '/features/bitbridge_mockup_1.png',
+    title: 'Bytover',
+    video: '/video/demo-bytover.mp4',
     description:
-      'Sharing files to both nearby friends and remote via internet and P2P network',
+      'Share files with nearby friends via offline P2P, or send to anyone anywhere using internet-based transfers.',
   },
 ];
 
@@ -32,12 +31,14 @@ export const Features = () => {
             {items.map((item, i) => (
               <div key={i} className="flex flex-1 max-md:flex-col">
                 <div className="flex-1">
-                  <div className="relative aspect-[1.28/1] overflow-hidden">
-                    <Image
-                      src={item.image}
-                      alt={`${item.title} interface`}
-                      fill
-                      className="object-cover object-left-top ps-4 pt-2"
+                  <div className="relative aspect-[1.28/1] overflow-hidden rounded-tl-3xl">
+                    <video
+                      src={item.video}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="h-full w-full object-cover"
                     />
                     <div className="from-cream/80 absolute inset-0 z-10 bg-linear-to-t via-transparent to-transparent" />
                   </div>

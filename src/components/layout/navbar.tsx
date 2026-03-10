@@ -21,13 +21,13 @@ import { cn } from '@/lib/utils';
 const ITEMS = [
   {
     label: 'Products',
-    href: '#features',
+    href: '#our-products',
     dropdownItems: [
       {
-        title: 'Bit bridge',
-        href: '/#bit-bridge',
+        title: 'Bytover',
+        href: '/#our-products',
         description:
-          'All in one file transfers that available on all platforms, supports P2P, internet, email transfers',
+          'High-speed, secure file sharing and localized data intelligence for the next generation of engineers.',
       },
     ],
   },

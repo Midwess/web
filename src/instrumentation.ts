@@ -36,7 +36,7 @@ export async function setupCDN(): Promise<void> {
     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
     const outDir = path.resolve(entry, 'out');
-    const bucketBase = `midwess/bytover/web/commit-${VERSION}`;
+    const bucketBase = `midwess/midwess/web/commit-${VERSION}`;
     const acl = 'public-read';
 
     const fileExistsInS3 = async (

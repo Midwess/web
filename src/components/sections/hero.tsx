@@ -26,9 +26,8 @@ const features = [
 
 export default function Hero() {
   return (
-    <section className="py-28 lg:py-32 lg:pt-44">
+    <section className="py-20 lg:py-24">
       <div className="container flex flex-col justify-between gap-8 md:gap-14 lg:flex-row lg:gap-20">
-        {/* Left side - Main content */}
         <div className="flex-1">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl md:whitespace-nowrap lg:text-6xl">
             Hi! 👋
@@ -43,7 +42,6 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* Right side - Features */}
         <div className="relative flex flex-1 flex-col justify-center space-y-5 max-lg:pt-10 lg:ps-10">
           <DashedLine
             orientation="vertical"

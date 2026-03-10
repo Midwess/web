@@ -18,17 +18,16 @@ const items = [
 
 export const Features = () => {
   return (
-    <section id="feature-modern-teams" className="pb-28 lg:pb-32">
+    <section id="feature-modern-teams" className="py-12 lg:py-16">
       <div className="container">
-        {/* Top dashed line with text */}
         <div className="relative flex items-center justify-center">
           <DashedLine className="text-muted-foreground" />
-          <span className="bg-muted text-muted-foreground absolute px-3 font-mono text-sm font-medium tracking-wide max-md:hidden">
+          <span className="bg-background text-muted-foreground absolute px-3 font-mono text-sm font-medium tracking-wide max-md:hidden">
             My products
           </span>
         </div>
 
-        <Card className="bg-cream/80 mt-8 rounded-3xl md:mt-12 lg:mt-20">
+        <Card className="bg-cream/80 mt-8 rounded-3xl md:mt-12 lg:mt-16">
           <CardContent id={'bit-bridge'} className="flex p-0 max-md:flex-col">
             {items.map((item, i) => (
               <div key={i} className="flex flex-1 max-md:flex-col">

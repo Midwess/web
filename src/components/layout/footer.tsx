@@ -43,7 +43,7 @@ export function Footer() {
             <div className="flex flex-col gap-4">
               <Link href="/" className="inline-block transition-opacity hover:opacity-80">
                 <Image
-                  src="/logo-full.svg"
+                  src="/logo.svg"
                   alt="Midwess"
                   width={110}
                   height={28}

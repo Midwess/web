@@ -8,7 +8,7 @@ interface PageFrameProps {
 const PageFrame = ({ children, className }: PageFrameProps) => {
   return (
     <div className={cn("relative", className)}>
-      <div className="fixed inset-0 flex justify-center pointer-events-none z-50">
+      <div className="absolute inset-0 flex justify-center pointer-events-none z-50">
         <div className="relative w-full max-w-[1330px] h-full">
           <div
             className="absolute left-0 top-0 bottom-0"

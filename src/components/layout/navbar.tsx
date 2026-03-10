@@ -44,12 +44,13 @@ const Navbar = () => {
       <div className="flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <Image
-            src="/logo-full.svg"
+            src="/logo.svg"
             alt="logo"
             height={0}
-            width={100}
+            width={50}
             className="dark:invert"
           />
+          <span className="font-sans text-lg font-bold tracking-tight">Midwess</span>
         </Link>
 
         {/* Desktop Navigation */}

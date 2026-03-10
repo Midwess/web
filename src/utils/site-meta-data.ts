@@ -6,7 +6,7 @@ export const siteMetadata = {
   language: 'en-us',
   theme: 'dark',
   siteUrl: 'https://midwess.studio',
-  siteLogo: '/favicon-32x32.png',
+  siteLogo: '/logo.svg',
   email: 'team@midwess.studio',
   github: 'https://github.com/midwess',
   locale: 'en-US',

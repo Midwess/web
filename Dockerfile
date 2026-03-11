@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build from project root: docker build -f web-next/Dockerfile -t bitbridge-web-next:latest .
+# Build from project root: docker build -f Dockerfile -t web:latest .
 
 FROM --platform=linux/amd64 midwess/deno:builder2.5.2 AS builder
 WORKDIR /app
@@ -35,9 +35,8 @@ ENV AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}
 ENV BYTOVER_PUBLIC_HTTP1_GATEWAY_HOST=${BYTOVER_PUBLIC_HTTP1_GATEWAY_HOST}
 ENV BYTOVER_PUBLIC_HTTP1_GATEWAY_PORT=${BYTOVER_PUBLIC_HTTP1_GATEWAY_PORT}
 
-WORKDIR /app/web-next
-
 ENV NODE_ENV=production
+ENV CI=true
 
 RUN pnpm install --frozen-lockfile
 
@@ -51,14 +50,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
 # Copy package.json and lock file
-COPY --from=builder /app/web-next/package.json ./
-COPY --from=builder /app/web-next/pnpm-lock.yaml ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
 
 # Copy built static export (out/ folder for static export)
-COPY --from=builder /app/web-next/out ./
+COPY --from=builder /app/out ./
 
 # Copy node_modules (needed for instrumentation if running locally)
-COPY --from=builder /app/web-next/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 

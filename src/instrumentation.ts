@@ -40,6 +40,7 @@ export async function setupCDN(): Promise<void> {
     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
     // Upload static assets from .next/static (standalone copies them here)
+    const publicDir = path.resolve(entry, 'public');
     const staticDir = path.resolve(entry, '.next/static');
 
     // Check if static directory exists
@@ -124,6 +125,7 @@ export async function setupCDN(): Promise<void> {
       );
     };
 
+    await uploadDirectory(publicDir, `${bucketBase}`);
     await uploadDirectory(staticDir, `${bucketBase}/_next/static`);
     console.log(ns, 'Upload completed successfully.');
   } catch (error) {

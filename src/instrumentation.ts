@@ -15,7 +15,6 @@ if (typeof window !== 'undefined') {
 
 const S3_CDN_PREFIX = process.env.S3_CDN_PREFIX || '';
 const VERSION = process.env.VERSION || process.env.RAILWAY_GIT_COMMIT_SHA;
-const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export function register() {
   // Only run CDN upload in production build, not in development

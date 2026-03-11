@@ -19,7 +19,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export function register() {
   // Only run CDN upload in production build, not in development
-  if (VERSION && S3_CDN_PREFIX && NODE_ENV === 'production') {
+  if (VERSION && S3_CDN_PREFIX) {
     setupCDN();
   }
 }

@@ -13,27 +13,23 @@ export default function Hero() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
               </span>
-              Est. 2024 • South Vietnam
+              Est. 2025 • Mekong Delta, South Vietnam
             </div>
 
             <div className="space-y-4 text-left">
               <h1 className="font-sans text-4xl leading-[1] font-extrabold tracking-tighter text-balance uppercase sm:text-5xl md:text-6xl lg:text-7xl">
-                Crafting the{' '}
-                <span className="text-orange-500">Future of Software</span> from
-                the South
+                Software that <span className="text-orange-500">feels</span> <br />{' '}
+                like magic
               </h1>
               <p className="text-muted-foreground max-w-[600px] text-lg leading-relaxed sm:text-xl">
-                Midwess is a boutique startup studio and open knowledge base. We
-                build high-performance productivity tools while documenting the
-                journey for the next generation of engineers.
-              </p>
-            </div>
+                Midwess is a boutique startup studio and open knowledge base. We build high-performance productivity tools.
+              </p>            </div>
 
             <Button
               size="lg"
               className="h-12 border-none bg-orange-500 px-8 text-base font-bold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600"
             >
-              Explore our studio
+              Experience the magic
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
             <Button
@@ -41,23 +37,23 @@ export default function Hero() {
               size="lg"
               className="h-12 px-8 text-base font-bold"
             >
-              Read the devlogs
+              Read our journey
             </Button>
 
             <div className="grid grid-cols-2 gap-8 pt-8 sm:grid-cols-2">
               <div className="space-y-2">
                 <div className="text-muted-foreground flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase">
                   <Globe2 className="h-4 w-4 text-orange-500" />
-                  Culture
+                  Vibe
                 </div>
                 <div className="text-2xl font-bold tracking-tight">
-                  Open Knowledge
+                  High Fidelity
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="text-muted-foreground flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase">
                   <Code2 className="h-4 w-4 text-orange-500" />
-                  Foundation
+                  Heart
                 </div>
                 <div className="text-2xl font-bold tracking-tight">
                   Mekong Delta
@@ -76,20 +72,20 @@ export default function Hero() {
                     <div className="h-3 w-3 rounded-full border border-green-500/50 bg-green-500/20" />
                   </div>
                   <span className="text-muted-foreground ml-2 font-mono text-xs">
-                    ~/midwess/manifesto.json
+                    ~/midwess/dna.json
                   </span>
                 </div>
                 <div className="bg-muted text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1 text-[10px] font-bold tracking-widest uppercase">
-                  values
+                  ethos
                 </div>
               </div>
               <pre className="text-foreground overflow-x-auto font-mono text-sm leading-relaxed">
                 <code>{`{
-  "mission": "Co-create intelligence",
-  "vision": "Scale through knowledge",
-  "craft": ["Rust", "Next.js", "AI"],
-  "location": "South of Vietnam",
-  "status": "Building the future"
+  "mission": "Create moments of delight",
+  "vision": "Software worth loving",
+  "craft": ["Beauty", "Speed", "Intent"],
+  "location": "Mekong Delta",
+  "status": "Building magic"
 }`}</code>
               </pre>
             </div>

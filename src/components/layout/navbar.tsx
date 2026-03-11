@@ -28,7 +28,7 @@ const ITEMS = [
         title: 'Bytover',
         href: '/products/bytover',
         description:
-          'High-speed, secure file sharing and localized data intelligence for the next generation of engineers.',
+          'Instant P2P file and folder sharing with a simple link. No cloud upload or zipping required.',
       },
     ],
   },

@@ -18,12 +18,11 @@ export const BlogPosts = () => {
 
         <div className="mx-auto mt-10 grid items-center gap-8 md:gap-0 lg:mt-16 lg:grid-cols-2">
           <h2 className="pr-16 text-2xl font-semibold tracking-tight md:text-4xl lg:text-5xl">
-            We are a Rust lover, mobile software developer, and a product
-            builder.
+            Where curiosity meets the keyboard.
           </h2>
           <p className="text-muted-foreground leading-snug font-medium">
-            We mainly used Rust to written all of our projects, So we will share
-            our Rust experience with you.
+            Building software is a journey of discovery. We share the stories, 
+            the mistakes, and the breakthroughs behind the products we craft.
           </p>
         </div>
         <div className={'w-ful mt-16 flex flex-col gap-12'}>

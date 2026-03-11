@@ -76,21 +76,20 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL('https://midwess.com'),
   title: {
-    default: 'Midwess - High-Performance Software Development Studio',
+    default: 'Midwess — Software that feels like magic.',
     template: '%s | Midwess',
   },
   description:
-    'Midwess builds high-performance, secure software for engineering teams. A software studio specializing in modern, high-speed web applications.',
+    'Midwess is a software design studio from the Mekong Delta. We build software that people actually love to use, combining world-class design with high-performance engineering.',
   keywords: [
     'Next.js',
-    'React',
-    'JavaScript',
-    'TypeScript',
-    'TailwindCSS',
-    'Template',
-    'Shadcn/UI',
-    'Web Development',
-    'Software Studio',
+    'Rust',
+    'AI',
+    'Software Design',
+    'User Experience',
+    'Mekong Delta',
+    'Product Studio',
+    'Beautiful Software',
   ],
   authors: [{ name: 'Midwess Team' }],
   creator: 'Midwess Team',
@@ -112,7 +111,7 @@ export const metadata: Metadata = {
   manifest: getMetadataAssetUrl('/favicon/site.webmanifest'),
   openGraph: {
     title: 'Midwess',
-    description: 'High-performance software studio from Vietnam',
+    description: 'Software that feels like magic. Designed and built in the Mekong Delta.',
     siteName: 'Midwess',
     images: [
       {
@@ -126,7 +125,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Midwess',
-    description: 'High-performance software studio from Vietnam',
+    description: 'Software that feels like magic. Designed and built in the Mekong Delta.',
     images: [getMetadataAssetUrl('/og-image.jpg')],
     creator: '@midwess',
   },
@@ -145,21 +144,19 @@ export default function RootLayout({
     logo: 'https://midwess.com/logo.svg',
     address: {
       '@type': 'PostalAddress',
-      addressLocality: 'South Vietnam',
+      addressLocality: 'Mekong Delta',
+      addressRegion: 'South Vietnam',
       addressCountry: 'VN',
     },
     contactPoint: {
       '@type': 'ContactPoint',
-      telephone: '+84-000-000-000',
+      email: 'team@midwess.com',
       contactType: 'customer service',
     },
     sameAs: [
       'https://github.com/midwess',
       'https://x.com/midwess',
       'https://linkedin.com/company/midwess',
-      'https://facebook.com/midwess',
-      'https://instagram.com/midwess',
-      'https://youtube.com/@midwess',
     ],
   };
 

@@ -1,17 +1,17 @@
-# Midwess - High-Performance Software Development Studio
+# Midwess — Software that feels like magic.
 
-Midwess builds high-performance, secure software for engineering teams. A software studio specializing in modern, high-speed web applications.
+Midwess is a software design studio from the Mekong Delta. We design and build software that people actually love to use, combining world-class design with high-performance engineering.
 
 ## Products
 
 ### Bytover
-High-speed, secure file sharing and localized data intelligence for the next generation of engineers. Skip the cloud. Stream entire folders instantly via ultra-fast P2P.
+Instant P2P sharing that feels like magic. No cloud, no zips, no waiting.
 
 ## Services
 
-- Software development
-- Web application development
-- Technical consulting
+- Software Design & UI/UX
+- Engineering & Development
+- Technical Storytelling
 
 ## Pages
 
@@ -25,7 +25,7 @@ High-speed, secure file sharing and localized data intelligence for the next gen
 
 ## Blog
 
-Technical articles about software development, programming, and technology.
+Stories of discovery, mistakes, and breakthroughs in software craft.
 
 ## Contact
 
@@ -38,6 +38,8 @@ Technical articles about software development, programming, and technology.
 
 - Next.js
 - React
+- Rust
+- AI
 - TypeScript
 - TailwindCSS
 - Shadcn/UI

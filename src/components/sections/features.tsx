@@ -66,12 +66,12 @@ export const Features = () => {
               <div className="absolute right-12 bottom-12 left-12 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
                 <div className="max-w-2xl space-y-4">
                   <h3 className="text-4xl leading-none font-black tracking-tighter text-white uppercase md:text-6xl">
-                    Bytover <span className="text-orange-500">Direct</span>
+                    Bytover <span className="text-orange-500">Magic</span>
                   </h3>
                   <p className="text-lg font-medium text-gray-300 md:text-xl">
-                    Skip the cloud. Stream entire folders instantly via
-                    ultra-fast P2P. No zipping, no uploading, no latency—just
-                    raw throughput.
+                    Experience the freedom of instant sharing. No cloud, no zips, 
+                    no waiting. Just a link and your files move like magic, 
+                    directly between devices.
                   </p>
                 </div>
                 <Link href="https://bytover.com" target="_blank">
@@ -79,7 +79,7 @@ export const Features = () => {
                     size="lg"
                     className="h-16 rounded-full bg-white px-10 font-bold text-black shadow-xl hover:bg-gray-200"
                   >
-                    Visit Website
+                    Try the magic
                   </Button>
                 </Link>
               </div>
@@ -107,11 +107,12 @@ export const Features = () => {
                   <div className="space-y-4">
                     <h3 className="text-5xl leading-[0.8] font-black tracking-tighter uppercase md:text-7xl">
                       Bytover <br />{' '}
-                      <span className="text-orange-400">Core</span>
+                      <span className="text-orange-400">Direct</span>
                     </h3>
                     <p className="max-w-lg text-xl leading-relaxed text-blue-50 opacity-90">
-                      The raw power of Peer-to-Peer. High-speed transfers that
-                      never touch a server. Your data, your rules, your speed.
+                      Why upload when you can just share? Bytover creates a direct 
+                      bridge between devices, giving you total control and 
+                      unmatched speed.
                     </p>
                   </div>
 
@@ -121,7 +122,7 @@ export const Features = () => {
                         <Zap className="h-6 w-6 text-orange-400" />
                       </div>
                       <span className="text-lg font-bold tracking-wider uppercase">
-                        Zero-Zip
+                        Instant
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -129,7 +130,7 @@ export const Features = () => {
                         <Shield className="h-6 w-6 text-blue-300" />
                       </div>
                       <span className="text-lg font-bold tracking-wider uppercase">
-                        Local-First
+                        Private
                       </span>
                     </div>
                   </div>

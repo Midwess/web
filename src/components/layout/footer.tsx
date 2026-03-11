@@ -34,14 +34,13 @@ export function Footer() {
           <h2 className="text-foreground max-w-5xl text-4xl leading-[1.05] font-bold tracking-tighter md:text-6xl lg:text-7xl">
             Midwess{' '}
             <span className="text-muted-foreground/30 font-medium">
-              builds high-performance, secure software that empowers teams to
-              innovate without friction.
+              Software that feels like magic.
             </span>
           </h2>
           <p className="text-muted-foreground mt-8 max-w-2xl text-lg leading-relaxed md:text-xl">
-            We are dedicated to building user-centric solutions that enable
-            modern engineering teams to achieve more through reliable,
-            high-speed tools.
+            We believe software should be more than just a tool. It should be a 
+            seamless, high-fidelity experience that delights the people who 
+            use it.
           </p>
         </div>
       </section>
@@ -65,8 +64,7 @@ export function Footer() {
                 />
               </Link>
               <p className="text-muted-foreground max-w-[240px] text-[13px] leading-relaxed">
-                Empowering the next generation of engineers with intelligent
-                file sharing solutions.
+                Designing software people love. Mekong Delta, South Vietnam.
               </p>
             </div>
 

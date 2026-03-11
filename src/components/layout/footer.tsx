@@ -8,11 +8,7 @@ import { getAssetUrl } from '@/utils/asset-url';
 export function Footer() {
   const socialLinks = [
     { name: 'X', href: 'https://x.com/midwess', icon: Twitter },
-    { name: 'LinkedIn', href: 'https://linkedin.com/company/midwess', icon: Linkedin },
     { name: 'GitHub', href: 'https://github.com/midwess', icon: Github },
-    { name: 'Facebook', href: 'https://facebook.com/midwess', icon: Facebook },
-    { name: 'Instagram', href: 'https://instagram.com/midwess', icon: Instagram },
-    { name: 'YouTube', href: 'https://youtube.com/@midwess', icon: Youtube },
   ];
 
   const productLinks = [
@@ -22,7 +18,6 @@ export function Footer() {
   ];
 
   const companyLinks = [
-    { name: 'About', href: '/about' },
     { name: 'Privacy Policy', href: '/privacy' },
   ];
 
@@ -104,22 +99,17 @@ export function Footer() {
                 </nav>
               </div>
 
-              <div className="flex flex-col gap-5">
-                <h4 className="text-foreground text-[10px] font-bold tracking-[0.2em] uppercase">
-                  Connect
-                </h4>
-                <div className="flex items-center gap-5 md:justify-end">
-                  {socialLinks.map((link) => (
-                    <Link
-                      key={link.name}
-                      href={link.href}
-                      className="text-muted-foreground hover:text-foreground transition-all hover:scale-110"
-                      aria-label={link.name}
-                    >
-                      <link.icon className="size-4.5" />
-                    </Link>
-                  ))}
-                </div>
+              <div className="flex items-center gap-5 md:justify-end">
+                {socialLinks.map((link) => (
+                  <Link
+                    key={link.name}
+                    href={link.href}
+                    className="text-muted-foreground hover:text-foreground transition-all hover:scale-110"
+                    aria-label={link.name}
+                  >
+                    <link.icon className="size-4.5" />
+                  </Link>
+                ))}
               </div>
             </div>
           </div>

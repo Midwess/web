@@ -9,6 +9,7 @@ export const siteMetadata = {
   siteLogo: '/logo.svg',
   email: 'team@midwess.com',
   github: 'https://github.com/midwess',
+  twitter: 'https://x.com/midwess',
   locale: 'en-US',
   publisher: 'Midwess',
   keywords: ['Software development', 'Startup', 'Midwess'],

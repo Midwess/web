@@ -49,6 +49,7 @@
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-gradient-text: gradient-text 8s linear infinite;
 
   @keyframes accordion-down {
     from {
@@ -65,6 +66,50 @@
     to {
       height: 0;
     }
+  }
+  @keyframes gradient-text {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+}
+
+@layer utilities {
+  .moving-gradient-text {
+    background: linear-gradient(
+      to right,
+      #ea580c,
+      #be123c,
+      #f97316,
+      #be123c,
+      #ea580c
+    );
+    background-size: 300% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradient-text 6s ease-in-out infinite;
+  }
+
+  .dark .moving-gradient-text {
+    background: linear-gradient(
+      to right,
+      #fb923c,
+      #fb7185,
+      #fdba74,
+      #fb7185,
+      #fb923c
+    );
+    background-size: 300% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 }
 

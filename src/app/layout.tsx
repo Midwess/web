@@ -156,7 +156,6 @@ export default function RootLayout({
     sameAs: [
       'https://github.com/midwess',
       'https://x.com/midwess',
-      'https://linkedin.com/company/midwess',
     ],
   };
 

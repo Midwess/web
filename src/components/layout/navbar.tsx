@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/navigation-menu';
 import { cn } from '@/lib/utils';
 import { getAssetUrl } from '@/utils/asset-url';
+import MidwessLogo from './logo';
 
 const ITEMS = [
   {
@@ -32,7 +32,6 @@ const ITEMS = [
       },
     ],
   },
-  { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
 ];
 const Navbar = () => {
@@ -44,14 +43,8 @@ const Navbar = () => {
     <header className="bg-background/70 absolute top-5 left-1/2 z-50 w-[min(90%,700px)] -translate-x-1/2 rounded-full border backdrop-blur-md lg:top-12">
       <div className="flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Image
-            src={getAssetUrl('/logo.svg')}
-            alt="logo"
-            height={0}
-            width={50}
-            className="dark:invert"
-          />
-          <span className="font-sans text-lg font-bold tracking-tight">
+          <MidwessLogo size={32} />
+          <span className="moving-gradient-text font-sans text-lg font-bold tracking-tight">
             Midwess
           </span>
         </Link>

@@ -22,7 +22,7 @@ export default function Hero() {
                 like magic
               </h1>
               <p className="text-muted-foreground max-w-[600px] text-lg leading-relaxed sm:text-xl">
-                Midwess is a boutique startup studio and open knowledge base. We build high-performance productivity tools.
+                Midwess is a boutique startup studio and open knowledge base. We build high-performance productivity tools. We are dedicated to building user-centric solutions that enable modern engineering teams to achieve more through reliable, high-speed tools.
               </p>            </div>
 
             <Button
@@ -83,7 +83,7 @@ export default function Hero() {
                 <code>{`{
   "mission": "Create moments of delight",
   "vision": "Software worth loving",
-  "craft": ["Beauty", "Speed", "Intent"],
+  "craft": ["Rust", "Next.js", "AI"],
   "location": "Mekong Delta",
   "status": "Building magic"
 }`}</code>

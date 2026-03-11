@@ -8,9 +8,14 @@ import Contact from '@/components/sections/contact';
 const Page = () => {
   return (
     <PageFrame>
-      <div className="bg-background min-h-screen">
-        <DottedBackground showGlow={false}>
-          <GridSection showTopBorder showBottomBorder>
+      <div className="bg-background flex min-h-screen flex-col items-center justify-center pt-20">
+        <DottedBackground showGlow={false} className="w-full">
+          <GridSection 
+            showTopBorder 
+            showBottomBorder 
+            className="my-0 w-full"
+            contentClassName="flex items-center justify-center min-h-[calc(100vh-5rem)]"
+          >
             <Contact />
           </GridSection>
         </DottedBackground>

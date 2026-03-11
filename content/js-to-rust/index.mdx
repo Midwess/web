@@ -1,289 +1,66 @@
 ---
-title: I migrated Javascript to Rust - this migration plan could apply to any language
-publishedDate: 2024-12-11
+title: My Journey from JavaScript to Rust
+publishedDate: 2026-01-05
 image: "../../public/images/image4.jpg"
 isPublished: true
-description: "I leaving Javascript as it's not efficient to written backend services, here is why and how"
+description: "Why I moved from JavaScript to Rust for backend services and a simple plan to help you do the same."
 authorDisplayName: "Devlog"
 authorEmail: "tiendvlp@gmail.com"
 authorFullName: "Dang Minh Tien"
 geometryCode: '(THREE) => new THREE.IcosahedronGeometry(1.2, 0)'
 keywords:
   - Rust
-  - Javascript
+  - JavaScript
+  - Programming
   - Migration
 ---
 
-# Why migrates:
+# The Problem with JavaScript on the Backend
 
-I used to work for a company that use JavaScript for most of the backend services. Everything seemed fine in the first few months of the project. But as it grew bigger and bigger, everything went out of control.
-Of course, part of it is about system design not just because of using Javascript, but I want to tell you my scary story that sometimes makes me unable to sleep well.
+I used to be a firm believer in using JavaScript for everything. However, as our projects grew, I began to see its limitations. The biggest problem? JavaScript is too quiet about its mistakes.
 
-I recall the day I took some time off for a family vacation. On the very first night at the resort, my phone started ringing incessantly, with Slack notifications flooding in. It turned out I had caused a major issue.
-I'm not going to much detailed, but the causing is because I had forgotten to put await between an async function. It was absolutely my fault!
+I remember a day when a simple missing `await` caused a major production crash while I was on vacation. In languages like Rust, the compiler would have caught that error before the code even ran. In JavaScript, it only revealed itself as a silent failure at the worst possible time.
 
-But we all make mistakes sometimes, right? Other languages like Java, .NET, Go, and TypeScript help detect those simple issues. JavaScript, however, isn't built for that. So it always feels like there's no room for mistakes, no tolerance for being tired or distracted while working with JavaScript. Because if there's any mistake, JavaScript will stay silent and let it happen.
+Working with JavaScript backend services often feels like walking on eggshells. You have to be perfect, because if you make a mistake, the language won't warn you—it will just let the error happen. After years of this stress, we decided it was time for a change. We chose **Rust**.
 
-> Always use Lodash
+# The Migration Strategy
 
-That's what I said to my self everytime I touch Javascript, from accessing nesting variable like a.b.c.d or working with array and collection. To prevent errors like Cannot read property of undefined.
+Switching languages while maintaining an active project is like changing the tires on a car while it's moving at 60 mph. You cannot simply stop everything and rewrite for months. You need a plan that is safe, fast, and testable.
 
-Whenever I have a pull request with more than 200 lines, I always carefully review line by line, even that still not get me a good sleep... Such a very stressful experience !
+### 1. The Side-by-Side Approach
+Instead of replacing everything at once, we built a new service in Rust to run alongside our existing JavaScript service. They communicate through **gRPC**. This allowed us to build all new features in Rust immediately while keeping the old code running.
 
-But very lucky, we did decide to migrate from Javascript to Rust.
+### 2. Using Decorators as a Bridge
+In JavaScript, a decorator is a wrapper around a function. We used a `@Migrated` decorator to slowly transition functions from JavaScript to Rust.
 
-# The migration challenges and solutions:
-
-### Challenges
-Switching languages while the team continues to maintain and develop new features every sprint is both challenging and inefficient.
-And functions are often interdependent, making it difficult to manage the migration plan and timeline effectively.
-Furthermore, there's a risk of migration gaps, where instead of resolving issues, we unintentionally introduce new ones,
-complicating the process even further.
-
-We need a plan to quickly adopt the new language so that new features can be developed in it instead of JavaScript.
-Additionally, we need to deploy and test the new code in every sprint to ensure any migration gaps are detected early.
-
-### Solutions
-Combining everything together, my idea is to mix the new code with the current JavaScript code.
-There will be another service that's written in new language that will run seamlessly with current JavaScript service, they will communicate with each other.
-This way, new features can be implemented in the new language right away,
-and migrated functions can be deployed and tested in every sprint to ensure there are no migration gaps.
-
-Moreover, to be safe, I also propose adding a flag to disable the new code if any issues occur, allowing us to easily switch between the two languages.
-
-Without further talks, let me introduce the tech stack we will be using.
-
-### Javascript decorator
-
-In JavaScript, a decorator is a specialized function that modifies or enhances the behavior of classes, methods, or properties.
-It serves as a wrapper around the original implementation, enabling you to extend functionality without directly modifying the original code.
-
-Decorators are commonly used for tasks such as logging, performing authorization checks, or attaching metadata.
-They are applied using the @ syntax and were introduced as part of an ECMAScript proposal to improve code readability, reusability, and maintainability.
-
-Here is an example:
-
-```js
-function instrument(target, key, descriptor) {
-    const originalMethod = descriptor.value;
-    descriptor.value = function (...args) {
-        console.log(Calling ${key} with arguments:, args);
-        return originalMethod.apply(this, args);
-    };
-    return descriptor;
-}
-
-class Example {
-    @instrument
-    sayHello(name) {
-        return Hello, ${name}!;
-    }
-}
-
-const example = new Example();
-console.log(example.sayHello('John'));
-```
-
-The output would be:
-```sh
-$ Calling sayHello with arguments: [ 'John' ]
-$ Hello, John!
-```
-The code above demonstrates the use of a decorator to quickly implement instrumentation, allowing it to trace the arguments passed to a function.
-
-#### How Can Decorators Help Us During Migration?
-
-We will apply decorators to functions that are migrated to the new code, without removing their original implementations.
-These decorators will act as a proxy, bridging the current implementations with the new language, ensuring a seamless transition while maintaining backward compatibility.
-
-### gRPC and ConnectRPC for communicate between two services
-
-You might expect something special here to handle communication between these two languages, but there's nothing fancy.
-We all know what gRPC is, and that's exactly why it's the right choice.
-It's familiar, works great, and makes it easier to convince our boss and colleagues to use it.
-I will not talking much about gRPC here, but if you don't know, you can take a look on their website <a class="text-foreground" href="https://grpc.io/docs/">grpc.io</a>.
-
-That said, I'm not using <a class="text-foreground" href="https://www.npmjs.com/package/@grpc/grpc-js">grpc-js</a>, I'm not a fan of it,
-because the IDE has no ideas on how to read it's generated code, which prevent it to give us any code suggestions, and also, the syntax is hard to used, here is some comparision:
-
-*grpc-js*
-```js
-// New message: Not able to pass parameters to the constructor
-const protoMessage = new ProtoMessage()
-
-// set prop
-protoMessage.setPropA("something")`
-
-// rpc
-protoService.create(protoMessage, (err, data) => { // do something })
-``` 
-
-*connectrpc*
-```js
-// new message
-const protoMessage = new ProtoMessage({ propA: "something" })
-
-// set prop
-protoMessage.propA = "something"
-
-// rpc
-const data = await protoService.create(protoMessage)
-```
-
-For more information, such as setup instructions, you can visit their website for detailed guidance: <a class="text-foreground" href="https://connectrpc.com/docs/node/getting-started">Connectrpc for NodeJs</a>.
-
-# Implementation
-
-Now, we will carefully replace each part of the old service with the new one, ensuring that the system remains functional throughout the process.
-
-In this implementation, I will not include the code for the service written in the new language, as it primarily just about launching a gRPC server.
-Instead, I will focus on the JavaScript service and demonstrate how it can be integrated with the new one.
-
-### Protobuf as a bridge
-
-This bridge is just tempary, after the service is complete, it will be removed with the old service. So that we don't want to spend so much effort on building it.
-
-```proto
-syntax = "proto3";
-
-package devlog;
-
-import "google/protobuf/struct.proto";
-
-service Discussion {
-  rpc create(google.protobuf.Struct) returns (google.protobuf.Struct);
-  rpc get(google.protobuf.Struct) returns (google.protobuf.Struct);
-}
-```
-
-Using google.protobuf.Struct as both the parameter and response can significantly speed up the process.
-It's particularly friendly for JavaScript, as the response is treated like a standard JavaScript object, making interaction and implementation more straightforward.
-
-However, it's not without its drawbacks. The syntax for creating a google.protobuf.Struct is somewhat cumbersome since you need to define both the value and its type explicitly.
-To address this, I've written a simple utility to convert any JavaScript object into a google.protobuf.Struct, simplifying the process and reducing the effort needed.
-
-```js
-export function value(it) {
-  const protoValue = new Value()
-
-  if (value === null || value === undefined) {
-    protoValue.setNullValue(Value.NULL_VALUE)
-  }
-  else if (isNumber(it)) {
-    protoValue.kind = {
-      case: 'numberValue',
-      value: it
-    }
-  }
-  else if (isString(it)) {
-    protoValue.kind = {
-      case: 'stringValue',
-      value: it
-    }
-  }
-  else if (typeof it === 'boolean') {
-    protoValue.kind = {
-      case: 'boolValue',
-      value: it
-    }
-  }
-  else if (isArray(it)) {
-    const listValue = new ListValue({values: it.map((it) => value(it))})
-    protoValue.kind = {
-      case: 'listValue',
-      value: listValue
-    }
-  }
-  else if (isObjectLike(it)) {
-    const structValue = new Struct()
-    Object.keys(it).forEach((key) => {
-      structValue.fields[key] = struct(it[key])
-    })
-
-    protoValue.kind = {
-      case: 'structValue',
-      value: structValue
-    }
-  }
-  else {
-    throw new Error(Unsupported type: ${typeof value})
-  }
-
-  return protoValue
-}
-
-export function struct(obj) {
-  const struct = new Struct()
-  Object.keys(obj).forEach((key) => {
-    struct.fields[key] = value(obj[key])
+```javascript
+class UserService {
+  @Migrated(async function(data) {
+    // This calls the new Rust service
+    return await rustService.createUser(data);
   })
-
-  return struct
-}
-```
-
-And the usage would be:
-```js
-struct({
-  name: "Jimmy",
-  address: {
-    number: "111",
-    street: "ABC"
-  }
-})
-```
-
-That's all for now. To keep it concise, I won't dive into the details of setting up a gRPC client and server here. If you're interested, you can visit:
-<a class="text-foreground" href="https://connectrpc.com/docs/node/getting-started">Connectrpc for NodeJs</a>. For further detail.
-
-### Decorator as a proxy
-
-Now that we've built a bridge between the two languages, we'll gradually integrate it into our new code using decorators.
-Let's take a look at the following example:
-
-```js
-export function Migrated(fn: (...args: any) => any) {
-  return (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) => {
-    const originalMethod = descriptor.value
-
-    descriptor.value = function (...args: any[]) {
-      return process.env.USE_MIGRATED_CODE ? fn.apply(this, args) : originalMethod.apply(this, args)
-    }
+  async createUser(data) {
+    // This is the old JavaScript code
+    // It only runs if the Rust code is turned off
   }
 }
 ```
 
-The code above defines a decorator called Migrated. This decorator accepts a function and toggles between the new and old implementations based on the environment variable USE_MIGRATED_CODE.
-This setup allows for seamless switching back to the old implementation if any issues arise.
+### 3. The Safety Switch
+We added a feature toggle (a simple environment variable). If we found a bug in our new Rust code, we could flip a switch, and the application would instantly revert to using the old, reliable JavaScript code. This made our migration significantly safer.
 
-### Bring them all together
+# How the Languages Talk to Each Other
 
-With gRPC set up using ConnectRPC and the Migrated decorator we just created, it's now time to bring everything together and integrate these components effectively:
+To make JavaScript and Rust talk to each other without losing speed, we used **ConnectRPC**. It is a modern version of gRPC that is much easier to use than traditional libraries.
 
-```js
-class DiscussionService {
-  @Migrated(async function (discussion) {
-    const response = await newService.create(struct(discussion))
-    return response.fields
-  })
-  async function create(discussion) {
-    // Old code implementation
-  }
-}
-```
-
-To me, it's look pretty good, not having to change any old code while seamlessly applying new code right away.
-Plus, the ability to switch back and forth between the old and new code adds a layer of flexibility and safety to the process.
+We also used a "Struct" format to send data. This acts like a standard JavaScript object, which saved us hours of writing complex data maps for every single function. This bridge made the two languages feel like they were part of the same system.
 
 # Deployment
-If you're using Kubernetes to manage deployments, ensure that both services 
-(the new language and JavaScript) are deployed within the same pod.
-This approach ensures that any of your scaling approach still working correctly.
 
-# Thank you
+If you use Kubernetes, the most efficient way to deploy this is to place both the JavaScript and Rust services in the same **Pod**. This makes communication between them incredibly fast and keeps your infrastructure simple.
 
-This solution is best suited for large projects, particularly those managed within a Scrum team, where deliverables are required at the end of each sprint.
+# Conclusion
 
-For smaller projects or personal endeavors, this approach may not be ideal as it could add some more effort to just establishing the bridge between two languages.
+Moving to Rust was one of the best decisions we made for our team's productivity and mental health. We spend much less time fixing silly bugs and more time building high-quality features. 
 
-We sincerely appreciate the time and effort you've taken to read our article and consider our perspective. Your attention means a great deal to us!
+This "bridge" strategy is perfect for large teams that need to keep shipping updates while improving their codebase. You get the safety and performance of Rust without the risk of a "big bang" rewrite. If you are tired of silent failures in JavaScript, I highly recommend giving Rust a try.

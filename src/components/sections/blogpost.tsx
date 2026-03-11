@@ -8,8 +8,8 @@ import { PostItem } from '@/components/threejs/post_item';
 import { PostPopup } from './post-popup';
 import { Post } from 'contentlayer/generated';
 
-export const BlogPosts = () => {
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+export const BlogPosts = ({ initialPost }: { initialPost?: Post }) => {
+  const [selectedPost, setSelectedPost] = useState<Post | null>(initialPost || null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -26,14 +26,21 @@ export const BlogPosts = () => {
           setSelectedPost(null);
         }
       } else {
-        setSelectedPost(null);
+        // If we have an initial post and we're on a blog route, keep it
+        // otherwise if we're on / we should eventually clear it if it's not the intended state
+        if (!initialPost) {
+          setSelectedPost(null);
+        }
       }
     };
 
-    handleUrlChange();
+    if (!initialPost) {
+      handleUrlChange();
+    }
+    
     window.addEventListener('popstate', handleUrlChange);
     return () => window.removeEventListener('popstate', handleUrlChange);
-  }, []);
+  }, [initialPost]);
 
   const handleOpenPost = (post: Post) => {
     setSelectedPost(post);

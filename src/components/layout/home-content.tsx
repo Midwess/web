@@ -5,7 +5,9 @@ import { BlogPosts } from '@/components/sections/blogpost';
 import { Features } from '@/components/sections/features';
 import Hero from '@/components/sections/hero';
 
-export default function HomeContent() {
+import { Post } from 'contentlayer/generated';
+
+export default function HomeContent({ initialPost }: { initialPost?: Post }) {
   return (
     <PageFrame>
       <div className="bg-background min-h-screen">
@@ -28,7 +30,7 @@ export default function HomeContent() {
         {/* Blog Posts Section */}
         <DottedBackground showGlow={false}>
           <GridSection showTopBorder showBottomBorder>
-            <BlogPosts />
+            <BlogPosts initialPost={initialPost} />
           </GridSection>
         </DottedBackground>
       </div>

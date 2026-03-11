@@ -1,21 +1,90 @@
 ---
-title: Polymorphism in Rust
-publishedDate: 2024-12-11
+title: Understanding Polymorphism in Rust
+publishedDate: 2025-12-15
 image: "../../public/images/image4.jpg"
-isPublished: false
-description: "I leaving Javascript as it's not efficient to written backend services, here is why and how"
+isPublished: true
+description: "A clear and simple guide to how Rust handles polymorphism using Traits and Enums."
 authorDisplayName: "Devlog"
 authorEmail: "tiendvlp@gmail.com"
 authorFullName: "Dang Minh Tien"
 geometryCode: '(THREE) => new THREE.IcosahedronGeometry(1.2, 0)'
 keywords:
   - Rust
-  - Design pattern
+  - Polymorphism
+  - Programming
+  - Traits
 ---
 
-# The magic of Polymorphism
+# What is Polymorphism?
 
-# How to do it ?
+At its heart, **Polymorphism** is the ability for different types to be handled through a single common interface. Imagine you have different animals: a dog, a cat, and a bird. Each has its own way of "speaking." In code, polymorphism allows you to call a single function like `speak()`, and each animal will respond in its own unique way—the dog barks, the cat meows, and the bird chirps.
 
-# Thank you
+While many languages like Java or C# achieve this through "Classes" and inheritance, Rust takes a different approach. Instead of a single path, Rust gives you two powerful tools: **Traits** and **Enums**.
 
+# 1. Using Traits (Shared Behavior)
+
+A **Trait** in Rust is a set of rules that define what a type can do. It's an abstraction for shared behavior. Any type that "implements" a trait is guaranteed to have the methods defined by that trait.
+
+```rust
+trait Speak {
+    fn say(&self);
+}
+
+struct Dog;
+struct Cat;
+
+impl Speak for Dog {
+    fn say(&self) {
+        println!("Woof!");
+    }
+}
+
+impl Speak for Cat {
+    fn say(&self) {
+        println!("Meow!");
+    }
+}
+
+fn make_it_speak(animal: &dyn Speak) {
+    animal.say();
+}
+```
+
+In the example above, the `make_it_speak` function doesn't need to know if it's dealing with a `Dog` or a `Cat`. It only cares that whatever it receives knows how to `Speak`. This is called **dynamic dispatch**, and it's perfect when you need flexibility and don't know the exact types at compile time.
+
+# 2. Using Enums (Known Variants)
+
+If you already know every type you will ever need to handle, **Enums** are often a better choice. In Rust, enums are "sum types," which means they can hold data and have their own methods.
+
+```rust
+enum Animal {
+    Dog,
+    Cat,
+}
+
+impl Animal {
+    fn say(&self) {
+        match self {
+            Animal::Dog => println!("Woof!"),
+            Animal::Cat => println!("Meow!"),
+        }
+    }
+}
+```
+
+The key advantage here is **static dispatch**. Because the compiler knows all the possible variants of the `Animal` enum, it can generate much faster code than with Traits. It's also safer in some ways, because the compiler will force you to handle every single variant in your `match` statements.
+
+# Why Use Polymorphism?
+
+Polymorphism is not just a fancy academic term; it's a practical tool that makes your code:
+- **Scalable:** You can add new types without changing existing functions.
+- **Readable:** It eliminates long chains of "if" and "switch" statements.
+- **Testable:** You can easily swap real components for "mock" ones during testing.
+
+# Which One Should I Choose?
+
+If you want others to be able to add new types to your library, go with **Traits**. This is how most plugin systems work. However, if your list of types is fixed (like the colors in a rainbow or the states in a workflow), use **Enums**. They are faster, simpler, and make your code more robust.
+
+# Conclusion
+
+Polymorphism is a cornerstone of modern software engineering. By mastering **Traits** and **Enums** in Rust, you'll be able to build systems that are not only powerful but also incredibly flexible and easy to maintain. Whether you are building a game engine or a high-performance web server, these patterns will serve as the foundation of your codebase.

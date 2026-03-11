@@ -2,6 +2,7 @@ import React from 'react';
 import { allPosts } from 'contentlayer/generated';
 import { siteMetadata } from '@/utils/site-meta-data';
 import HomeContent from '@/components/layout/home-content';
+import { notFound } from 'next/navigation';
 
 export async function generateStaticParams() {
   return allPosts.map((post) => ({
@@ -54,6 +55,14 @@ export async function generateMetadata(props: any) {
   };
 }
 
-export default function Page() {
-  return <HomeContent />;
+export default async function Page(props: any) {
+  const params = await props.params;
+  const { slug } = params;
+  const post = allPosts.find((p) => p.slug === slug);
+
+  if (!post) {
+    notFound();
+  }
+
+  return <HomeContent initialPost={post as any} />;
 }

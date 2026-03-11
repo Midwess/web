@@ -1,0 +1,41 @@
+# Midwess - Software Development Studio
+
+Midwess is a software development studio building high-performance, secure software that empowers teams to innovate without friction.
+
+## Products
+
+### Bytover
+High-speed, secure file sharing and localized data intelligence for the next generation of engineers. Skip the cloud. Stream entire folders instantly via ultra-fast P2P.
+
+## Services
+
+- Software development
+- Web application development
+- Technical consulting
+
+## Pages
+
+- / - Home
+- /about - About Us
+- /contact - Contact
+- /faq - Frequently Asked Questions
+- /pricing - Pricing
+- /privacy - Privacy Policy
+- /products/bytover - Bytover Product
+
+## Blog
+
+Technical articles about software development, programming, and technology.
+
+## Contact
+
+- Email: team@midwess.studio
+- GitHub: https://github.com/midwess
+
+## Technology Stack
+
+- Next.js
+- React
+- TypeScript
+- TailwindCSS
+- Shadcn/UI

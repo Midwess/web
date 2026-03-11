@@ -7,9 +7,9 @@ import { getAssetUrl } from '@/utils/asset-url';
 
 export function Footer() {
   const socialLinks = [
-    { name: 'X', href: '#', icon: Twitter },
-    { name: 'LinkedIn', href: '#', icon: Linkedin },
-    { name: 'GitHub', href: '#', icon: Github },
+    { name: 'X', href: 'https://x.com/midwess', icon: Twitter },
+    { name: 'LinkedIn', href: 'https://linkedin.com/company/midwess', icon: Linkedin },
+    { name: 'GitHub', href: 'https://github.com/midwess', icon: Github },
   ];
 
   const productLinks = [

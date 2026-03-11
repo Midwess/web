@@ -74,12 +74,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://midwess.studio'),
   title: {
-    default: 'Midwess',
+    default: 'Midwess - Software Development Studio',
     template: '%s | Midwess',
   },
   description:
-    'A modern, fully featured Next.js template built with Shadcn/UI, TailwindCSS and TypeScript, perfect for your next web application.',
+    'Midwess builds high-performance, secure software that empowers teams to innovate without friction. Software development studio specializing in modern web applications.',
   keywords: [
     'Next.js',
     'React',
@@ -93,6 +94,9 @@ export const metadata: Metadata = {
   authors: [{ name: 'Midwess Team' }],
   creator: 'Midwess Team',
   publisher: 'Midwess',
+  alternates: {
+    canonical: 'https://midwess.studio',
+  },
   robots: {
     index: true,
     follow: true,
@@ -132,9 +136,30 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Midwess',
+    url: 'https://midwess.studio',
+    logo: 'https://midwess.studio/logo.svg',
+    sameAs: [
+      'https://github.com/midwess',
+    ],
+    contactPoint: {
+      '@type': 'ContactPoint',
+      email: 'team@midwess.studio',
+      contactType: 'customer service',
+    },
+  };
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <head />
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        />
+      </head>
       <body
         className={`flex h-screen flex-col ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
       >

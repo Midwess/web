@@ -11,9 +11,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_S3_CDN_PREFIX: process.env.S3_CDN_PREFIX || '',
     NEXT_PUBLIC_VERSION: VERSION || '',
   },
-  experimental: {
-    clientInstrumentationHook: true
-  },
   turbopack: {
     rules: {
       '*.{glsl,vs,fs,vert,frag}': {

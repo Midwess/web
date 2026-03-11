@@ -30,9 +30,8 @@ Stories of discovery, mistakes, and breakthroughs in software craft.
 ## Contact
 
 - Email: team@midwess.com
-- GitHub: https://github.com/midwess
-- X: https://x.com/midwess
-- LinkedIn: https://linkedin.com/company/midwess
+- GitHub: https://github.com/dev-logs
+- X: https://x.com/james_dang_on_x
 
 ## Technology Stack
 

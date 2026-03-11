@@ -1,20 +1,20 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
-import { Twitter, Linkedin, Github, Facebook, Instagram, Youtube } from 'lucide-react';
+import { Github } from 'lucide-react';
 
 import { getAssetUrl } from '@/utils/asset-url';
+import { XIcon } from '@/components/ui/icons';
 
 export function Footer() {
   const socialLinks = [
-    { name: 'X', href: 'https://x.com/midwess', icon: Twitter },
-    { name: 'GitHub', href: 'https://github.com/midwess', icon: Github },
+    { name: 'X', href: 'https://x.com/james_dang_on_x', icon: XIcon },
+    { name: 'GitHub', href: 'https://github.com/dev-logs', icon: Github },
   ];
 
   const productLinks = [
     { name: 'Bytover', href: '/products/bytover' },
-    { name: 'Pricing', href: '/pricing' },
-    { name: 'FAQ', href: '/faq' },
+    { name: 'Contact', href: '/contact' },
   ];
 
   const companyLinks = [
@@ -37,6 +37,14 @@ export function Footer() {
             seamless, high-fidelity experience that delights the people who 
             use it.
           </p>
+          <div className="mt-8">
+            <Link 
+              href="mailto:team@midwess.com"
+              className="text-foreground hover:text-orange-500 text-lg font-medium transition-colors"
+            >
+              team@midwess.com
+            </Link>
+          </div>
         </div>
       </section>
 

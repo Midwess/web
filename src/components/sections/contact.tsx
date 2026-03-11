@@ -2,14 +2,15 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Github, Twitter, Send, Loader2, CheckCircle2, MessageSquare } from 'lucide-react';
+import { Github, Send, Loader2, CheckCircle2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { XIcon } from '@/components/ui/icons';
 
-const DEFAULT_FEEDBACK_URL = 'https://api.midwess.com/app-gateway/feedback';
+const DEFAULT_FEEDBACK_URL = 'https://api.midwess.com:53581/app-gateway/api/feedback';
 
 export default function Contact() {
   const [email, setEmail] = useState('');
@@ -87,14 +88,14 @@ export default function Contact() {
 
               <div className="flex gap-4">
                 <Link 
-                  href="https://x.com/midwess"
+                  href="https://x.com/james_dang_on_x"
                   className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card shadow-sm transition-all hover:border-orange-500/50 hover:text-orange-500"
-                  aria-label="X (Twitter)"
+                  aria-label="X"
                 >
-                  <Twitter className="h-5 w-5" />
+                  <XIcon className="h-4 w-4 text-orange-500" />
                 </Link>
                 <Link 
-                  href="https://github.com/midwess"
+                  href="https://github.com/dev-logs"
                   className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card shadow-sm transition-all hover:border-orange-500/50 hover:text-orange-500"
                   aria-label="GitHub"
                 >

@@ -127,7 +127,7 @@ export const metadata: Metadata = {
     title: 'Midwess',
     description: 'Software that feels like magic. Designed and built in the Mekong Delta.',
     images: [getMetadataAssetUrl('/og-image.jpg')],
-    creator: '@midwess',
+    creator: '@james_dang_on_x',
   },
 };
 
@@ -154,8 +154,8 @@ export default function RootLayout({
       contactType: 'customer service',
     },
     sameAs: [
-      'https://github.com/midwess',
-      'https://x.com/midwess',
+      'https://github.com/dev-logs',
+      'https://x.com/james_dang_on_x',
     ],
   };
 

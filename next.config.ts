@@ -26,15 +26,64 @@ const nextConfig: NextConfig = {
     });
     return config;
   },
+  allowedDevOrigins: [
+    'https://premises-bedrooms-democrat-philadelphia.trycloudflare.com',
+  ],
   images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cbe9ef0f806f8e7c2ed195f658a0c88b.r2.cloudflarestorage.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "pub-13678040a05e4d5eaa3d4afbb253827c.r2.dev",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "s3.ap-southeast-1.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "s3.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "s3.us-east-2.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "s3.us-west-1.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "s3.ap-southeast-2.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "s3.eu-central-2.wasabisys.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "midwess.sgp1.digitaloceanspaces.com",
+        pathname: "/**"
+      },
+      {
+        protocol: "https",
+        hostname: "midwess.sgp1.cdn.digitaloceanspaces.com",
+        pathname: "/**"
+      }
+    ],
     unoptimized: true,
-
-    // If you want to use a custom image loader, uncomment the following lines
-    // loader: 'custom',
-    // loaderFile: './src/lib/imageLoader.ts',
-    // imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-    // deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-  },
+  }
 };
 const withMDX = createMDX({
   // Add markdown plugins here, if needed

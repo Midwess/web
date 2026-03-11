@@ -30,12 +30,9 @@ export async function setupCDN(): Promise<void> {
   }
 
   try {
-    // In production with standalone: __dirname is like /app/server
-    // We need /app/.next/static (where static files are)
-    const entry =
-      process.env.NODE_ENV === 'production'
-        ? path.resolve(__dirname, '..')
-        : process.cwd();
+    // In production with standalone: process.cwd() returns /app (where server.js is)
+    // .next folder is at /app/.next
+    const entry = process.cwd();
 
     const ns = 'cdn-uploader';
     console.log(ns, 'Entry point:', entry);

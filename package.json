@@ -6,7 +6,7 @@
   "scripts": {
     "deno-next": "deno run --allow-all --unstable-unsafe-proto --unstable-detect-cjs npm:next",
     "dev": "deno task deno-next --turbopack",
-    "start": "deno task deno-next start",
+    "start": "npx serve@latest out -l ${PORT:-3000}",
     "build": "next build",
     "lint": "next lint --fix",
     "content:build": "pnpm contentlayer2 build"

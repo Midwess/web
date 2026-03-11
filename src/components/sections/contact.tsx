@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-const DEFAULT_FEEDBACK_URL = 'https://api.midwess.com/app-gateway/api/feedback';
+const DEFAULT_FEEDBACK_URL = 'https://api.midwess.com/app-gateway/feedback';
 
 export default function Contact() {
   const [email, setEmail] = useState('');

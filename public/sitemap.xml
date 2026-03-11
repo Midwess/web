@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
-<url><loc>https://midwess.com/about</loc><lastmod>2026-03-11T07:29:55.419Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/contact</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/faq</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/posts/a-pure-and-best-practice-way-to-implement-resource-pooling-in-rust</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/posts/how-to-deploy-flutter-web-with-github-action</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/posts/i-migrated-javascript-to-rust---this-migration-plan-could-apply-to-any-language</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/posts/polymorphism-in-rust</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/pricing</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/privacy</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://midwess.com/products/bytover</loc><lastmod>2026-03-11T07:29:55.420Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/blog/a-pure-and-best-practice-way-to-implement-resource-pooling-in-rust</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/blog/how-to-deploy-flutter-web-with-github-action</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/blog/i-migrated-javascript-to-rust---this-migration-plan-could-apply-to-any-language</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/blog/polymorphism-in-rust</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/contact</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/faq</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/pricing</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/privacy</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://midwess.com/products/bytover</loc><lastmod>2026-03-11T12:26:44.292Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
 </urlset>

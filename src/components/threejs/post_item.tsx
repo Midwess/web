@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useCallback, useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 
 import { useFrame } from '@react-three/fiber';
+import { ArrowUpRight } from 'lucide-react';
 import * as THREE from 'three';
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla';
 
@@ -19,10 +20,11 @@ const HAFLTON_POINT_COLOR = MAIN_COLOR;
 
 export interface PostItemProps {
   post: Post;
+  onClick?: () => void;
 }
 
 export const GRID = () => {
-  if (global.window) {
+  if (typeof window !== 'undefined') {
     return ((Math.max(window.innerHeight, window.innerWidth) *
       window.devicePixelRatio) /
       responsiveMatch(4, [Responsive.XL, 4.5])) as number;
@@ -39,59 +41,63 @@ const glSetting: unknown = {
 };
 
 export function PostItem(props: PostItemProps) {
-  const { post } = props;
-
-  const onClick = useCallback(() => {
-    window.location.href = post.url;
-  }, [post.url]);
+  const { post, onClick } = props;
 
   const date = new Date(post.publishedDate || '');
 
   return (
-    <>
-      <div
-        onClick={onClick}
-        className={
-          'flex h-fit w-full cursor-pointer flex-col items-center justify-start gap-24 rounded-lg p-1 md:flex-row'
-        }
-      >
-        <div
-          className={
-            'bg-cream border-border h-full w-full flex-2/5 rounded-3xl border border-dashed sm:w-[230px] md:aspect-square'
-          }
-        >
-          <Suspense>
-            <ThreeDCanvas
-              gl={glSetting as never}
-              shadows={false}
-              frameloop={'always'}
-              dpr={[1, 1]}
-              style={{
-                background: 'transparent',
-                height: '100%',
-                width: '100%',
-              }}
-            >
-              <ThreeDModel post={post} />
-            </ThreeDCanvas>
-          </Suspense>
-        </div>
-        <div className={'flex flex-2/3 flex-col gap-2'}>
-          <p className="mt-5 text-xl font-medium md:text-2xl lg:text-3xl">
-            {post.title}
-          </p>
-          <p className="text-muted-foreground text-sm md:text-lg">
-            {date.getDate()}/{date.getMonth() + 1}/{date.getFullYear()}
-          </p>
-          <p className="text-muted-foreground text-sm md:text-lg">
-            {post.description}
-          </p>
-          <p className="text-muted-foreground text-sm opacity-80">
-            {Math.round(post.readingTime.minutes)} minutes
-          </p>
+    <div
+      onClick={onClick}
+      className="group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[2.5rem] border border-border bg-card/50 transition-all duration-300 hover:border-orange-500/30 hover:bg-card hover:shadow-2xl hover:shadow-orange-500/5"
+    >
+      <div className="bg-cream/50 relative aspect-[4/3] w-full overflow-hidden border-b border-dashed border-border transition-colors group-hover:bg-cream">
+        <Suspense>
+          <ThreeDCanvas
+            gl={glSetting as never}
+            shadows={false}
+            frameloop="always"
+            dpr={[1, 1]}
+            style={{
+              background: 'transparent',
+              height: '100%',
+              width: '100%',
+            }}
+          >
+            <ThreeDModel post={post} />
+          </ThreeDCanvas>
+        </Suspense>
+        
+        <div className="absolute top-6 right-6 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/50 opacity-0 transition-all duration-300 backdrop-blur-sm group-hover:opacity-100 group-hover:translate-x-0 translate-x-4">
+          <ArrowUpRight className="h-5 w-5 text-orange-500" />
         </div>
       </div>
-    </>
+
+      <div className="flex flex-1 flex-col p-8">
+        <div className="mb-3 flex items-center gap-3">
+          <span className="inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-bold text-orange-500 uppercase tracking-wider">
+            Article
+          </span>
+          <span className="text-muted-foreground text-xs font-medium">
+            {Math.round(post.readingTime.minutes)} min read
+          </span>
+        </div>
+        
+        <h3 className="mb-3 text-xl font-bold leading-tight tracking-tight group-hover:text-orange-500 transition-colors">
+          {post.title}
+        </h3>
+        
+        <p className="text-muted-foreground line-clamp-2 text-sm leading-relaxed">
+          {post.description}
+        </p>
+
+        <div className="mt-auto pt-6 flex items-center justify-between border-t border-dashed border-border/50">
+          <span className="text-muted-foreground text-xs font-semibold uppercase tracking-widest">
+            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+          <div className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+        </div>
+      </div>
+    </div>
   );
 }
 

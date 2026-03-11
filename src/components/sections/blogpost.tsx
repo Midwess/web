@@ -1,11 +1,52 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { allPosts } from '../../../.contentlayer/generated/Post/_index.mjs';
 import { DashedLine } from '../dashed-line';
-
 import { PostItem } from '@/components/threejs/post_item';
+import { PostPopup } from './post-popup';
+import { Post } from 'contentlayer/generated';
 
 export const BlogPosts = () => {
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Handle initial load and browser back/forward
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const pathParts = window.location.pathname.split('/');
+      if (pathParts[1] === 'blog' && pathParts[2]) {
+        const slug = pathParts[2];
+        const post = allPosts.find((p) => p.slug === slug);
+        if (post) {
+          setSelectedPost(post as never);
+        } else {
+          setSelectedPost(null);
+        }
+      } else {
+        setSelectedPost(null);
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  const handleOpenPost = (post: Post) => {
+    setSelectedPost(post);
+    window.history.pushState(null, '', `/blog/${post.slug}`);
+  };
+
+  const handleClosePost = () => {
+    setSelectedPost(null);
+    if (window.location.pathname !== '/') {
+      window.history.pushState(null, '', '/');
+    }
+  };
+
   return (
     <section id="feature-modern-teams" className="py-12 lg:py-16">
       <div className="container">
@@ -25,12 +66,23 @@ export const BlogPosts = () => {
             the mistakes, and the breakthroughs behind the products we craft.
           </p>
         </div>
-        <div className={'w-ful mt-16 flex flex-col gap-12'}>
+        <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3">
           {allPosts.map((it, index) => {
-            return <PostItem key={index} post={it as never} />;
+            return (
+              <PostItem 
+                key={index} 
+                post={it as never} 
+                onClick={() => handleOpenPost(it as never)} 
+              />
+            );
           })}
         </div>
       </div>
+      
+      <PostPopup 
+        post={selectedPost} 
+        onClose={handleClosePost} 
+      />
     </section>
   );
 };

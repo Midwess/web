@@ -168,7 +168,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`flex h-screen flex-col ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
+        className={`flex min-h-screen flex-col ${dmSans.variable} ${dmMono.variable} ${inter.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"

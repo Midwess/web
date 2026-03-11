@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-
+import { motion, useScroll, useMotionValueEvent } from 'motion/react';
 import { ChevronRight } from 'lucide-react';
 
 import {
@@ -34,13 +33,29 @@ const ITEMS = [
   },
   { label: 'Contact', href: '/contact' },
 ];
+
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(true);
   const pathname = usePathname();
+  const { scrollY } = useScroll();
+
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    if (latest > 50) {
+      setIsVisible(false);
+    } else {
+      setIsVisible(true);
+    }
+  });
 
   return (
-    <header className="bg-background/70 absolute top-5 left-1/2 z-50 w-[min(90%,700px)] -translate-x-1/2 rounded-full border backdrop-blur-md lg:top-12">
+    <motion.header 
+      initial={{ y: 0, x: "-50%" }}
+      animate={{ y: isVisible ? 0 : -120, x: "-50%" }}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+      className="bg-background/70 absolute top-5 left-1/2 z-50 w-[min(90%,700px)] rounded-full border backdrop-blur-md lg:top-12"
+    >
       <div className="flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <MidwessLogo size={32} />
@@ -200,7 +215,7 @@ const Navbar = () => {
           )}
         </nav>
       </div>
-    </header>
+    </motion.header>
   );
 };
 

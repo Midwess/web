@@ -79,7 +79,7 @@ export const Post = defineDocumentType(() => ({
 }));
 
 const codeOptions = {
-  theme: 'light-plus', // Or 'github-dark', 'dracula', etc.
+  theme: 'github-dark', // Or 'github-dark', 'dracula', etc.
   grid: true,
   keepBackground: false,
 };

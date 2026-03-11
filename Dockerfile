@@ -49,4 +49,6 @@ COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 
-CMD ["deno", "task", "deno-next", "start"]
+# For static export, there's no server. Static files are in /app/out
+# Use a CDN or static file server to serve the content
+CMD ["echo", "Static export complete. Files are in /app/out. Use CDN or serve with a static file server."]

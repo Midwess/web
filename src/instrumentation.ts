@@ -30,11 +30,11 @@ export async function setupCDN(): Promise<void> {
   }
 
   try {
-    // In production, __dirname will be something like /app/.next/server
-    // We need to find the project root (where 'out' folder is)
+    // In production with standalone: __dirname is like /app/server
+    // We need /app/.next/static (where static files are)
     const entry =
       process.env.NODE_ENV === 'production'
-        ? path.resolve(__dirname, '../..')
+        ? path.resolve(__dirname, '..')
         : process.cwd();
 
     const ns = 'cdn-uploader';
@@ -42,14 +42,15 @@ export async function setupCDN(): Promise<void> {
 
     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
-    const outDir = path.resolve(entry, 'out');
+    // Upload static assets from .next/static (standalone copies them here)
+    const staticDir = path.resolve(entry, '.next/static');
 
-    // Check if out directory exists
+    // Check if static directory exists
     try {
-      await fs.access(outDir);
+      await fs.access(staticDir);
     } catch {
-      console.warn('CDN upload skipped: out directory does not exist.');
-      console.warn('Run "pnpm build" first to generate the static export.');
+      console.warn('CDN upload skipped: .next/static directory does not exist.');
+      console.warn('Run "pnpm build" first to generate the build output.');
       return;
     }
 
@@ -126,7 +127,7 @@ export async function setupCDN(): Promise<void> {
       );
     };
 
-    await uploadDirectory(outDir, `${bucketBase}`);
+    await uploadDirectory(staticDir, `${bucketBase}/_next/static`);
     console.log(ns, 'Upload completed successfully.');
   } catch (error) {
     console.error('Error uploading to CDN:', error);

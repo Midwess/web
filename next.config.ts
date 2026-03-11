@@ -6,7 +6,7 @@ const VERSION = process.env.VERSION || process.env.RAILWAY_GIT_COMMIT_SHA;
 
 const nextConfig: NextConfig = {
   pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx'],
-  output: 'export',
+  output: 'standalone',
   env: {
     NEXT_PUBLIC_S3_CDN_PREFIX: process.env.S3_CDN_PREFIX || '',
     NEXT_PUBLIC_VERSION: VERSION || '',

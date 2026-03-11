@@ -41,8 +41,10 @@ ENV PORT=3000
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/pnpm-lock.yaml ./
 
-# Copy built static export (out/ folder for static export)
-COPY --from=builder /app/out ./
+# Copy built Next.js standalone output
+COPY --from=builder /app/.next/standalone ./
+# Copy static files separately
+COPY --from=builder /app/.next/static ./.next/static
 
 # Copy node_modules (needed for instrumentation if running locally)
 COPY --from=builder /app/node_modules ./node_modules

@@ -15,9 +15,11 @@ if (typeof window !== 'undefined') {
 
 const S3_CDN_PREFIX = process.env.S3_CDN_PREFIX || '';
 const VERSION = process.env.VERSION || process.env.RAILWAY_GIT_COMMIT_SHA;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export function register() {
-  if (VERSION && S3_CDN_PREFIX) {
+  // Only run CDN upload in production build, not in development
+  if (VERSION && S3_CDN_PREFIX && NODE_ENV === 'production') {
     setupCDN();
   }
 }
@@ -29,14 +31,30 @@ export async function setupCDN(): Promise<void> {
   }
 
   try {
-    const entry = `${__dirname}/../../`;
+    // In production, __dirname will be something like /app/.next/server
+    // We need to find the project root (where 'out' folder is)
+    const entry =
+      process.env.NODE_ENV === 'production'
+        ? path.resolve(__dirname, '../..')
+        : process.cwd();
+
     const ns = 'cdn-uploader';
     console.log(ns, 'Entry point:', entry);
 
     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
     const outDir = path.resolve(entry, 'out');
-    const bucketBase = `midwess/midwess/web/commit-${VERSION}`;
+
+    // Check if out directory exists
+    try {
+      await fs.access(outDir);
+    } catch {
+      console.warn('CDN upload skipped: out directory does not exist.');
+      console.warn('Run "pnpm build" first to generate the static export.');
+      return;
+    }
+
+    const bucketBase = `midwess/bytover/web/commit-${VERSION}`;
     const acl = 'public-read';
 
     const fileExistsInS3 = async (

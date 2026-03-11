@@ -8,6 +8,18 @@ import Navbar from '@/components/layout/navbar';
 import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
+const getMetadataAssetUrl = (path: string): string => {
+  const prefix = process.env.NEXT_PUBLIC_S3_CDN_PREFIX;
+  const version = process.env.NEXT_PUBLIC_VERSION;
+
+  if (prefix && version) {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${prefix}/commit-${version}${normalizedPath}`;
+  }
+
+  return path;
+};
+
 const dmSans = localFont({
   src: [
     {
@@ -87,19 +99,19 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon/favicon.ico?v=1', sizes: 'any' },
-      { url: '/favicon/favicon.svg?v=1', type: 'image/svg+xml' },
+      { url: getMetadataAssetUrl('/favicon/favicon.ico?v=1'), sizes: 'any' },
+      { url: getMetadataAssetUrl('/favicon/favicon.svg?v=1'), type: 'image/svg+xml' },
     ],
-    apple: [{ url: '/favicon/apple-touch-icon.png?v=1', sizes: '180x180' }],
+    apple: [{ url: getMetadataAssetUrl('/favicon/apple-touch-icon.png?v=1'), sizes: '180x180' }],
   },
-  manifest: '/favicon/site.webmanifest',
+  manifest: getMetadataAssetUrl('/favicon/site.webmanifest'),
   openGraph: {
     title: 'Midwess',
     description: 'Startup from west side of vietnam',
     siteName: 'Midwess',
     images: [
       {
-        url: '/og-image.jpg',
+        url: getMetadataAssetUrl('/og-image.jpg'),
         width: 1200,
         height: 630,
         alt: 'Midwess',
@@ -110,7 +122,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Midwess',
     description: 'Startup from west side of vietnam',
-    images: ['/og-image.jpg'],
+    images: [getMetadataAssetUrl('/og-image.jpg')],
     creator: '@midwess',
   },
 };

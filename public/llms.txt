@@ -1,6 +1,6 @@
-# Midwess - Software Development Studio
+# Midwess - High-Performance Software Development Studio
 
-Midwess is a software development studio building high-performance, secure software that empowers teams to innovate without friction.
+Midwess builds high-performance, secure software for engineering teams. A software studio specializing in modern, high-speed web applications.
 
 ## Products
 
@@ -29,8 +29,10 @@ Technical articles about software development, programming, and technology.
 
 ## Contact
 
-- Email: team@midwess.studio
+- Email: team@midwess.com
 - GitHub: https://github.com/midwess
+- X: https://x.com/midwess
+- LinkedIn: https://linkedin.com/company/midwess
 
 ## Technology Stack
 

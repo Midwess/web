@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
 };
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://midwess.studio';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://midwess.com';
 
 export default {
   ...nextConfig,

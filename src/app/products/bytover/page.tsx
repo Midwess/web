@@ -53,7 +53,6 @@ export default function BytoverPage() {
               alt="Bytover Core Technology"
               fill
               className="object-cover"
-              priority
             />
           </div>
           {/* Creative Overlay Grid */}

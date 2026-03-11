@@ -74,13 +74,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://midwess.studio'),
+  metadataBase: new URL('https://midwess.com'),
   title: {
-    default: 'Midwess - Software Development Studio',
+    default: 'Midwess - High-Performance Software Development Studio',
     template: '%s | Midwess',
   },
   description:
-    'Midwess builds high-performance, secure software that empowers teams to innovate without friction. Software development studio specializing in modern web applications.',
+    'Midwess builds high-performance, secure software for engineering teams. A software studio specializing in modern, high-speed web applications.',
   keywords: [
     'Next.js',
     'React',
@@ -90,12 +90,13 @@ export const metadata: Metadata = {
     'Template',
     'Shadcn/UI',
     'Web Development',
+    'Software Studio',
   ],
   authors: [{ name: 'Midwess Team' }],
   creator: 'Midwess Team',
   publisher: 'Midwess',
   alternates: {
-    canonical: 'https://midwess.studio',
+    canonical: 'https://midwess.com',
   },
   robots: {
     index: true,
@@ -111,7 +112,7 @@ export const metadata: Metadata = {
   manifest: getMetadataAssetUrl('/favicon/site.webmanifest'),
   openGraph: {
     title: 'Midwess',
-    description: 'Startup from west side of vietnam',
+    description: 'High-performance software studio from Vietnam',
     siteName: 'Midwess',
     images: [
       {
@@ -125,7 +126,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Midwess',
-    description: 'Startup from west side of vietnam',
+    description: 'High-performance software studio from Vietnam',
     images: [getMetadataAssetUrl('/og-image.jpg')],
     creator: '@midwess',
   },
@@ -140,16 +141,26 @@ export default function RootLayout({
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Midwess',
-    url: 'https://midwess.studio',
-    logo: 'https://midwess.studio/logo.svg',
-    sameAs: [
-      'https://github.com/midwess',
-    ],
+    url: 'https://midwess.com',
+    logo: 'https://midwess.com/logo.svg',
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: 'South Vietnam',
+      addressCountry: 'VN',
+    },
     contactPoint: {
       '@type': 'ContactPoint',
-      email: 'team@midwess.studio',
+      telephone: '+84-000-000-000',
       contactType: 'customer service',
     },
+    sameAs: [
+      'https://github.com/midwess',
+      'https://x.com/midwess',
+      'https://linkedin.com/company/midwess',
+      'https://facebook.com/midwess',
+      'https://instagram.com/midwess',
+      'https://youtube.com/@midwess',
+    ],
   };
 
   return (

@@ -57,6 +57,8 @@ export const Features = () => {
                 loop
                 muted
                 playsInline
+                preload="metadata"
+                poster={getAssetUrl('/hero.webp')}
                 className="h-full w-full object-cover opacity-80 transition-transform duration-1000 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
@@ -94,7 +96,6 @@ export const Features = () => {
                   alt="Background"
                   fill
                   className="object-cover"
-                  priority
                 />
               </div>
 

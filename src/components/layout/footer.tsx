@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
-import { Twitter, Linkedin, Github } from 'lucide-react';
+import { Twitter, Linkedin, Github, Facebook, Instagram, Youtube } from 'lucide-react';
 
 import { getAssetUrl } from '@/utils/asset-url';
 
@@ -10,6 +10,9 @@ export function Footer() {
     { name: 'X', href: 'https://x.com/midwess', icon: Twitter },
     { name: 'LinkedIn', href: 'https://linkedin.com/company/midwess', icon: Linkedin },
     { name: 'GitHub', href: 'https://github.com/midwess', icon: Github },
+    { name: 'Facebook', href: 'https://facebook.com/midwess', icon: Facebook },
+    { name: 'Instagram', href: 'https://instagram.com/midwess', icon: Instagram },
+    { name: 'YouTube', href: 'https://youtube.com/@midwess', icon: Youtube },
   ];
 
   const productLinks = [

@@ -18,10 +18,10 @@ const contactInfo = [
         <div>
           <p className="">Direct email</p>
           <Link
-            href="mailto:team@midwess.studio"
+            href="mailto:team@midwess.com"
             className="text-muted-foreground hover:text-foreground"
           >
-            team@midwess.studio
+            team@midwess.com
           </Link>
         </div>
       </div>

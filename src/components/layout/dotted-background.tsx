@@ -13,8 +13,7 @@ const DottedBackground = ({
 }: DottedBackgroundProps) => {
   return (
     <div
-      className={cn('relative', className)}
-      style={{ backgroundColor: 'hsl(0 0% 100%)' }}
+      className={cn('relative bg-white', className)}
     >
       <div className="pointer-events-none absolute inset-0 flex justify-center">
         <div className="relative h-full w-full max-w-[1330px]">
@@ -29,28 +28,22 @@ const DottedBackground = ({
           {showGlow && (
             <>
               <div
-                className="absolute animate-pulse"
+                className="absolute animate-pulse rounded-full bg-black/5 blur-[60px]"
                 style={{
                   top: '0',
                   left: '25%',
                   width: '24rem',
                   height: '24rem',
-                  backgroundColor: 'hsl(0 0% 0% / 0.03)',
-                  borderRadius: '9999px',
-                  filter: 'blur(60px)',
                   animation: 'pulse-glow 4s ease-in-out infinite',
                 }}
               />
               <div
-                className="absolute animate-pulse"
+                className="absolute animate-pulse rounded-full bg-black/2 blur-[60px]"
                 style={{
                   top: '33%',
                   right: '25%',
                   width: '16rem',
                   height: '16rem',
-                  backgroundColor: 'hsl(0 0% 0% / 0.02)',
-                  borderRadius: '9999px',
-                  filter: 'blur(60px)',
                   animation: 'pulse-glow 4s ease-in-out infinite',
                   animationDelay: '1s',
                 }}

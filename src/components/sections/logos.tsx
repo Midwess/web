@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Marquee from 'react-fast-marquee';
 
 import { cn } from '@/lib/utils';
+import { getAssetUrl } from '@/utils/asset-url';
 
 const Logos = () => {
   const topRowCompanies = [
@@ -133,7 +134,7 @@ const LogoRow = ({ companies, gridClassName, direction }: LogoRowProps) => {
           {companies.map((company, index) => (
             <Link href={company.href} target="_blank" key={index}>
               <Image
-                src={company.logo}
+                src={getAssetUrl(company.logo)}
                 alt={`${company.name} logo`}
                 width={company.width}
                 height={company.height}
@@ -155,7 +156,7 @@ const LogoRow = ({ companies, gridClassName, direction }: LogoRowProps) => {
               className="mx-8 inline-block transition-opacity hover:opacity-70"
             >
               <Image
-                src={company.logo}
+                src={getAssetUrl(company.logo)}
                 alt={`${company.name} logo`}
                 width={company.width}
                 height={company.height}

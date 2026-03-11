@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_S3_CDN_PREFIX: process.env.S3_CDN_PREFIX || '',
     NEXT_PUBLIC_VERSION: VERSION || '',
   },
+  transpilePackages: ["shared_types"],
+  assetPrefix: process.env.S3_CDN_PREFIX && VERSION ? `${process.env.S3_CDN_PREFIX}/commit-${VERSION}` : undefined,
   turbopack: {
     rules: {
       '*.{glsl,vs,fs,vert,frag}': {

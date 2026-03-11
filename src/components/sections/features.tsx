@@ -12,6 +12,7 @@ import { DashedLine } from '../dashed-line';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getAssetUrl } from '@/utils/asset-url';
 
 export const Features = () => {
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -51,7 +52,7 @@ export const Features = () => {
           <div className="min-w-0 flex-[0_0_100%] px-4 md:px-8 lg:px-12">
             <div className="group relative mx-auto aspect-[21/9] w-full max-w-[1400px] overflow-hidden rounded-[3rem] border border-white/10 bg-black shadow-2xl">
               <video
-                src="/video/bytover-space.mp4"
+                src={getAssetUrl('/video/bytover-space.mp4')}
                 autoPlay
                 loop
                 muted
@@ -89,7 +90,7 @@ export const Features = () => {
               {/* Background Image Layer */}
               <div className="absolute inset-0">
                 <Image
-                  src="/images/bytover-background.png"
+                  src={getAssetUrl('/images/bytover-background.png')}
                   alt="Background"
                   fill
                   className="object-cover"
@@ -149,7 +150,7 @@ export const Features = () => {
                 <div className="relative hidden items-center justify-center lg:flex">
                   <div className="animate-bounce-slow absolute top-0 right-0">
                     <Image
-                      src="/3d-emoji/ThumbsUp.png"
+                      src={getAssetUrl('/3d-emoji/ThumbsUp.png')}
                       alt="Emoji"
                       width={180}
                       height={140}
@@ -158,7 +159,7 @@ export const Features = () => {
                   </div>
                   <div className="animate-float absolute bottom-0 left-0">
                     <Image
-                      src="/3d-emoji/OkRight.png"
+                      src={getAssetUrl('/3d-emoji/OkRight.png')}
                       alt="Emoji"
                       width={200}
                       height={160}
@@ -167,7 +168,7 @@ export const Features = () => {
                   </div>
                   <div className="animate-bounce-slow absolute top-1/2 -right-12">
                     <Image
-                      src="/3d-emoji/Horns.png"
+                      src={getAssetUrl('/3d-emoji/Horns.png')}
                       alt="Emoji"
                       width={120}
                       height={110}
@@ -179,7 +180,7 @@ export const Features = () => {
                     style={{ animationDelay: '1s' }}
                   >
                     <Image
-                      src="/3d-emoji/Love.png"
+                      src={getAssetUrl('/3d-emoji/Love.png')}
                       alt="Emoji"
                       width={100}
                       height={100}

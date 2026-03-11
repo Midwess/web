@@ -17,6 +17,7 @@ import {
   NavigationMenuTrigger,
 } from '@/components/ui/navigation-menu';
 import { cn } from '@/lib/utils';
+import { getAssetUrl } from '@/utils/asset-url';
 
 const ITEMS = [
   {
@@ -44,7 +45,7 @@ const Navbar = () => {
       <div className="flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <Image
-            src="/logo.svg"
+            src={getAssetUrl('/logo.svg')}
             alt="logo"
             height={0}
             width={50}

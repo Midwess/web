@@ -3,6 +3,8 @@ import Link from 'next/link';
 
 import { Twitter, Linkedin, Github } from 'lucide-react';
 
+import { getAssetUrl } from '@/utils/asset-url';
+
 export function Footer() {
   const socialLinks = [
     { name: 'X', href: '#', icon: Twitter },
@@ -52,7 +54,7 @@ export function Footer() {
                 className="inline-block transition-opacity hover:opacity-80"
               >
                 <Image
-                  src="/logo.svg"
+                  src={getAssetUrl('/logo.svg')}
                   alt="Midwess"
                   width={110}
                   height={28}

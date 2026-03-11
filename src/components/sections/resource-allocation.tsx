@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { DashedLine } from '../dashed-line';
 
 import { cn } from '@/lib/utils';
+import { getAssetUrl } from '@/utils/asset-url';
 
 const topItems = [
   {
@@ -194,7 +195,7 @@ const Item = ({ item, isLast, className }: ItemProps) => {
                   className="bg-background grid aspect-square size-16 place-items-center rounded-2xl p-2 lg:size-20"
                 >
                   <Image
-                    src={image.src}
+                    src={getAssetUrl(image.src)}
                     alt={image.alt}
                     width={image.width}
                     height={image.height}
@@ -212,7 +213,7 @@ const Item = ({ item, isLast, className }: ItemProps) => {
                   className="bg-background grid aspect-square size-16 place-items-center rounded-2xl lg:size-20"
                 >
                   <Image
-                    src={image.src}
+                    src={getAssetUrl(image.src)}
                     alt={image.alt}
                     width={image.width}
                     height={image.height}
@@ -229,7 +230,7 @@ const Item = ({ item, isLast, className }: ItemProps) => {
           {item.images.map((image, j) => (
             <Image
               key={j}
-              src={image.src}
+              src={getAssetUrl(image.src)}
               alt={image.alt}
               width={image.width}
               height={image.height}

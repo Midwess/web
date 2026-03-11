@@ -6,6 +6,7 @@ import DottedBackground from '@/components/layout/dotted-background';
 import GridSection from '@/components/layout/grid-section';
 import PageFrame from '@/components/layout/page-frame';
 import { Button } from '@/components/ui/button';
+import { getAssetUrl } from '@/utils/asset-url';
 
 export default function BytoverPage() {
   return (
@@ -48,7 +49,7 @@ export default function BytoverPage() {
         <section className="relative flex min-h-[500px] w-full items-center overflow-hidden">
           <div className="absolute inset-0 -z-10">
             <Image
-              src="/images/bytover-background.png"
+              src={getAssetUrl('/images/bytover-background.png')}
               alt="Bytover Core Technology"
               fill
               className="object-cover"
@@ -118,7 +119,7 @@ export default function BytoverPage() {
               {/* Product Video / Mockup */}
               <div className="group relative mt-24 aspect-[21/9] overflow-hidden rounded-[3rem] border border-white/10 bg-black shadow-2xl">
                 <video
-                  src="/video/bytover-space.mp4"
+                  src={getAssetUrl('/video/bytover-space.mp4')}
                   autoPlay
                   loop
                   muted

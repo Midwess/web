@@ -28,7 +28,7 @@ ENV CI=true
 
 RUN pnpm install --frozen-lockfile
 
-RUN pnpm build
+RUN pnpm next build
 
 FROM --platform=linux/amd64 midwess/deno:runner2.5.2 AS runner
 WORKDIR /app

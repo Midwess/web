@@ -54,7 +54,7 @@ export async function setupCDN(): Promise<void> {
       return;
     }
 
-    const bucketBase = `midwess/bytover/web/commit-${VERSION}`;
+    const bucketBase = `midwess/midwess/web/commit-${VERSION}`;
     const acl = 'public-read';
 
     const fileExistsInS3 = async (

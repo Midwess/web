@@ -1,0 +1,215 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Fonts */
+  --font-display: 'Familjen Grotesk', sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-primary: 'Inter', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Olive palette (from Oatmeal) */
+  --color-olive-50: oklch(98.8% 0.003 106.5);
+  --color-olive-100: oklch(96.6% 0.005 106.5);
+  --color-olive-200: oklch(93% 0.007 106.5);
+  --color-olive-300: oklch(88% 0.011 106.6);
+  --color-olive-400: oklch(73.7% 0.021 106.9);
+  --color-olive-500: oklch(58% 0.031 107.3);
+  --color-olive-600: oklch(46.6% 0.025 107.3);
+  --color-olive-700: oklch(39.4% 0.023 107.4);
+  --color-olive-800: oklch(28.6% 0.016 107.4);
+  --color-olive-900: oklch(22.8% 0.013 107.4);
+  --color-olive-950: oklch(15.3% 0.006 107.1);
+
+  /* Nodus template aliases — mapped onto olive scale.
+     Template uses charcoal-* for foreground in light mode; we are dark-only
+     so these are tuned to read well against an olive-950 background. */
+  --color-charcoal-700: oklch(88% 0.011 106.6);  /* olive-300 */
+  --color-charcoal-800: oklch(93% 0.007 106.5);  /* olive-200 */
+  --color-charcoal-900: oklch(96.6% 0.005 106.5); /* olive-100 */
+
+  /* Brand accent (used by template's text-brand, bg-brand) */
+  --color-brand: oklch(58% 0.031 107.3); /* olive-500 */
+
+  /* Aceternity shadow used across template buttons/cards */
+  --shadow-aceternity:
+    0px 2px 3px -1px rgba(0, 0, 0, 0.4),
+    0px 1px 0px 0px oklch(28.6% 0.016 107.4 / 0.4),
+    0px 0px 0px 1px oklch(28.6% 0.016 107.4 / 0.6);
+
+  /* Semantic colors mapped from olive */
+  --color-background: oklch(15.3% 0.006 107.1);
+  --color-foreground: oklch(98.8% 0.003 106.5);
+  --color-card: oklch(15.3% 0.006 107.1);
+  --color-card-foreground: oklch(98.8% 0.003 106.5);
+  --color-primary: oklch(46.6% 0.025 107.3);
+  --color-primary-foreground: oklch(98.8% 0.003 106.5);
+  --color-secondary: oklch(28.6% 0.016 107.4);
+  --color-secondary-foreground: oklch(93% 0.007 106.5);
+  --color-muted: oklch(28.6% 0.016 107.4);
+  --color-muted-foreground: oklch(73.7% 0.021 106.9);
+  --color-accent: oklch(46.6% 0.025 107.3);
+  --color-accent-foreground: oklch(15.3% 0.006 107.1);
+  --color-destructive: oklch(55% 0.22 25);
+  --color-destructive-foreground: oklch(98.8% 0.003 106.5);
+  --color-border: oklch(28.6% 0.016 107.4);
+  --color-input: oklch(28.6% 0.016 107.4);
+  --color-ring: oklch(46.6% 0.025 107.3);
+  --color-popover: oklch(15.3% 0.006 107.1);
+  --color-popover-foreground: oklch(98.8% 0.003 106.5);
+
+  /* Sidebar */
+  --color-sidebar-background: oklch(15.3% 0.006 107.1);
+  --color-sidebar-foreground: oklch(73.7% 0.021 106.9);
+  --color-sidebar-primary: oklch(46.6% 0.025 107.3);
+  --color-sidebar-primary-foreground: oklch(15.3% 0.006 107.1);
+  --color-sidebar-accent: oklch(22.8% 0.013 107.4);
+  --color-sidebar-accent-foreground: oklch(93% 0.007 106.5);
+  --color-sidebar-border: oklch(28.6% 0.016 107.4);
+  --color-sidebar-ring: oklch(46.6% 0.025 107.3);
+
+  /* Semantic utility colors */
+  --color-success: oklch(58% 0.031 107.3);
+  --color-error: oklch(39.4% 0.023 107.4);
+  --color-dock: oklch(15.3% 0.006 107.1);
+  --color-workspace: oklch(22.8% 0.013 107.4);
+
+  /* Radius */
+  --radius-DEFAULT: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+
+  /* Animations for shadcn/ui */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+/* Nodus-template runtime CSS vars (template references them via var(...)).
+   Portal is dark-only, so we set the values once on :root. */
+:root {
+  --divide: oklch(28.6% 0.016 107.4);          /* olive-800 — same as border */
+  --primary: oklch(98.8% 0.003 106.5);          /* olive-50 */
+  --canvas: oklch(46.6% 0.025 107.3);           /* olive-600 */
+  --canvas-fill: oklch(28.6% 0.016 107.4);      /* olive-800 */
+  --dots: oklch(28.6% 0.016 107.4);
+  --line: oklch(22.8% 0.013 107.4);
+  --footer-link: oklch(73.7% 0.021 106.9);      /* olive-400 */
+  --pattern-fg: oklch(98.8% 0.003 106.5 / 0.3);
+}
+
+@theme inline {
+  --color-divide: var(--divide);
+  --color-canvas: var(--canvas);
+  --color-canvas-fill: var(--canvas-fill);
+  --color-dots: var(--dots);
+  --color-line: var(--line);
+  --color-footer-link: var(--footer-link);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  * {
+    @apply border-border;
+  }
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(28.6% 0.016 107.4 / 0.5) transparent;
+}
+
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: oklch(28.6% 0.016 107.4 / 0.4); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background: oklch(28.6% 0.016 107.4 / 0.6); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+@theme inline {
+  --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--marquee-duration) infinite linear;
+  @keyframes marquee-horizontal {
+  from {
+    transform: translateX(0);
+    }
+  to {
+    transform: translateX(calc(-100% - var(--marquee-gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+    }
+  to {
+    transform: translateY(calc(-100% - var(--marquee-gap)));
+    }
+  }
+}
+
+/* Procedural film-grain noise via inlined SVG fractal-noise filter. This is the
+   "company signature" noise overlay shared with bit-bridge. The data URL is small
+   (~250 bytes) and renders crisp at any DPR because SVG turbulence is procedural.
+   Use as: <div className="noise-overlay" /> on top of an image background. */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.85'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+}
+
+/* Nodus template orbit animation — used by CTAOrbit. The `--duration` CSS var is
+   set inline on each ring; counter-orbit reverses direction so badges stay upright. */
+@theme inline {
+  --animate-orbit: orbit var(--duration, 20s) linear infinite;
+  --animate-counter-orbit: counter-orbit var(--duration, 20s) linear infinite;
+  --animate-move-left-to-right: move-left-to-right 4s linear infinite;
+}
+@keyframes orbit {
+  from { rotate: 0deg; }
+  to   { rotate: 360deg; }
+}
+@keyframes counter-orbit {
+  from { rotate: 0deg; }
+  to   { rotate: -360deg; }
+}
+/* petdex sprite idle loop — sweeps row 0 (idle) across its 8 frames.
+   --pet-span is set inline to -(frameWidth * 8). */
+@keyframes pet-idle {
+  to { background-position-x: var(--pet-span); }
+}
+.pet-sprite {
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pet-sprite { animation: none !important; }
+}
+@keyframes move-left-to-right {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}

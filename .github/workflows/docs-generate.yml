@@ -73,17 +73,21 @@ jobs:
           REPO: ${{ env.REPO }}
           REF: ${{ env.REF }}
           GH_TOKEN: ${{ secrets.PROJECT_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -eo pipefail
           rm -rf /tmp/project
-          if [ -n "${GH_TOKEN:-}" ]; then
-            AUTH="x-access-token:${GH_TOKEN}"
-          else
-            AUTH="x-access-token:${GITHUB_TOKEN}"
+          TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::no token available for clone"
+            exit 1
           fi
-          git clone --depth 1 "https://${AUTH}@github.com/${REPO}.git" /tmp/project
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${REPO}.git" /tmp/project
           cd /tmp/project
-          git checkout "$REF"
+          if [ "$REF" != "HEAD" ]; then
+            git fetch --depth 1 origin "$REF"
+            git checkout "$REF"
+          fi
 
       - name: Install OpenClaude
         run: npm install -g openclaude@0.4.2

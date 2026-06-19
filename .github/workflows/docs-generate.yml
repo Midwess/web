@@ -72,12 +72,11 @@ jobs:
         env:
           REPO: ${{ env.REPO }}
           REF: ${{ env.REF }}
-          GH_TOKEN: ${{ secrets.PROJECT_READ_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROJECT_READ_TOKEN: ${{ secrets.PROJECT_READ_TOKEN }}
         run: |
           set -eo pipefail
           rm -rf /tmp/project
-          TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+          TOKEN="${PROJECT_READ_TOKEN:-${{ secrets.GITHUB_TOKEN }}}"
           if [ -z "$TOKEN" ]; then
             echo "::error::no token available for clone"
             exit 1

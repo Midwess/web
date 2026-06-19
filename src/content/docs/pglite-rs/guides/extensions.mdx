@@ -1,0 +1,101 @@
+---
+title: Extensions
+description: Enabling pgvector, pgcrypto, and plpgsql on top of pglite-rs.
+---
+
+# Extensions
+
+`pglite-rs` ships the `pgvector`, `pgcrypto`, and `plpgsql` extensions as Cargo features. `plpgsql` is always present in PostgreSQL itself, but enabling it under `pglite-rs` requires the same `export_dynamic` link step as the other extensions.
+
+```toml title="Cargo.toml"
+[dependencies]
+pglite-rs = { version = "0.2", features = ["pgvector", "pgcrypto"] }
+```
+
+## Linker flag
+
+The extensions are loaded as dynamic modules via `dlopen`. For those modules to resolve engine symbols back into your binary, you must export the dynamic symbol table. Add this to your crate's `build.rs`:
+
+```rust title="build.rs"
+fn main() {
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+    #[cfg(not(target_os = "macos"))]
+    println!("cargo:rustc-link-arg=-Wl,--export-dynamic");
+}
+```
+
+If you skip this, `CREATE EXTENSION` will fail at runtime with missing-symbol errors. The `examples/build.rs` in the workspace already does this.
+
+## pgvector
+
+```rust
+use pglite::PGlite;
+
+let db = PGlite::open("./data").await?;
+db.exec("CREATE EXTENSION IF NOT EXISTS vector").await?;
+db.exec("CREATE TABLE items (id serial PRIMARY KEY, embedding vector(3))").await?;
+db.exec("INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]')").await?;
+
+let rows = db
+    .query(
+        "SELECT id, embedding <-> $1 AS distance FROM items ORDER BY embedding <-> $1 LIMIT 5",
+        &[&"[0,0,0]"],
+    )
+    .await?;
+```
+
+All the standard vector operators (`<->`, `<=>`, `<#>`) and functions (`vector_dims`, `vector_norm`) are available.
+
+## pgcrypto
+
+```rust
+db.exec("CREATE EXTENSION IF NOT EXISTS pgcrypto").await?;
+let rows = db.query("SELECT digest('hello', 'sha256')::text", &[]).await?;
+let hash: &str = rows[0].get(0)?;
+```
+
+`pgcrypto` needs OpenSSL at artifact-build time only. Consumers do not need OpenSSL installed.
+
+## plpgsql
+
+```rust
+db.exec("CREATE EXTENSION IF NOT EXISTS plpgsql").await?;
+db.exec(r#"
+    CREATE FUNCTION add_one(n int) RETURNS int AS $$
+    BEGIN
+        RETURN n + 1;
+    END;
+    $$ LANGUAGE plpgsql;
+"#).await?;
+
+let rows = db.query("SELECT add_one($1)", &[&41i32]).await?;
+let answer: i32 = rows[0].get(0)?;
+assert_eq!(answer, 42);
+```
+
+`RAISE EXCEPTION` from a plpgsql function surfaces in Rust as `Error::Database` with the corresponding `sqlstate`. Row triggers also work; the `reactive` example in the repository shows `NOTIFY` from a trigger fanning back into a native `listen` callback.
+
+## ICU collation
+
+For real Unicode collation, enable the `icu` feature and use `LocaleProvider::Icu` at open time:
+
+```rust
+use pglite::{PGlite, PGliteOptions, LocaleProvider};
+
+let opts = PGliteOptions {
+    locale_provider: LocaleProvider::Icu,
+    ..Default::default()
+};
+let db = PGlite::open_with("./data", opts).await?;
+```
+
+`icu` statically bundles ~+40 MB of ICU data. A data directory initialized with `locale_provider: Icu` can only be opened by `icu`-feature builds, and vice-versa for libc datadirs — they are not interchangeable.
+
+## Pulling every extension in one go
+
+```bash
+cargo add pglite-rs --features full
+```
+
+`full` includes `multiple-process`, `socket`, `pgcrypto`, `pgvector`, `icu`, and `replica`.

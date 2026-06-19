@@ -1,0 +1,20 @@
+{
+  "title": "pglite-rs",
+  "description": "In-process PostgreSQL for Rust, embedded like SQLite.",
+  "pages": [
+    "index",
+    "installation",
+    "quickstart",
+    "features",
+    "api/pglite",
+    "api/transaction",
+    "api/row",
+    "api/live-query",
+    "api/multi-process",
+    "api/replica",
+    "guides/orms",
+    "guides/extensions",
+    "guides/replication",
+    "guides/backup-restore"
+  ]
+}

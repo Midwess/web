@@ -1,0 +1,70 @@
+---
+title: Installation
+description: Add pglite-rs to a Rust project and configure the linker for extensions.
+---
+
+# Installation
+
+The package is `pglite-rs`; the library imports as `pglite`.
+
+```bash
+cargo add pglite-rs
+```
+
+To pull every optional extension in one go, use the `full` feature:
+
+```bash
+cargo add pglite-rs --features full
+```
+
+## Requirements
+
+- **Rust 1.85+** (`rust-toolchain.toml` pins the workspace toolchain).
+- A C toolchain is **not** required to consume the crate. The engine ships as a prebuilt static library downloaded by the build script (cached in `~/.cache/pglite-rs/`).
+- To build the engine yourself, see [Building from source](#building-from-source) below.
+
+## Linker flag for extensions
+
+`pgvector`, `pgcrypto`, and `plpgsql` are loaded as dynamic modules via `dlopen`. For those modules to resolve engine symbols back into your binary, you must export the dynamic symbol table. Add this to your crate's `build.rs`:
+
+```rust title="build.rs"
+fn main() {
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+    #[cfg(not(target_os = "macos"))]
+    println!("cargo:rustc-link-arg=-Wl,--export-dynamic");
+}
+```
+
+If you skip this, extension load will fail at runtime with missing-symbol errors.
+
+## Building from source
+
+The prebuilt static library is the default. To rebuild it locally:
+
+```bash
+./native/build-libpglite.sh     # needs clang, bison, flex, perl, make, zlib
+cargo test --workspace
+```
+
+`PGLITE_LIB_DIR=/path/to/dir` overrides artifact resolution (expects `libpglite.a` + `pglite-runtime.tar`).
+
+## Verifying the install
+
+A minimal smoke test:
+
+```rust
+use pglite::PGlite;
+
+#[tokio::main]
+async fn main() -> Result<(), pglite::Error> {
+    let db = PGlite::open_temp().await?;
+    let rows = db.query("SELECT 1 + 1 AS two", &[]).await?;
+    let two: i32 = rows[0].get(0)?;
+    assert_eq!(two, 2);
+    db.close().await?;
+    Ok(())
+}
+```
+
+`PGlite::open_temp` boots a temporary data directory that is removed when the handle is dropped — no cleanup, no paths to manage.

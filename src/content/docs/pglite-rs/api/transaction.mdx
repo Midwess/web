@@ -1,0 +1,56 @@
+---
+title: Transaction
+description: Block-scoped transactions with rollback-on-drop semantics.
+---
+
+# `Transaction`
+
+`db.transaction()` returns a `Transaction<'a>` bound to the parent `PGlite`. The transaction runs on the same backend the parent was opened against — the in-process engine for the default mode, or a pinned pooled connection for `multiple-process` mode.
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+tx.commit().await?;
+```
+
+## Methods
+
+| Method | Notes |
+|---|---|
+| `tx.exec(sql)` | Run a statement inside the transaction. |
+| `tx.query(sql, params)` | Run a parameterized query and collect rows. |
+| `tx.commit()` | Consume `self` and commit. |
+| `tx.rollback()` | Consume `self` and rollback. |
+
+`Transaction::exec` and `Transaction::query` take `&self` so a transaction value can be moved into multiple awaits — but only the terminal `commit` or `rollback` actually ends the transaction.
+
+## Rollback on drop
+
+If a `Transaction` is dropped **without** an explicit `commit` or `rollback`, a `ROLLBACK` is fired in the background. The drop is synchronous; the `ROLLBACK` is fire-and-forget on the wire. This means transactions are always closed in error paths:
+
+```rust
+{
+    let tx = db.transaction().await?;
+    tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+    // tx dropped here -> background ROLLBACK
+}
+```
+
+To commit a transaction, the value **must** be consumed by `commit().await`:
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+tx.commit().await?;   // consumes tx, sends COMMIT
+```
+
+## Multi-process mode
+
+In `multiple-process` mode, `db.transaction()` checks out a connection from the pool and pins it for the lifetime of the `Transaction`. The drop-guard still applies — the pinned connection is released after the rollback. With the pool, a `BEGIN` is sent immediately on `transaction().await?`, so if you want to skip starting a transaction (e.g. for autocommit) you have to drop it without commit.
+
+## Errors
+
+`Transaction` methods return the same `pglite::Error` enum as `PGlite`. Common cases:
+
+- A SQL error inside the transaction produces `Error::Database` with the offending `sqlstate` (e.g. `23505` for a unique violation, `40001` for a serialization failure).
+- Calling `tx.commit()` or `tx.rollback()` after the transaction has already been finalized is a no-op for the engine (the second call hits a closed backend and returns `Error::Closed`).

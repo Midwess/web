@@ -1,0 +1,40 @@
+---
+title: pglite-rs
+description: In-process PostgreSQL for Rust — embedded like SQLite, full Postgres SQL, async on any runtime.
+---
+
+# pglite-rs
+
+> In-process PostgreSQL for Rust — embedded like SQLite, full Postgres SQL, async on any runtime.
+
+`pglite-rs` is a safe async wrapper around [postgres-pglite](https://github.com/electric-sql/postgres-pglite), a single-process PostgreSQL fork compiled to a native static library and linked straight into your binary. No server, no Docker, no install step. Real PostgreSQL semantics — types, transactions, MVCC, extensions, the wire protocol — embedded directly in your process, with an embeddable footprint closer to SQLite than to a Postgres install.
+
+The crate is **runtime-agnostic**. It depends on `futures`, not on `tokio`, `smol`, or `async-std`; pick whichever executor your application already uses.
+
+```rust
+use pglite::PGlite;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let db = PGlite::open("./mydata").await?;          // initdb runs on first open
+    db.exec("CREATE TABLE users (id serial PRIMARY KEY, name text)").await?;
+
+    let rows = db.query("SELECT id, name FROM users WHERE id > $1", &[&0i32]).await?;
+    let name: &str = rows[0].get(1)?;
+
+    let tx = db.transaction().await?;                  // rollback on drop
+    tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+    tx.commit().await?;
+
+    db.close().await?;
+    Ok(())
+}
+```
+
+## What's in these docs
+
+- [Installation](/pglite-rs/installation) — `cargo add`, build-script linker flag for extensions.
+- [Quickstart](/pglite-rs/quickstart) — first embedded database end-to-end.
+- [Features](/pglite-rs/features) — Cargo features: `socket`, `multiple-process`, `pgvector`, `pgcrypto`, `icu`, `replica`, `full`.
+- [API reference](/pglite-rs/api/pglite) — `PGlite`, `Transaction`, `Row`, `LiveQuery`, `MultiProcessOptions`, `Replica`.
+- [Guides](/pglite-rs/guides/orms) — ORM integration (SQLx / SeaORM / Diesel), extensions, logical replication, dump/restore.

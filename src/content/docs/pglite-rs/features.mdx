@@ -1,0 +1,104 @@
+---
+title: Features
+description: Cargo features, their effect on the build, and what they unlock at runtime.
+---
+
+# Features
+
+Every feature is a Cargo feature flag. They are all opt-in; the default is `socket`.
+
+```toml title="Cargo.toml"
+[dependencies]
+pglite-rs = { version = "0.2", features = ["multiple-process", "pgvector"] }
+```
+
+| Cargo feature | Adds |
+|---|---|
+| `socket` *(default)* | `PGlite::unix_uri` — a unix-socket gateway so unmodified ORMs (SQLx, SeaORM, Diesel) talk to the in-process engine. Unix-only; inert on Windows. |
+| `multiple-process` | `PGlite::open_multi_process` — a child postmaster with a pooled connection set, giving true concurrent sessions, parallel transactions, and cross-session locks. Same API, no networking. Unix-only. |
+| `pgvector` | The pgvector extension — `CREATE EXTENSION vector`, embedding columns, similarity search. |
+| `pgcrypto` | The pgcrypto extension — digests, encryption (OpenSSL only at artifact-build time, not at consumer build time). |
+| `icu` | The ICU engine variant — real Unicode collation via `locale_provider: Icu`. Statically bundles ~+40 MB. |
+| `replica` | Logical-replication consumer: `Replica::start` streams committed changes from a remote Postgres over a unix socket. |
+| `full` | Pulls `multiple-process`, `socket`, `pgcrypto`, `pgvector`, `icu`, and `replica` in one go. |
+
+```bash
+cargo add pglite-rs --features full
+```
+
+## Per-feature runtime knobs
+
+### `multiple-process`
+
+Toggles `MultiProcessOptions` and the `open_multi_process` constructor. The `unix_uri()` call is overloaded to return the child postmaster's socket in this mode, so any ORM code that worked with the in-process gateway works unchanged against a real pool.
+
+```rust
+use pglite::{PGlite, MultiProcessOptions};
+
+let db = PGlite::open_multi_process("./data", MultiProcessOptions::default()).await?;
+let url = db.unix_uri().await?;
+let pool = sqlx::postgres::PgPoolOptions::new().connect(&url).await?;
+```
+
+See [Multi-process mode](/pglite-rs/api/multi-process) for the full options struct.
+
+### `pgvector` / `pgcrypto` / `plpgsql`
+
+These extensions are dlopen'd at runtime. The linker must export your binary's symbol table so the loaded module can resolve engine symbols. Add to your crate's `build.rs`:
+
+```rust title="build.rs"
+fn main() {
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+    #[cfg(not(target_os = "macos"))]
+    println!("cargo:rustc-link-arg=-Wl,--export-dynamic");
+}
+```
+
+Then `CREATE EXTENSION` as normal:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS plpgsql;
+```
+
+See [Extensions](/pglite-rs/guides/extensions) for the full setup.
+
+### `icu`
+
+Switches the initdb locale provider to `Icu`. Real Unicode collation and full locale data ship statically with the binary. **A data directory initialized with `locale_provider: Icu` can only be opened by `icu`-feature builds**, and vice-versa for libc datadirs — they are not interchangeable.
+
+```rust
+use pglite::{PGlite, PGliteOptions, LocaleProvider};
+
+let opts = PGliteOptions {
+    locale_provider: LocaleProvider::Icu,
+    ..Default::default()
+};
+let db = PGlite::open_with("./data", opts).await?;
+```
+
+### `replica`
+
+Pulls in `Replica`, `ReplicaConfig`, `CommittedTransaction`, `RowChange`, `Lsn`, `SslMode`, and `DDL_SIGNAL_PREFIX`. The consumer connects to a remote Postgres over a unix socket, performs a one-shot backfill, then streams logical changes:
+
+```rust
+use pglite::{Replica, ReplicaConfig};
+
+let mut cfg = ReplicaConfig::default();
+cfg.host = "/var/run/postgresql".into();
+cfg.port = 5432;
+cfg.user = "postgres".into();
+cfg.publication = "app_pub".into();
+cfg.slot_name = "pglite_app".into();
+
+let replica = Replica::start(db, cfg).await?;
+let rx = replica.subscribe();
+```
+
+See [Logical replication](/pglite-rs/guides/replication) for a complete walk-through.
+
+## Notes on footprint
+
+The in-process engine runs as one backend — no postmaster, no background workers, no parallel workers. A single in-process backend adds little to your process beyond Postgres's own shared buffers, and the shared memory is emulated on the heap and released when the engine closes. Measured steady-state RSS for the in-process engine is around **~23 MB** on macOS Apple Silicon. The multi-process pool with 4 live connections lands near **~84 MB summed RSS** across the process tree.

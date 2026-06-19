@@ -1,0 +1,161 @@
+---
+title: PGlite
+description: The main entry point — open, exec, query, transactions, listeners, COPY, dump/restore.
+---
+
+# `PGlite`
+
+`PGlite` is the only public type you usually need. It is `Clone` (cheap, `Arc` inside) and every async method takes `&self`.
+
+```rust
+use pglite::PGlite;
+
+let db: PGlite = PGlite::open("./data").await?;
+```
+
+## Construction
+
+| Method | Notes |
+|---|---|
+| `PGlite::open(path)` | Open a persistent data dir. Runs `initdb` on first open. |
+| `PGlite::open_with(path, opts)` | Same, with custom `PGliteOptions`. |
+| `PGlite::open_temp()` | Open a temp data dir under `std::env::temp_dir()`. Removed on drop. |
+| `PGlite::open_temp_with(opts)` | Temp + custom options. |
+| `PGlite::open_multi_process(path, opts)` | Spawn a child postmaster with a connection pool. Requires the `multiple-process` feature. |
+
+```rust
+use pglite::{PGlite, PGliteOptions, LocaleProvider};
+
+let opts = PGliteOptions {
+    username: "app".into(),
+    database: "app".into(),
+    relaxed_durability: true,
+    start_params: vec!["shared_buffers=32MB".into()],
+    locale_provider: LocaleProvider::Icu,
+};
+let db = PGlite::open_with("./data", opts).await?;
+```
+
+`PGliteOptions` is `Clone + Debug + Default`. `relaxed_durability` passes `fsync=off` to the engine (faster, no crash safety guarantees — fine for tests, caches, and reproducible scratch dirs). `start_params` are appended as `-c key=value` to the engine boot.
+
+## Running SQL
+
+```rust
+db.exec("CREATE TABLE users (id serial PRIMARY KEY, name text NOT NULL)").await?;
+
+let rows = db
+    .query("SELECT id, name FROM users WHERE id > $1", &[&0i32])
+    .await?;
+```
+
+- `exec(&str) -> Result<(), Error>` — fire-and-forget DML/DDL.
+- `query(&str, &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, Error>` — bind parameters and collect rows. Binds use the [`postgres-types`](https://docs.rs/postgres-types) `ToSql` trait, so anything that implements it works (`i32`, `&str`, `String`, `Option<T>`, `uuid::Uuid`, `chrono::NaiveDateTime`, …).
+
+## Transactions
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+tx.commit().await?;
+```
+
+See [Transaction](/pglite-rs/api/transaction) for the full surface, including `Drop` semantics.
+
+## LISTEN / NOTIFY
+
+```rust
+let token = db.listen("task_events", |payload| {
+    println!("channel payload: {payload}");
+}).await?;
+
+// later:
+db.unlisten_token("task_events", token).await?;
+// or:
+db.unlisten("task_events").await?;
+```
+
+`listen` returns a token; `unlisten_token` removes just that callback. `unlisten` removes every callback on the channel. The native callback fires on every `NOTIFY` regardless of which session issued it, and the same dispatch path serves the unix-socket gateway (so an ORM `NOTIFY` will fan out to native `listen` callbacks).
+
+## COPY
+
+```rust
+db.copy_in("COPY users (name) FROM STDIN", b"alice\nbob\n").await?;
+
+let body = db.copy_out("COPY users TO STDOUT").await?;
+let text = String::from_utf8_lossy(&body);
+```
+
+`copy_in` ships the raw bytes as a single `CopyData` frame after the query — works for the in-process engine. For `COPY FROM STDIN` over many rows, see the [multi-process guide](/pglite-rs/api/multi-process#orm-pools), which streams.
+
+## Live queries
+
+```rust
+let live = db
+    .live_query("SELECT title FROM tasks WHERE NOT done ORDER BY id", &[], |rows| {
+        for r in rows { /* render */ }
+    })
+    .await?;
+
+live.unsubscribe().await?;
+```
+
+`live_query` creates a view, installs per-table `NOTIFY` triggers, and re-runs the query whenever any watched table is touched. See [LiveQuery](/pglite-rs/api/live-query).
+
+## Unix-socket gateway (ORM bridge)
+
+```rust
+let url = db.unix_uri().await?;          // requires `socket` feature
+let pool = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(1)
+    .connect(&url)
+    .await?;
+```
+
+The gateway spins up lazily on first call. See [ORMs](/pglite-rs/guides/orms) for the full pattern.
+
+## Backup / restore
+
+```rust
+db.dump_data_dir("./snap.tar").await?;
+
+PGlite::restore_data_dir("./snap.tar", "./data").await?;
+```
+
+`dump_data_dir` runs a `CHECKPOINT`, then writes the data dir as a tarball to `dest`. `restore_data_dir` extracts that tarball into a fresh dir and removes the stale `postmaster.pid`. The on-disk format is stock Postgres — you can also point a stock `postgres` at it (with caveats around the missing `initdb` defaults for the `pglite` runtime).
+
+## Shutdown
+
+```rust
+db.close().await?;            // consumes self
+// or
+db.shutdown().await?;         // takes &self
+```
+
+`close` is `async fn close(self)`; `shutdown` is the same body under `&self`. Both stop the gateway (if running), then close the backend (in-process engine thread, or child postmaster).
+
+## Errors
+
+| Variant | When |
+|---|---|
+| `Error::Database { sqlstate, message, detail, hint }` | A SQL error from the engine. `sqlstate` is the Postgres five-character code. |
+| `Error::AlreadyOpen` | A second `PGlite::open*` was attempted in the same process while another instance is open. |
+| `Error::ReopenUnsupported` | A previous instance was closed in this process; reopen requires a fresh process. |
+| `Error::Closed` | Operation on a closed `PGlite`. |
+| `Error::Io` | Underlying I/O error (e.g. data dir unwritable). |
+| `Error::Protocol(String)` | Malformed wire-protocol response. |
+| `Error::Boot(String)` | Engine thread died during boot. |
+| `Error::PostmasterStart(String)` | Child postmaster failed to start (multi-process only). |
+| `Error::PoolExhausted` | `MultiProcessOptions::acquire` timeout (multi-process only). |
+| `Error::ReplicaConfig(String)` | Missing/empty `ReplicaConfig` field. |
+| `Error::Upstream(String)` | Logical-replication transport error. |
+| `Error::ReplicaHalted(String)` | Replica halted by a fatal event (incompatible schema change, slot invalidated, …). |
+| `Error::Lsn(String)` | Could not parse an LSN string. |
+
+```rust
+match db.query("SELECT 1/0", &[]).await {
+    Err(pglite::Error::Database { sqlstate, message, .. }) => {
+        eprintln!("[{sqlstate}] {message}");
+    }
+    other => other?,
+}
+```

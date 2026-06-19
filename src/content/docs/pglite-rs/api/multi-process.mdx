@@ -1,0 +1,78 @@
+---
+title: MultiProcessOptions
+description: Spawn a child postmaster with a connection pool for true concurrent sessions.
+---
+
+# `MultiProcessOptions` and `open_multi_process`
+
+The default `PGlite::open` runs the engine as a single in-process backend. For real concurrent sessions — parallel transactions, cross-session locks, parallel queries — enable the `multiple-process` feature and use `open_multi_process` to spawn a child postmaster with a pooled set of connections.
+
+```rust
+use pglite::{PGlite, MultiProcessOptions};
+
+let db = PGlite::open_multi_process(
+    "./data",
+    MultiProcessOptions::default(),
+).await?;
+```
+
+The same `PGlite` API works in both modes — `exec`, `query`, `transaction`, `listen`, `live_query`, `copy_in`, `copy_out`, `unix_uri`, `dump_data_dir`, `close`. The difference is that under the hood, calls are routed through a real `bin/postgres` process on a private unix socket.
+
+## Options
+
+```rust
+#[derive(Clone, Debug)]
+pub struct MultiProcessOptions {
+    pub username: String,            // default: "postgres"
+    pub database: String,            // default: "postgres"
+    pub min_connections: usize,      // default: 0
+    pub max_connections: usize,      // default: 5
+    pub extra_connections: usize,    // default: 4 — external client slots
+    pub idle_ttl: Duration,          // default: 5 minutes
+    pub relaxed_durability: bool,    // default: false — sets fsync=off
+    pub start_params: Vec<String>,   // default: [] — appended as -c key=value
+    pub locale_provider: LocaleProvider, // default: Libc
+}
+```
+
+- `max_connections` is the size of the in-process pool. The postmaster itself is sized to `max_connections + 2 + extra_connections` (the +2 covers the postmaster's own reserved slots).
+- `extra_connections` are external postmaster slots — ORM clients using `unix_uri()` consume these, so size it to the ORM's pool size.
+- `idle_ttl` controls how long an unused pooled connection sticks around before the worker drops it. The pool refills up to `min_connections` lazily.
+- `start_params` is appended as `-c key=value` to the postmaster command. Useful for `shared_buffers=32MB`, `log_min_messages=debug1`, etc.
+
+## Connection string
+
+`unix_uri()` returns the postmaster's native socket path, so any Postgres client that accepts a URI works:
+
+```rust
+let url = db.unix_uri().await?;
+// postgresql://postgres@localhost/postgres?host=/tmp/pgl-<pid>-<n>
+
+let pool = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(4)
+    .connect(&url)
+    .await?;
+```
+
+The socket is bound to a directory under the OS temp dir with mode `0o700`. It's removed when the `PGlite` is dropped or `close()`d.
+
+## When to use multi-process
+
+- **ORM pools.** The in-process engine has one session, so a SQLx pool of N>1 serializes through the same backend. Multi-process mode gives you N real backends. With the in-process engine, set ORM pool size to exactly 1.
+- **`COPY FROM STDIN` with many rows.** The in-process engine cannot pause mid-COPY because it owns the only backend; multi-process mode streams through the socket normally.
+- **Cross-session MVCC.** A `BEGIN` on the in-process engine blocks all other sessions by definition. Multi-process mode gives you the normal Postgres lock manager.
+
+## Shutdown
+
+`db.close().await?` sends `SIGINT` to the postmaster, waits up to 10 s, then escalates to `SIGTERM` on the process group, then `kill` on the child. The socket directory is removed on the way out. If the host process is `SIGKILL`ed, the child postmaster is left running and the socket dir persists until the OS cleans it — the next `open_multi_process` on the same data dir relies on Postgres' stale `postmaster.pid` handling.
+
+## Pool acquire timeout
+
+`Error::PoolExhausted` is returned when no pooled connection becomes free within the acquire timeout. The timeout is fixed at 30 s.
+
+## Methods exposed only in this mode
+
+- `db.connection_uri() -> Option<String>` — the postmaster's URI, or `None` in in-process mode.
+- `db.socket_path() -> Option<&Path>` — the postmaster's `.s.PGSQL.5432` socket path, or `None` in in-process mode.
+
+In in-process mode, `unix_uri()` lazily starts a gateway thread that fakes a server; `unix_uri()` in multi-process mode just returns the postmaster's socket. Same URL, different underlying mechanics.

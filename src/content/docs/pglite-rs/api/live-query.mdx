@@ -1,0 +1,61 @@
+---
+title: LiveQuery
+description: Reactive query handle that re-runs the SELECT whenever any watched table changes.
+---
+
+# `LiveQuery`
+
+`PGlite::live_query` installs per-table `NOTIFY` triggers and re-runs your `SELECT` whenever any of the watched tables is touched. The callback runs on a dedicated refresh thread, not on the executor of the call site.
+
+```rust
+let live = db
+    .live_query(
+        "SELECT title FROM tasks WHERE NOT done ORDER BY id",
+        &[],
+        |rows| {
+            for r in rows {
+                let title: &str = r.get(0).unwrap();
+                println!("open: {title}");
+            }
+        },
+    )
+    .await?;
+
+// Touch a watched table from any session (the gateway, another ORM connection,
+// the native API — it all fans back to the same triggers):
+db.exec("UPDATE tasks SET done = true WHERE id = 1").await?;
+
+// Later, tear it down:
+live.unsubscribe().await?;
+```
+
+## How it works
+
+1. `live_query` formats the SQL with `format(...)` server-side, then `CREATE VIEW`s the formatted query under a `live_query_*_view` name.
+2. It walks the view's dependency list to find every base table (`pg_depend` / `pg_class`).
+3. For each base table it creates a row-level `AFTER INSERT/UPDATE/DELETE` trigger that `NOTIFY`s a private channel derived from `(schema_oid, table_oid)`.
+4. It installs a `LISTEN` for each channel and dispatches to a single refresh worker (a `std::thread`) that re-runs `SELECT * FROM "view"` whenever any trigger fires.
+5. On `unsubscribe`, the trigger is dropped (when no other live query watches the same table), the LISTENs are removed, and the view is dropped.
+
+Triggers are deduplicated per table: if two `LiveQuery` values watch the same table, they share the trigger and split when one of them unsubscribes.
+
+## Methods
+
+| Method | Notes |
+|---|---|
+| `live.refresh()` | Manually wake the refresh worker. Useful for tests. |
+| `live.unsubscribe()` | Consume `self`, tear down triggers, view, and LISTENs. |
+
+## Error handling
+
+`live_query` is fallible on construction: it can fail with `Error::Database` if `CREATE VIEW` fails, with `Error::Protocol` on wire-protocol errors, and with `Error::Io` on the refresh thread spawn. Once the `LiveQuery` value is in hand, refresh errors are silent — the worker simply exits and the value becomes a no-op. `unsubscribe` then runs the same teardown as the happy path.
+
+## Parameters
+
+The `params` argument is `&[&(dyn ToSql + Sync)]` like `db.query`. Placeholders (`$1`, `$2`, …) are reformatted into a server-side `format(...)` call, so the same bind types you would pass to `db.query` work here.
+
+## Caveats
+
+- `live_query` cannot watch a query that references volatile functions, system catalogs, or temp tables — the dependency walk will not find them.
+- The callback runs on a dedicated `std::thread`, not on the async executor of the caller. If your callback needs async work, spawn it from inside (e.g. with `tokio::spawn`).
+- Only one `LiveQuery` per query is reasonable; if you need the same SELECT twice, cache the value and call `live.refresh()` from both consumers.

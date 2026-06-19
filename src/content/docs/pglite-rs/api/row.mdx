@@ -1,0 +1,51 @@
+---
+title: Row & Column
+description: Postgres-protocol-shaped row accessors and column metadata.
+---
+
+# `Row` and `Column`
+
+`db.query` returns `Vec<Row>`. Each `Row` carries the row's column descriptors and a borrowed slice over the wire-protocol body. `Column` exposes the column name and the resolved `postgres_types::Type`.
+
+## Reading values
+
+```rust
+let rows = db.query("SELECT id, name, email FROM users WHERE id = $1", &[&1i32]).await?;
+let row = &rows[0];
+
+let id: i32 = row.get(0)?;
+let name: &str = row.get(1)?;
+let email: Option<&str> = row.try_get("email")?;
+```
+
+`get` is positional; `try_get` is by column name. Both decode into any `T: FromSql` from `postgres-types`. The same trait set used by `tokio-postgres` works here: integers, floats, `&str`, `String`, `bool`, `Vec<u8>`, `Option<T>`, `chrono::NaiveDateTime` / `DateTime<Utc>`, `uuid::Uuid`, `serde_json::Value`, arrays, ranges, and the various Postgres-specific types.
+
+## Null handling
+
+`row.get::<T, _>(idx)` returns an error if the value is `NULL` and `T` is not `Option<T>`. Use `Option<T>` for nullable columns:
+
+```rust
+let email: Option<String> = row.try_get("email")?;
+```
+
+## Column metadata
+
+```rust
+for col in row.columns() {
+    println!("{}: {}", col.name(), col.type_());
+}
+```
+
+`Column::name` is the SQL column name (case-preserved as the server returned it). `Column::type_()` is the resolved `postgres_types::Type`; for unknown OIDs the column type falls back to `Type::TEXT`.
+
+## Row shape
+
+| Method | Returns |
+|---|---|
+| `row.columns()` | `&[Column]` |
+| `row.len()` | Number of columns |
+| `row.is_empty()` | `true` for `SELECT` statements with no output columns |
+| `row.get::<T, _>(idx)` | `Result<T, Error>` — decodes by position |
+| `row.try_get::<T, _>(name)` | `Result<T, Error>` — decodes by name (case-sensitive) |
+
+The row borrows from the underlying wire bytes; the bytes live as long as the `Vec<Row>` returned by `query`. Once you drop that `Vec`, the strings and slices inside each `Row` are invalidated.

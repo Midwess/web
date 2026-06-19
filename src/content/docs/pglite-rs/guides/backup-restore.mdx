@@ -1,0 +1,54 @@
+---
+title: Backup & restore
+description: Snapshot a PGlite data directory to a tarball and load it back into a fresh instance.
+---
+
+# Backup and restore
+
+`pglite-rs` exposes the data directory directly — the on-disk format is a stock Postgres cluster. You can dump it to a tarball, copy it around, and unpack it into a new location.
+
+## Dump
+
+```rust
+use pglite::PGlite;
+
+let db = PGlite::open("./data").await?;
+db.dump_data_dir("./snap.tar").await?;
+```
+
+`dump_data_dir` is `async` because it runs a `CHECKPOINT` against the engine first to flush dirty buffers, then it tars the entire data directory into the destination. The tar is uncompressed; compress on the outside if you need to.
+
+The destination is a `Path`. The function takes `dest: impl AsRef<Path>` and returns `Result<(), Error>`. Errors during tar write surface as `Error::Io`.
+
+## Restore
+
+```rust
+PGlite::restore_data_dir("./snap.tar", "./data-new")?;
+```
+
+`restore_data_dir` is **synchronous** and `&self`-free — it's an associated function. It opens the tarball, extracts it into `data_dir` (creating it if it doesn't exist), and removes the stale `postmaster.pid` so the new cluster can be opened. Returns `Result<(), Error>`.
+
+```rust
+PGlite::restore_data_dir("./snap.tar", "./data-new")?;
+let db = PGlite::open("./data-new").await?;
+let rows = db.query("SELECT count(*) FROM users", &[]).await?;
+```
+
+## Caveats
+
+- The restore target must not be the data dir of an open `PGlite`. The function does not check this; you'll get `Error::PostmasterStart` from the next `open` because the postmaster refuses to start with a foreign `postmaster.pid`.
+- The tar includes the `pglite`-specific runtime files. Stock Postgres can be pointed at the same directory (the underlying format is identical), but the upstream `pglite` runtime may not exist outside the `pglite-rs` distribution.
+- For point-in-time replication across processes, prefer the [`replica`](/pglite-rs/guides/replication) feature.
+- For backup in a multi-process mode cluster, the dump happens against whatever connection the native API is using; the child postmaster's other backends are unaffected.
+
+## Round-tripping via the unix socket
+
+If you want to take a logical backup (SQL text) instead of a physical one, run `pg_dump` over the unix-socket gateway:
+
+```rust
+let db = PGlite::open("./data").await?;
+let url = db.unix_uri().await?;
+// then point `pg_dump` at `url` — works with any pg_dump that accepts a connection string.
+```
+
+`pg_dump` is not bundled with `pglite-rs`; install it from your distro's postgresql-client package.

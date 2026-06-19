@@ -1,0 +1,83 @@
+---
+title: Quickstart
+description: Open an embedded database, create a table, query with binds, run a transaction.
+---
+
+# Quickstart
+
+This walks you from an empty `cargo new` to a working embedded Postgres in under five minutes.
+
+## 1. Create the project
+
+```bash
+cargo new pglite-demo && cd pglite-demo
+cargo add pglite-rs --features full
+cargo add tokio --features macros,rt-multi-thread
+```
+
+## 2. Open the database
+
+```rust title="src/main.rs"
+use pglite::PGlite;
+
+#[tokio::main]
+async fn main() -> Result<(), pglite::Error> {
+    let db = PGlite::open("./mydata").await?;
+    Ok(())
+}
+```
+
+The first call runs `initdb` against `./mydata`. Subsequent opens reuse the cluster. The directory holds a full Postgres data dir; the file format is the same one a stock `postgres` server writes, so the directory is portable.
+
+> Only one `PGlite` instance may be open per process. A second `open` returns [`Error::AlreadyOpen`](/pglite-rs/api/pglite#errors). `PGlite::close` followed by another `open` returns [`Error::ReopenUnsupported`](/pglite-rs/api/pglite#errors) — spawn a new process to reopen.
+
+## 3. DDL and parameterized queries
+
+```rust
+use pglite::PGlite;
+
+#[tokio::main]
+async fn main() -> Result<(), pglite::Error> {
+    let db = PGlite::open("./mydata").await?;
+    db.exec("CREATE TABLE users (id serial PRIMARY KEY, name text NOT NULL)").await?;
+
+    let rows = db
+        .query("SELECT id, name FROM users WHERE id > $1 ORDER BY id", &[&0i32])
+        .await?;
+    for row in &rows {
+        let id: i32 = row.get(0)?;
+        let name: &str = row.get(1)?;
+        println!("{id}: {name}");
+    }
+    Ok(())
+}
+```
+
+`query` returns `Vec<Row>`. Each `Row` is decoded with `row.get::<T, _>(idx)` (or `row.try_get::<T, _>(name)`); `T: FromSql` from the `postgres-types` crate, so all of `i32`, `&str`, `String`, `Option<i32>`, `chrono::NaiveDateTime`, `uuid::Uuid`, and friends work out of the box.
+
+## 4. Transactions
+
+`db.transaction()` returns a [`Transaction`](/pglite-rs/api/transaction) bound to the connection. If the value is dropped without `commit` or `rollback`, a `ROLLBACK` is fired in the background:
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+tx.exec("INSERT INTO users (name) VALUES ('bob')").await?;
+tx.commit().await?;
+```
+
+For an explicit rollback, call `tx.rollback().await?`.
+
+## 5. Close
+
+```rust
+db.close().await?;
+```
+
+`close` is idempotent and runs a clean shutdown — it checkpoints, drops the in-process engine thread, and (on `multiple-process` mode) tears down the child postmaster and socket directory.
+
+## 6. Where next?
+
+- [API reference](/pglite-rs/api/pglite) for the full surface.
+- [ORMs](/pglite-rs/guides/orms) to drive the engine with SQLx, SeaORM, or Diesel.
+- [Extensions](/pglite-rs/guides/extensions) to enable `pgvector` / `pgcrypto` / `plpgsql`.

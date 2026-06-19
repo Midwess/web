@@ -1,0 +1,116 @@
+---
+title: Logical replication
+description: Stream committed changes from a remote Postgres into a local PGlite.
+---
+
+# Logical replication
+
+The `replica` feature turns `pglite-rs` into a logical-replication consumer. You point it at a publication on a remote Postgres; it opens a `pgoutput` replication slot, performs a one-shot backfill of the publication's tables into a local `PGlite`, and then streams every committed change.
+
+```toml title="Cargo.toml"
+[dependencies]
+pglite-rs = { version = "0.2", features = ["replica"] }
+```
+
+## Upstream setup
+
+On the Postgres side you need a publication over the tables you want to mirror, and a user with replication privileges. The default superuser works for local dev; for anything else, grant `REPLICATION` and ownership of the tables in the publication.
+
+```sql
+-- upstream
+CREATE PUBLICATION app_pub FOR TABLE users, orders, items;
+```
+
+Each table in the publication must have a primary key, or an explicit `REPLICA IDENTITY`. Without one, deletes and keyless updates will fail with `no key available`.
+
+## Configuring the consumer
+
+```rust
+use pglite::{Replica, ReplicaConfig, SslMode};
+use std::time::Duration;
+
+let cfg = ReplicaConfig {
+    host: "/var/run/postgresql".into(),   // unix socket dir
+    port: 5432,
+    user: "postgres".into(),
+    password: "".into(),
+    database: "app".into(),
+    publication: "app_pub".into(),
+    slot_name: "pglite_app".into(),
+    application_name: "pglite-replica".into(),
+    read_timeout: Duration::from_secs(5),
+    status_interval: Duration::from_secs(10),
+    role_poll_interval: Duration::from_secs(60),
+    ..Default::default()
+};
+```
+
+`host` is treated as a unix-socket directory when the path exists. For TCP, use an IP/hostname and set `sslmode` appropriately.
+
+## Starting the replica
+
+```rust
+let db = PGlite::open("./local").await?;
+let replica = Replica::start(db, cfg).await?;
+```
+
+On first start, `Replica::start`:
+
+1. Opens a replication connection.
+2. Runs `CREATE_REPLICATION_SLOT pglite_app LOGICAL pgoutput EXPORT_SNAPSHOT`.
+3. Opens a second connection at `REPEATABLE READ` + the exported snapshot, copies every table in the publication into the local `PGlite`, and reconciles `GRANT`s from the publication.
+4. Persists the consistent point, schema fingerprint, and security fingerprint in a `_pglite_replica` table on the local side.
+
+On subsequent starts, the stored slot/publication must match the configured ones — the consumer will refuse to start otherwise. The watermark is loaded and used as the start LSN for `START_REPLICATION`.
+
+## Subscribing to commits
+
+```rust
+let rx = replica.subscribe();
+
+std::thread::spawn(move || {
+    while let Ok(committed) = rx.recv() {
+        for change in &committed.changes {
+            // …apply to another store, log, or fan out
+        }
+    }
+});
+```
+
+Each `CommittedTransaction` carries the xid, the commit LSN, the end LSN, the commit timestamp, and a `Vec<RowChange>` of `Insert`/`Update`/`Delete`/`Truncate` operations with their column values. The subscription is a `std::sync::mpsc::Receiver` — pull at your own pace.
+
+## DDL signals
+
+When the upstream schema changes, the consumer has to update its local copy. Two paths are supported:
+
+- **Auto-apply of additive changes.** If the new relation has the same prefix of columns as the stored fingerprint plus a tail of new columns, the consumer runs `ALTER TABLE … ADD COLUMN` for each new column. Type changes and reordered columns halt the replica.
+- **Manual DDL signals.** Have your migration runner emit `pg_notify('pglite_ddl', '')` after a successful migration. The consumer re-introspects the upstream schema, updates the fingerprint, and continues. The constant is exported as `pglite::DDL_SIGNAL_PREFIX`.
+
+Incompatible schema changes halt the replica with `Error::ReplicaHalted` and a message that points at the offending table.
+
+## Halts and resyncs
+
+```rust
+if replica.is_halted() {
+    eprintln!("replica halted: {}", replica.halt_reason().unwrap_or_default());
+    replica.stop();
+    // 1. Run any pending DDL on the local side so its schema matches the upstream.
+    // 2. Drop the upstream slot and clear local meta.
+    Replica::decommission(&local_db, &cfg).await?;
+    // 3. Start fresh — the next call performs a full backfill.
+    let replica = Replica::start(local_db, cfg).await?;
+}
+```
+
+`Replica::decommission` connects to the upstream, terminates any active slot holder, drops the slot, and runs `DELETE FROM _pglite_replica` on the local side.
+
+## Errors worth knowing
+
+| Variant | Notes |
+|---|---|
+| `Error::ReplicaConfig(String)` | Empty `host`, `user`, `database`, `publication`, or `slot_name` at `start`. |
+| `Error::Upstream(String)` | Transient transport error. The consumer reconnects with exponential backoff capped at 10 s. |
+| `Error::ReplicaHalted(String)` | Fatal event (incompatible schema change, slot invalidated, no replica identity). The consumer stops; `is_halted()` returns `true`. |
+| `Error::Lsn(String)` | The upstream returned an LSN string the consumer couldn't parse. |
+
+See the [Replica API reference](/pglite-rs/api/replica) for the full type surface.

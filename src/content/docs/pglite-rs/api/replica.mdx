@@ -1,0 +1,141 @@
+---
+title: Replica
+description: Logical-replication consumer that streams committed changes from a remote Postgres.
+---
+
+# `Replica`
+
+`Replica` (feature `replica`) is a logical-replication consumer. It connects to a remote Postgres over a unix socket, performs a one-shot backfill of the tables in the configured publication, then streams every committed change into a local `PGlite` instance.
+
+```rust
+use pglite::{Replica, ReplicaConfig, SslMode};
+use std::time::Duration;
+
+let mut cfg = ReplicaConfig::default();
+cfg.host = "/var/run/postgresql".into();   // unix socket dir
+cfg.port = 5432;
+cfg.user = "postgres".into();
+cfg.publication = "app_pub".into();
+cfg.slot_name = "pglite_app".into();
+cfg.sslmode = SslMode::Disable;
+
+let replica = Replica::start(db, cfg).await?;
+let mut rx = replica.subscribe();
+
+while let Some(committed) = rx.recv() {
+    for change in &committed.changes {
+        println!("{:?}", change);
+    }
+}
+```
+
+`ReplicaConfig::host` is treated as a unix-socket directory when the path exists; otherwise it's resolved as a TCP host. `port` is the Postgres port.
+
+## ReplicaConfig
+
+```rust
+#[derive(Clone, Debug)]
+pub struct ReplicaConfig {
+    pub host: String,                  // default: "127.0.0.1"
+    pub port: u16,                     // default: 5432
+    pub user: String,                  // default: "postgres"
+    pub password: String,              // default: ""
+    pub database: String,              // default: "postgres"
+    pub publication: String,           // required, must be non-empty
+    pub slot_name: String,             // required, must be non-empty
+    pub application_name: String,      // default: "pglite-replica"
+    pub read_timeout: Duration,        // default: 5 s
+    pub status_interval: Duration,     // default: 10 s — min(3/4 * wal_sender_timeout)
+    pub role_poll_interval: Duration,  // default: 60 s
+    pub sslmode: SslMode,              // default: Disable
+}
+```
+
+Empty `host`, `user`, `database`, `publication`, or `slot_name` produces `Error::ReplicaConfig` at `start` time.
+
+## Public methods
+
+| Method | Notes |
+|---|---|
+| `Replica::start(db, cfg)` | Open the replication slot, run the backfill, spawn the streaming thread. Returns once the slot is created and the snapshot is taken. |
+| `replica.stop()` | Signal the streaming thread to exit. |
+| `replica.watermark()` | The LSN of the last fully applied commit. |
+| `replica.is_halted()` | `true` if the consumer has halted on a fatal error. |
+| `replica.halt_reason()` | A short string describing the halt, if any. |
+| `replica.is_stopped()` | `true` once the streaming thread has exited. |
+| `replica.subscribe()` | Returns an `mpsc::Receiver<Arc<CommittedTransaction>>` that fires once per committed transaction. |
+| `replica.security_version()` | The current security-fingerprint version; bumps on GRANT/REVOKE changes. |
+| `Replica::decommission(&db, &cfg)` | Drop the slot on the upstream and clear local meta. Use before a full resync. |
+
+## `CommittedTransaction` and `RowChange`
+
+```rust
+pub struct CommittedTransaction {
+    pub xid: u32,
+    pub commit_lsn: Lsn,
+    pub end_lsn: Lsn,
+    pub commit_ts: i64,
+    pub changes: Vec<RowChange>,
+}
+
+pub enum RowChange {
+    Insert { schema, table, row: Vec<(String, Option<String>)> },
+    Update { schema, table, key, row },
+    Delete { schema, table, key },
+    Truncate { schema, table },
+}
+```
+
+Each `RowChange` carries the row's columns as `(name, Option<String>)` pairs — `None` for `NULL`. Updates carry both the replica-identity key (`key`) and the new row (`row`).
+
+## How it works
+
+1. **First run.** Opens a replication connection, runs `CREATE_REPLICATION_SLOT … LOGICAL pgoutput EXPORT_SNAPSHOT`, opens a second connection at `REPEATABLE READ` + the snapshot, copies the publication's tables into the local `PGlite`, and stores the consistent point and a schema fingerprint in a `_pglite_replica` meta table.
+2. **Subsequent runs.** Loads the stored watermark and fingerprint; refuses to start if the stored slot/publication differ from the configured ones. Reopens the slot at the stored LSN and resumes.
+3. **Streaming loop.** Reads `pgoutput` messages. For each `Relation` it checks the fingerprint — additive column changes are applied with `ALTER TABLE … ADD COLUMN`; incompatible changes halt the replica with `Error::ReplicaHalted`. For each `Insert/Update/Delete/Truncate` it builds and applies the corresponding SQL in a local transaction, bumps the watermark, and broadcasts a `CommittedTransaction` to all subscribers.
+4. **DDL signals.** If the upstream emits a NOTIFY message with the prefix `pglite_ddl` (constant `DDL_SIGNAL_PREFIX`), the consumer re-introspects the schema and updates the fingerprint. Set up your migration runner to `NOTIFY pglite_ddl, ''` after each successful DDL change.
+5. **Backoff.** Transient errors (network, `55006` slot conflict, `57P01/02/03` admin shutdown) restart the connection with exponential backoff capped at 10 s. Fatal errors (most `Database` errors with other sqlstates, `Error::Protocol`, `Error::ReplicaHalted`) call `halt()` and stop the thread.
+
+## Halts and resyncs
+
+A halt is a fatal condition. The replica stops streaming, sets `halted = true`, and stores the reason in `halt_reason()`. Common reasons:
+
+- **Incompatible schema change.** Add a column with a type that has no compatible match. Resync by running migrations up to the same point on the consumer and decommissioning the slot.
+- **Slot invalidated** (`55000`). The upstream's WAL retention dropped the segment we needed. Run `Replica::decommission(&db, &cfg)` and `Replica::start(db, cfg)` again — the second call performs a fresh backfill.
+- **Replica identity missing.** A table in the publication has no primary key and no `REPLICA IDENTITY`. Add a `REPLICA IDENTITY` (or primary key) to the table upstream, then resync.
+
+## A complete example
+
+```rust
+use pglite::{Replica, ReplicaConfig};
+use std::time::Duration;
+
+let cfg = ReplicaConfig {
+    host: "/var/run/postgresql".into(),
+    port: 5432,
+    user: "postgres".into(),
+    password: "".into(),
+    database: "app".into(),
+    publication: "app_pub".into(),
+    slot_name: "pglite_app".into(),
+    application_name: "pglite-replica".into(),
+    read_timeout: Duration::from_secs(5),
+    status_interval: Duration::from_secs(10),
+    role_poll_interval: Duration::from_secs(60),
+    ..Default::default()
+};
+
+let replica = Replica::start(db, cfg).await?;
+let rx = replica.subscribe();
+
+std::thread::spawn(move || {
+    while let Ok(committed) = rx.recv() {
+        for change in &committed.changes {
+            println!("{} on {}.{}", change_kind(change), change_schema(change), change_table(change));
+        }
+    }
+});
+
+replica.stop();
+Replica::decommission(&replica_db, &cfg).await?;
+```

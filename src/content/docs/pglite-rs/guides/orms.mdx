@@ -1,0 +1,106 @@
+---
+title: ORMs
+description: Drive pglite-rs from SQLx, SeaORM, or Diesel over the unix-socket gateway.
+---
+
+# Using ORMs
+
+ORMs speak the Postgres wire protocol over connections they open themselves, so `pglite-rs` meets them at a unix socket — a RAM kernel pipe with a filesystem nameplate, no TCP, no networking. One call covers every mode:
+
+```rust
+let db = PGlite::open("./data").await?;
+let url = db.unix_uri().await?;
+
+let pool = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(1)
+    .connect(&url)
+    .await?;                                                       // SQLx
+
+let conn = sea_orm::Database::connect(&url).await?;                // SeaORM
+
+let mut pg = diesel::PgConnection::establish(&url)?;               // Diesel
+```
+
+`unix_uri()` requires the `socket` feature (default). It's a no-op on Windows.
+
+## In-process engine
+
+The first `unix_uri()` call lazily starts a gateway thread that fakes a server; it lives inside `PGlite` and is cleaned up on `close()`/drop.
+
+- **Pool size 1.** The engine holds a single session, so set the ORM pool size to exactly 1.
+- **Shared session.** The ORM and the native Rust API share that session: a `db.exec` issued while the ORM holds an open transaction executes inside it.
+- **`COPY ... TO STDOUT` works** through the gateway.
+- **`COPY ... FROM STDIN` does not** for multi-row input — the in-process engine cannot pause mid-COPY. Use [multi-process mode](#multi-process-mode-recommended-for-orm-pools) for bulk loads.
+
+```rust
+use pglite::PGlite;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::Row;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let db = PGlite::open_temp().await?;
+    let url = db.unix_uri().await?;
+
+    let pool = PgPoolOptions::new().max_connections(1).connect(&url).await?;
+    sqlx::query("CREATE TABLE users (id serial PRIMARY KEY, name text NOT NULL)")
+        .execute(&pool).await?;
+    sqlx::query("INSERT INTO users (name) VALUES ('alice'), ('bob')")
+        .execute(&pool).await?;
+
+    let rows = sqlx::query("SELECT id, name FROM users WHERE id > $1 ORDER BY id")
+        .bind(0i32)
+        .fetch_all(&pool)
+        .await?;
+    for row in &rows {
+        let id: i32 = row.try_get(0)?;
+        let name: &str = row.try_get(1)?;
+        println!("{id}: {name}");
+    }
+
+    pool.close().await;
+    db.close().await?;
+    Ok(())
+}
+```
+
+## Multi-process mode (recommended for ORM pools)
+
+Real concurrent sessions, parallel transactions, cross-session locks. `unix_uri()` returns the child postmaster's native socket, so the same code works with a real pool:
+
+```rust
+use pglite::{PGlite, MultiProcessOptions};
+
+let db = PGlite::open_multi_process("./data", MultiProcessOptions::default()).await?;
+let url = db.unix_uri().await?;
+let pool = sqlx::postgres::PgPoolOptions::new().max_connections(4).connect(&url).await?;
+```
+
+External clients get `extra_connections` postmaster slots (default 4) — size it to your ORM pool via `MultiProcessOptions`. The socket lives until `close()`/drop; connect after open, disconnect before close.
+
+In multi-process mode, four concurrent `pg_sleep(0.4)` queries through a 4-connection pool run in parallel and finish in ~400 ms, not ~1.6 s.
+
+## Listeners and live queries coexist with ORMs
+
+Because the native API and the gateway share the same session (in-process) or the same postmaster (multi-process), `LISTEN`/`NOTIFY` and `LiveQuery` triggers fan out regardless of which side issued the `NOTIFY`:
+
+```rust
+let db = PGlite::open_temp().await?;
+let pool = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(1)
+    .connect(&db.unix_uri().await?)
+    .await?;
+
+db.listen("task_events", |payload| println!("{payload}")).await?;
+
+// SQLx fires NOTIFY, native callback receives it:
+sqlx::raw_sql("NOTIFY task_events, 'ping from SQLx'").execute(&pool).await?;
+```
+
+See the [reactive example](https://github.com/Midwess/pglite-rs/tree/main/examples) for a runnable end-to-end demo.
+
+## Caveats
+
+- The unix-socket path is bound to a directory under the OS temp dir. It is removed on `close()`/drop, but a `SIGKILL` leaves it behind.
+- `unix_uri()` only works on unix systems. On Windows, prefer the in-process native API directly.
+- For Diesel, `PgConnection::establish` is blocking — wrap it in `tokio::task::spawn_blocking` if you need to call it from async code.

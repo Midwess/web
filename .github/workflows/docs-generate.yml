@@ -96,20 +96,29 @@ jobs:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'minimax-m3' }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+          CI: "1"
           PROJECT_PATH: /tmp/project
         run: |
-          claude \
-            --dangerously-skip-permissions \
-            --model minimax-m3 \
-            --system-prompt-file .claude/docs-agent.md \
-            --task "PROJECT=$PROJECT
+          PROMPT="$(cat <<EOF
+          PROJECT=$PROJECT
           SLUG=$SLUG
           REPO=$REPO
           REF=$REF
           PROJECT_PATH=$PROJECT_PATH
 
-          Generate docs per the contract in the system prompt. Then run 'pnpm build' until green. Commit only files under src/content/docs/$SLUG/."
+          Generate docs per the contract in the system prompt file.
+          Then run 'pnpm build' until green. Commit only files under src/content/docs/$SLUG/.
+          EOF
+          )"
+          claude \
+            --dangerously-skip-permissions \
+            --model "$ANTHROPIC_MODEL" \
+            --system-prompt-file .claude/docs-agent.md \
+            --add-dir /tmp/project \
+            --print \
+            "$PROMPT"
 
       - name: Sanity check diff
         env:

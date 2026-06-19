@@ -1,0 +1,147 @@
+name: generate-project-docs
+
+on:
+  repository_dispatch:
+    types: [docs.generate]
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Display name (e.g. Worldant)"
+        required: true
+        type: string
+      slug:
+        description: "URL slug (must match src/content/slugs.json)"
+        required: true
+        type: string
+      repo:
+        description: "owner/name to clone (e.g. Midwess/worldant)"
+        required: true
+        type: string
+      ref:
+        description: "Commit SHA to read"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: docs-${{ github.event.client_payload.slug || inputs.slug }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT: ${{ github.event.client_payload.project || inputs.project }}
+      SLUG: ${{ github.event.client_payload.slug || inputs.slug }}
+      REPO: ${{ github.event.client_payload.repo || inputs.repo }}
+      REF: ${{ github.event.client_payload.ref || inputs.ref }}
+    steps:
+      - name: Validate payload
+        env:
+          SLUG: ${{ env.SLUG }}
+        run: |
+          if ! echo "$SLUG" | grep -qE '^[a-z0-9][a-z0-9-]{0,40}$'; then
+            echo "::error::invalid slug: $SLUG"
+            exit 1
+          fi
+          if ! jq -e --arg s "$SLUG" '.[] | select(. == $s)' src/content/slugs.json >/dev/null; then
+            echo "::error::slug $SLUG not in src/content/slugs.json allowlist"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Clone project source
+        env:
+          REPO: ${{ env.REPO }}
+          REF: ${{ env.REF }}
+          GH_TOKEN: ${{ secrets.PROJECT_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/project
+          if [ -n "${GH_TOKEN:-}" ]; then
+            AUTH="x-access-token:${GH_TOKEN}"
+          else
+            AUTH="x-access-token:${GITHUB_TOKEN}"
+          fi
+          git clone --depth 1 "https://${AUTH}@github.com/${REPO}.git" /tmp/project
+          cd /tmp/project
+          git checkout "$REF"
+
+      - name: Install OpenClaude
+        run: npm install -g openclaude@0.4.2
+
+      - name: Run doc agent
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          PROJECT_PATH: /tmp/project
+        run: |
+          openclaude \
+            --dangerously-skip-permissions \
+            --model minimax-m3 \
+            --system-prompt-file .claude/docs-agent.md \
+            --task "PROJECT=$PROJECT
+          SLUG=$SLUG
+          REPO=$REPO
+          REF=$REF
+          PROJECT_PATH=$PROJECT_PATH
+
+          Generate docs per the contract in the system prompt. Then run 'pnpm build' until green. Commit only files under src/content/docs/$SLUG/."
+
+      - name: Sanity check diff
+        env:
+          SLUG: ${{ env.SLUG }}
+        run: |
+          git add -N .
+          git status --porcelain | awk '{print $2}' | sort > /tmp/changed.txt
+          cat /tmp/changed.txt
+          EXPECTED="src/content/docs/${SLUG}/index.mdx src/content/docs/${SLUG}/meta.json"
+          while read -r f; do
+            case "$f" in
+              src/content/docs/"$SLUG"/*) ;;
+              *) echo "::error::agent modified file outside allowlist: $f"; exit 1 ;;
+            esac
+          done < /tmp/changed.txt
+          for e in $EXPECTED; do
+            [ -f "$e" ] || { echo "::error::missing required file: $e"; exit 1; }
+          done
+
+      - name: Open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLUG: ${{ env.SLUG }}
+          REF: ${{ env.REF }}
+          PROJECT: ${{ env.PROJECT }}
+          REPO: ${{ env.REPO }}
+        run: |
+          set -euo pipefail
+          git config user.name "docs-bot"
+          git config user.email "docs-bot@users.noreply.github.com"
+          SHORT="${REF::7}"
+          BRANCH="docs/${SLUG}-${SHORT}"
+          git checkout -B "$BRANCH"
+          git add "src/content/docs/${SLUG}"
+          git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
+          git commit -m "docs(${SLUG}): regenerate from ${PROJECT}@${SHORT}"
+          git push -u origin "$BRANCH" --force-with-lease
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "docs(${SLUG}): regenerate (${PROJECT}@${SHORT})" \
+            --body "Auto-generated from \`${PROJECT}\` (\`${REPO}\`) @ \`${REF}\` via \`repository_dispatch:docs.generate\`."

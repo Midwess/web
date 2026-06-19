@@ -10,6 +10,8 @@ import { ImageNoise } from "./ImageNoise";
 
 type Project = {
   name: string;
+  /** URL slug used by the docs pipeline + internal route. */
+  slug: string;
   tagline: string;
   sprite: string;
   /** Detail site — opened when the row itself is clicked. */
@@ -24,6 +26,7 @@ type Project = {
 const projects: Project[] = [
   {
     name: "Worldant",
+    slug: "worldant",
     tagline: "Vercel world implementation in Rust for agentic",
     sprite: "/pets/capvolt.webp",
     website: "https://github.com/Midwess/worldant",
@@ -33,6 +36,7 @@ const projects: Project[] = [
   },
   {
     name: "Pglite",
+    slug: "pglite-rs",
     tagline: "Lightweight embedded Postgres like SQLite",
     sprite: "/pets/goose-default.png",
     website: "https://github.com/Midwess/pglite-rs",
@@ -42,6 +46,7 @@ const projects: Project[] = [
   },
   {
     name: "PgPaw",
+    slug: "pgpaw",
     tagline: "A high performance realtime service with full SQL syntax support",
     sprite: "/pets/kaka-2.webp",
     website: "https://github.com/Midwess/PgPaw",
@@ -51,6 +56,7 @@ const projects: Project[] = [
   },
   {
     name: "Bytover",
+    slug: "bytover",
     tagline: "P2P file management and P2P transfer solution",
     sprite: "/pets/froggle.webp",
     website: "https://bytover.com",
@@ -100,6 +106,13 @@ const ProjectCard = ({ project }: { project: Project }) => (
       {project.tagline}
     </span>
     <ProgressBar value={project.progress} />
+    <Link
+      href={`/${project.slug}`}
+      aria-label={`${project.name} docs`}
+      className="relative z-20 shrink-0 rounded-md border border-olive-600 px-2 py-0.5 text-xs font-medium text-olive-100 transition-colors hover:border-olive-300 hover:text-olive-50"
+    >
+      Docs
+    </Link>
     {project.repo && (
       <Link
         href={`https://github.com/${project.repo}`}
@@ -151,7 +164,7 @@ const ProjectsPanel = () => {
       <ImageNoise
         image="/hoian.webp"
         size={3}
-        className="absolute inset-0 z-0 size-full [mask-image:linear-gradient(to_top,black_0%,transparent_60%)]"
+        className="absolute inset-0 z-0 size-full [mask-image:linear-gradient(to_top,black_0%,transparent_50%)]"
       />
       <motion.div
         ref={ref}
@@ -171,8 +184,8 @@ const ProjectsPanel = () => {
         {/* dithered photo on the card — subtle, fading up */}
         <ImageNoise
           image="/hoian.webp"
-          size={3}
-          className="absolute inset-0 z-0 size-full opacity-50 [mask-image:linear-gradient(to_top,black_0%,transparent_65%)]"
+          size={3.5}
+          className="absolute inset-0 z-0 size-full opacity-50 [mask-image:linear-gradient(to_top,black_0%,transparent_70%)]"
         />
         <div className="relative z-10 flex flex-1 flex-col">
           <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">

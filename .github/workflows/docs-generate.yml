@@ -88,8 +88,8 @@ jobs:
             git checkout "$REF"
           fi
 
-      - name: Install OpenClaude
-        run: npm install -g openclaude@0.4.2
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.183
 
       - name: Run doc agent
         env:

@@ -6,6 +6,7 @@ import { Link } from "./_link";
 import { GitHubStars } from "./GitHubStars";
 import { PetSprite } from "./PetSprite";
 import { Dot } from "./Dot";
+import { ImageNoise } from "./ImageNoise";
 
 type Project = {
   name: string;
@@ -77,7 +78,7 @@ const ProgressBar = ({ value }: { value: number }) => (
 );
 
 const ProjectCard = ({ project }: { project: Project }) => (
-  <div className="group relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-300 hover:bg-olive-800">
+  <div className="group border-1 border-olive-700 relative flex items-center gap-3 rounded-lg px-3 py-1.5 transition-colors duration-300 bg-olive-700/80">
     {/* Whole-row click → the project's detail site. */}
     <Link
       href={project.website}
@@ -146,41 +147,52 @@ const ProjectsPanel = () => {
       <Dot top right />
       <Dot bottom left />
       <Dot bottom right />
-      <div className="pointer-events-none absolute inset-x-4 inset-y-12 z-0 rounded-2xl bg-[image:repeating-linear-gradient(315deg,_var(--color-olive-500)_0,_var(--color-olive-500)_1px,_transparent_0,_transparent_50%)] bg-[size:10px_10px] opacity-40 md:inset-x-8 md:inset-y-16" />
+      {/* Hoi An photo, dithered with the shader algorithm — strong at bottom */}
+      <ImageNoise
+        image="/hoian.webp"
+        size={3}
+        className="absolute inset-0 z-0 size-full [mask-image:linear-gradient(to_top,black_0%,transparent_60%)]"
+      />
       <motion.div
         ref={ref}
-        className="relative z-10 flex w-full flex-1 flex-col rounded-2xl p-5 backdrop-blur-[2px] md:p-8"
+        className="relative z-10 flex w-full flex-1 flex-col overflow-hidden rounded-2xl p-5 md:p-8"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ opacity: { duration: 0.3, delay: 0.2 } }}
         style={{
           translateX,
           translateY,
           background:
-            "linear-gradient(to bottom, oklch(15.3% 0.006 107.1 / 0.5) 0%, oklch(15.3% 0.006 107.1) 50%, oklch(15.3% 0.006 107.1 / 0.5) 100%)",
+            "radial-gradient(120% 75% at 50% -10%, rgba(198,187,88,0.12) 0%, transparent 58%), linear-gradient(to bottom, oklch(24% 0.013 107.4), oklch(16.5% 0.006 107.1))",
         }}
       >
-        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
-          <div>
-            <Badge text="Projects" />
-            <SectionHeading className="mt-3 text-left text-lg md:text-xl lg:text-2xl">
-              Open source infrastructure
-            </SectionHeading>
+        {/* dithered photo on the card — subtle, fading up */}
+        <ImageNoise
+          image="/hoian.webp"
+          size={3}
+          className="absolute inset-0 z-0 size-full opacity-50 [mask-image:linear-gradient(to_top,black_0%,transparent_65%)]"
+        />
+        <div className="relative z-10 flex flex-1 flex-col">
+          <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <SectionHeading className="mt-3 text-left text-lg [text-shadow:0_1px_8px_rgba(0,0,0,0.5)] md:text-xl lg:text-2xl">
+                Projects
+              </SectionHeading>
+            </div>
+            <Link
+              href="https://github.com/Midwess"
+              className="text-sm font-medium text-olive-200 transition-colors hover:text-olive-50"
+            >
+              All projects →
+            </Link>
           </div>
-          <Link
-            href="https://github.com/Midwess"
-            className="text-sm font-medium text-olive-300 transition-colors hover:text-olive-100"
-          >
-            All projects →
-          </Link>
-        </div>
-        <div className="mt-8 flex flex-1 flex-col gap-2">
-          {projects.map((p) => (
-            <ProjectCard key={p.name} project={p} />
-          ))}
+          <div className="mt-8 flex flex-1 flex-col gap-2">
+            {projects.map((p) => (
+              <ProjectCard key={p.name} project={p} />
+            ))}
+          </div>
         </div>
       </motion.div>
     </div>

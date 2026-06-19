@@ -28,7 +28,7 @@ const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
   const post = slug ? getPost(slug) : undefined;
 
-  if (!post) return <Navigate to="/blog" replace />;
+  if (!post) return <Navigate to="/#writing" replace />;
 
   return (
     <>
@@ -38,7 +38,7 @@ const BlogPost = () => {
         <Container className="border-x border-divide px-4 pt-12 pb-16 md:px-8 md:pt-20">
           <div className="mx-auto max-w-2xl">
             <Link
-              href="/blog"
+              href="/#writing"
               className="font-mono text-xs uppercase tracking-[0.15em] text-olive-400 transition-colors hover:text-olive-100"
             >
               ← All writing

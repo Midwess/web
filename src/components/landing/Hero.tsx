@@ -6,9 +6,9 @@ import { HeroHighlights } from "./HeroHighlights";
 import { HeroNoise } from "./HeroNoise";
 
 export const Hero = () => (
-  <Container className="relative flex min-h-[85vh] flex-col overflow-hidden border-x border-divide">
-    <DesertBackground variant="mountain" effectExtent="half" />
-    <HeroNoise className="pointer-events-none absolute inset-0 z-[1] mix-blend-screen opacity-70" />
+  <Container className="relative flex min-h-[85vh] flex-col overflow-hidden border-x border-divide bg-olive-950">
+    <DesertBackground variant="mountain" withMesh={false} />
+    <HeroNoise />
 
     <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 pt-16 pb-16 md:pt-32 md:pb-24">
       <motion.span

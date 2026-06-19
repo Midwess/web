@@ -3,7 +3,7 @@ import { Footer } from "@/components/landing/Footer";
 import { DivideX } from "@/components/landing/Divide";
 import { Hero } from "@/components/landing/Hero";
 import { Projects } from "@/components/landing/Projects";
-import { Values } from "@/components/landing/Values";
+import { Writing } from "@/components/landing/Writing";
 import { Shipping } from "@/components/landing/Shipping";
 import { Connect } from "@/components/landing/Connect";
 
@@ -15,7 +15,7 @@ const Landing = () => (
       <DivideX />
       <Projects />
       <DivideX />
-      <Values />
+      <Writing />
       <DivideX />
       <Shipping />
       <DivideX />

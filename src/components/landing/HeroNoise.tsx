@@ -1,20 +1,18 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
 
-// WebGL shader — load it lazily and client-only (mirrors fumadocs' dynamic
-// ssr:false import) so it stays out of the initial bundle.
+// WebGL shader — lazy + client-only (mirrors fumadocs' dynamic ssr:false).
 const GrainGradient = lazy(() =>
   import("@paper-design/shaders-react").then((m) => ({
     default: m.GrainGradient,
   })),
 );
 
-/** Animated grainy gradient backdrop, tuned to the olive palette. */
-export const HeroNoise = ({ className }: { className?: string }) => {
+/** Grainy gradient overlay for the hero, colored to match the mountain photo's
+ *  own theme (cool teal / slate) so it reads as one image. */
+export const HeroNoise = () => {
   const [show, setShow] = useState(false);
 
-  // Small delay before mounting: on slower devices the shader errors if its
-  // uniforms aren't ready yet (same reason fumadocs delays it).
+  // Delay mount: shader uniforms can error before the canvas is ready.
   useEffect(() => {
     const t = setTimeout(() => setShow(true), 300);
     return () => clearTimeout(t);
@@ -25,11 +23,11 @@ export const HeroNoise = ({ className }: { className?: string }) => {
   return (
     <Suspense fallback={null}>
       <GrainGradient
-        className={cn("animate-in fade-in duration-1000", className)}
-        colors={["#8a9a4b", "#a65f2e", "#15170c00"]}
+        className="absolute inset-0 z-[1] mix-blend-screen opacity-90 animate-in fade-in duration-1000"
+        colors={["#5aa0bb", "#225267", "#14253300"]}
         colorBack="#00000000"
         softness={1}
-        intensity={0.85}
+        intensity={0.9}
         noise={0.5}
         speed={1}
         shape="corners"

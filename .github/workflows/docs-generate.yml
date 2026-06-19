@@ -40,6 +40,11 @@ jobs:
       REPO: ${{ github.event.client_payload.repo || inputs.repo }}
       REF: ${{ github.event.client_payload.ref || inputs.ref }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Validate payload
         env:
           SLUG: ${{ env.SLUG }}
@@ -52,11 +57,6 @@ jobs:
             echo "::error::slug $SLUG not in src/content/slugs.json allowlist"
             exit 1
           fi
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:

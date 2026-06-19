@@ -94,11 +94,12 @@ jobs:
       - name: Run doc agent
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
           PROJECT_PATH: /tmp/project
         run: |
-          openclaude \
+          claude \
             --dangerously-skip-permissions \
             --model minimax-m3 \
             --system-prompt-file .claude/docs-agent.md \

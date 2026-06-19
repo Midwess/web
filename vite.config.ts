@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     mdx({
       remarkPlugins: [remarkGfm, [remarkFrontmatter, "yaml"]],
-      rehypePlugins: [rehypeShiki],
+      rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
       providerImportSource: "@mdx-js/react",
     }),
   ],

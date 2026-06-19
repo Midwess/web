@@ -1,0 +1,5 @@
+{
+  "title": "Worldant",
+  "description": "Vercel world implementation in Rust for agentic",
+  "pages": ["index", "installation", "quickstart"]
+}

@@ -1,0 +1,21 @@
+---
+title: Quickstart
+description: Deploy your first agent in under 5 minutes
+---
+
+# Quickstart
+
+```rust title="src/main.rs"
+use worldant::{Agent, deploy};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let agent = Agent::from_env()?;
+    deploy(agent).await?;
+    Ok(())
+}
+```
+
+Set `VERCEL_TOKEN` in your environment, then `cargo run`.
+
+Next: read the [API reference](/worldant) (TODO: API page).

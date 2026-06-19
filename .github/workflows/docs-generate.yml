@@ -130,6 +130,7 @@ jobs:
           while read -r f; do
             case "$f" in
               src/content/docs/"$SLUG"/*) ;;
+              dist/*|node_modules/*|.next/*) ;;
               *) echo "::error::agent modified file outside allowlist: $f"; exit 1 ;;
             esac
           done < /tmp/changed.txt

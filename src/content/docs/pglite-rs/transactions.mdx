@@ -1,0 +1,91 @@
+---
+title: Transactions
+description: db.transaction(), rollback on drop, connection pinning in multi-process mode
+---
+
+# Transactions
+
+`db.transaction()` returns a `Transaction<'_>` that borrows the `PGlite`. The transaction owns a single session — in-process mode serializes it with the rest of the engine, multi-process mode pins it to one backend. Drop the transaction without committing and the host sends a fire-and-forget `ROLLBACK` so Postgres unwinds the session.
+
+## Basic transaction
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+tx.exec("INSERT INTO users (name) VALUES ('bob')").await?;
+tx.commit().await?;
+```
+
+`commit` flushes the transaction and consumes the `Transaction`; the `PGlite` is unborrowed and can be used for the next statement. `query` works the same way inside a transaction as outside.
+
+## Rollback on drop
+
+If the `Transaction` is dropped without `commit`, the host issues a `ROLLBACK` over the wire on the way out. This makes the borrow pattern safe: returning early from a function with `?` rolls the transaction back automatically.
+
+```rust
+fn maybe_insert(db: &PGlite, name: &str) -> Result<(), pglite::Error> {
+    let tx = db.transaction().await?;
+    tx.query(
+        "INSERT INTO users (name) VALUES ($1)",
+        &[&name],
+    ).await?;
+    if name == "forbidden" {
+        // tx dropped here → ROLLBACK sent on the wire
+        return Err(pglite::Error::Protocol("forbidden name".into()));
+    }
+    tx.commit().await?;
+    Ok(())
+}
+```
+
+`Transaction` also exposes an explicit `rollback()` for cases where you want to fail loud instead of relying on drop.
+
+## Reading inside a transaction
+
+`Transaction::query` returns rows just like `PGlite::query`. Bind parameters work the same way; types are decoded with `row.get::<T, _>(idx)`.
+
+```rust
+let tx = db.transaction().await?;
+let rows = tx
+    .query("SELECT id, name FROM users WHERE id > $1", &[&0i32])
+    .await?;
+for row in &rows {
+    let id: i32 = row.get(0)?;
+    let name: &str = row.get(1)?;
+    println!("{id} {name}");
+}
+tx.commit().await?;
+```
+
+## Multi-process connection pinning
+
+In multi-process mode the pool is a set of real Postgres backends. A `Transaction` borrows one backend exclusively — `BEGIN` and `COMMIT` hit the same backend, which is required for Postgres' session state (advisory locks, `SET LOCAL`, temp tables, prepared statements, etc.).
+
+The host enforces this. While a `Transaction` is alive, the borrowed backend is not returned to the pool, even if you call `db.query` from another task — that call will wait for the backend to free up or surface `Error::PoolExhausted` after 30 seconds. So `Transaction` borrows are exclusive by design.
+
+## Savepoints
+
+`SAVEPOINT` and `RELEASE SAVEPOINT` are plain SQL — issue them through `tx.exec`. pglite-rs does not expose a dedicated savepoint API; the underlying Postgres handles nested transactions the standard way.
+
+## Error handling
+
+A statement that returns an `Error::Database` rolls the transaction back. The `Transaction` is still alive afterwards — you can decide to keep going (issuing more statements) or drop it to confirm the rollback. A `?` on the error leaves the function and drops the transaction, which sends the `ROLLBACK` for you.
+
+```rust
+let tx = db.transaction().await?;
+tx.exec("INSERT INTO accounts (id, balance) VALUES (1, 100)").await?;
+match tx.exec("INSERT INTO accounts (id, balance) VALUES (2, 50)").await {
+    Ok(()) => tx.commit().await?,
+    Err(e) => {
+        // tx drops at end of block, ROLLBACK is sent on the wire
+        return Err(e);
+    }
+}
+```
+
+## What's next
+
+- [**Listen & notify**](/pglite-rs/listen-notify) — `listen()` callbacks, `NOTIFY`, live queries
+- [**ORM integration**](/pglite-rs/orm) — `unix_uri()` for SQLx, SeaORM, Diesel
+- [**Multi-process mode**](/pglite-rs/multi-process) — real concurrent sessions, connection pinning
+- [**Configuration**](/pglite-rs/configuration) — `MultiProcessOptions.extra_connections`, `idle_ttl`

@@ -1,6 +1,24 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Fumadocs real docs theme + layout.
+   - neutral.css : `--color-fd-*` color tokens (their colours)
+   - preset.css  : base layer, shiki, typography plugin, and the `@source
+                   inline(...)` safelists that emit every fumadocs layout class
+                   (grid, sticky rails, sidebar collapse + scroll animations).
+   This is what makes the real <DocsLayout>/<DocsPage> render correctly. */
+@import '@fumadocs/base-ui/css/neutral.css';
+@import '@fumadocs/base-ui/css/preset.css';
+
+/* Brand highlight — fumadocs draws every active/highlight state from
+   `--color-fd-primary` (active sidebar item, TOC thumb, breadcrumb, copy
+   ticks). Re-point it to our orange. Only the docs use `fd-*` tokens, so this
+   doesn't touch the olive landing. Plain `.dark` wins over neutral.css's own
+   `.dark` by source order. */
+:root,
+.dark {
+  --color-fd-primary: oklch(0.72 0.19 47);          /* brand orange */
+  --color-fd-primary-foreground: oklch(0.15 0.006 107);
+}
 
 @theme {
   /* Fonts */
@@ -145,6 +163,24 @@
 *::-webkit-scrollbar-thumb { background: oklch(28.6% 0.016 107.4 / 0.4); border-radius: 9999px; }
 *::-webkit-scrollbar-thumb:hover { background: oklch(28.6% 0.016 107.4 / 0.6); }
 *::-webkit-scrollbar-corner { background: transparent; }
+
+/* Docs code block padding — give the code room to breathe inside the
+   block. The default fumadocs/shiki padding hugs the code against the
+   top/bottom and left edges; bump both axes so multi-line snippets don't
+   crowd the block. Scoped to <main> so it only affects docs, not the
+   landing page. */
+main pre,
+main figure pre,
+main div[data-rehype-pretty-code-figure] pre,
+main pre code {
+  padding-top: 1.25rem !important;
+  padding-bottom: 1.25rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+main pre code {
+  line-height: 1.7;
+}
 
 @theme inline {
   --animate-marquee-horizontal: marquee-horizontal var(--marquee-duration) infinite linear;

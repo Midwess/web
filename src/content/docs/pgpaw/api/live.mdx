@@ -1,0 +1,138 @@
+---
+title: POST /query?live=true
+description: SSE event stream — snapshot pointer, row-level deltas, up-to-date heartbeat, reset
+---
+
+# `POST /query?live=true`
+
+Opens a Server-Sent Events stream. The first event is a snapshot pointer (or, for access-controlled queries, the initial rows inline). Subsequent events are row-level deltas. The stream stays open and emits another batch on every relevant upstream commit.
+
+## Request
+
+```json
+{ "sql": "select id, status from orders" }
+```
+
+Headers:
+
+- `Authorization: Bearer <jwt>` — required for access-controlled queries
+- `content-type: application/json`
+- `Accept: text/event-stream` — recommended, not required
+
+The body shape is identical to `POST /query`. The `?live=true` query string is what switches the response from `303` to SSE.
+
+## Event format
+
+Every event is a single `data:` line followed by a blank line. The payload is JSON.
+
+### Public query
+
+```
+data: {"type":"snapshot","url":"/q/9a4f/v=42","version":42}
+
+data: {"op":"insert","key":"7","row":{"id":7,"status":"paid"},"txid":7654321}
+
+data: {"op":"update","key":"7","row":{"id":7,"status":"refunded"},"txid":7654322}
+
+data: {"op":"delete","key":"7","txid":7654323}
+
+data: {"op":"up-to-date","txid":7654323}
+```
+
+The first event is the **snapshot pointer** — clients can fetch the body once (`GET /q/9a4f/v=42`) and then apply only the deltas. The terminal `up-to-date` event marks the end of one round of diffs; the stream stays open and emits another batch on the next relevant commit.
+
+### Access-controlled query
+
+```
+data: {"type":"snapshot","rows":[{"id":7,"status":"paid"}],"version":42}
+
+data: {"op":"insert","key":"7","row":{"id":7,"status":"refunded"},"txid":7654322}
+```
+
+Access-controlled queries have no shared cacheable snapshot — the initial rows are inline. Deltas are recomputed under the token's role on each round. The stream is never cached.
+
+## Event types
+
+| `op` / `type` | When | Fields |
+|---|---|---|
+| `snapshot` | first event of every stream | `type`, `url` (public) or `rows` (private), `version` |
+| `insert` | a new row matches the query | `op`, `key`, `row`, `txid` |
+| `update` | an existing row changed | `op`, `key`, `row` (new state), `txid` |
+| `delete` | a row no longer matches | `op`, `key`, `txid` |
+| `up-to-date` | end of one round of diffs | `op`, `txid` |
+| `reset` | replication lag dropped transactions | `op` |
+
+The `key` is the row's primary key, or the hash of the row if the table has no PK / no `REPLICA IDENTITY FULL`. The `row` is the new state of the row for `insert` and `update`. `delete` carries no `row` — just the `key`.
+
+The `txid` is the low 32 bits of `pg_current_xact_id()` on the upstream at commit. It is stable across reconnects (replay from the watermark skips already-applied transactions) and is the same identifier used for optimistic-write reconciliation in client libraries.
+
+## The `up-to-date` heartbeat
+
+Every event carries a `txid`. The terminal `up-to-date` event marks the end of one round of diffs and carries the txid even when the round produced no row changes — a no-op update, or a write outside the query's filter. So a client awaiting a specific txid (e.g. after an optimistic write) can wait for the matching `up-to-date` event to know that write is reflected in subsequent reads.
+
+```js
+// Awaiting txid 7654323 — the next up-to-date event with this txid confirms it
+for await (const event of stream) {
+  if (event.op === "up-to-date" && event.txid === 7654323) {
+    return event;
+  }
+}
+```
+
+The stream stays open. If the next relevant commit does not affect the query, no `insert` / `update` / `delete` events are sent — just the `up-to-date` heartbeat for the new txid. A client that is only interested in txid progress gets the heartbeat without paying for row diffs.
+
+## Reset events
+
+If the replication feed lags and transactions are dropped, PgPaw emits a `reset` control event:
+
+```
+data: {"op":"reset"}
+```
+
+Clients should re-load the snapshot and apply deltas from a clean state. A `reset` means the linear stream of deltas is no longer continuous — the watermark has jumped past a txid that the client never saw.
+
+The right response to a `reset`:
+
+```js
+if (event.op === "reset") {
+  // 1. Re-fetch the snapshot
+  const snap = await fetch(`/q/${hash}/v=${currentVersion}`);
+  rows = snap.rows;
+  // 2. Resume applying deltas from the new stream
+}
+```
+
+A `reset` is rare and indicates upstream replication lag, not normal operation.
+
+## Examples
+
+Open a public stream:
+
+```bash
+curl -N -X POST 'http://127.0.0.1:8080/query?live=true' \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, status from orders"}'
+# data: {"type":"snapshot","url":"/q/9a4f/v=42","version":42}
+#
+# data: {"op":"insert","key":"7","row":{"id":7,"status":"paid"},"txid":7654321}
+# data: {"op":"up-to-date","txid":7654321}
+```
+
+Open an access-controlled stream (token required):
+
+```bash
+curl -N -X POST 'http://127.0.0.1:8080/query?live=true' \
+     -H 'authorization: Bearer <jwt>' \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, total from orders"}'
+# data: {"type":"snapshot","rows":[{"id":7,"total":4200}],"version":42}
+#
+# data: {"op":"update","key":"7","row":{"id":7,"total":4500},"txid":7654322}
+```
+
+## What's next
+
+- [**API overview**](/pgpaw/api) — error envelope, CORS, status codes
+- [**`POST /query`**](/pgpaw/api/query) — the snapshot-mode entry point
+- [**`GET /q/{hash}/{version}`**](/pgpaw/api/snapshot) — fetch the snapshot the live stream points to
+- [**How it works**](/pgpaw/how-it-works) — the LiveHub that re-runs SQL on each commit

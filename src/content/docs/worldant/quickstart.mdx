@@ -1,21 +1,131 @@
 ---
 title: Quickstart
-description: Deploy your first agent in under 5 minutes
+description: End-to-end — install, wire up the world, run a workflow, read the result
 ---
 
 # Quickstart
 
-```rust title="src/main.rs"
-use worldant::{Agent, deploy};
+The smallest end-to-end path: install the package, boot the world, run a workflow, read the result. If you have done this once, the rest of the guides pick up a single concept at a time.
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let agent = Agent::from_env()?;
-    deploy(agent).await?;
-    Ok(())
+## 1. Install the package
+
+```bash
+pnpm add @midwess/worldant
+# or npm install / yarn add
+```
+
+This pulls in `@workflow/core`, `@workflow/world`, and a prebuilt `world.<target>.node` binary that matches your OS. See [Installation](/worldant/installation) for supported platforms and requirements.
+
+## 2. Wire up the world
+
+Create a file that boots once, at the top of your app's entry point:
+
+```ts title="src/world.ts"
+import { install } from '@midwess/worldant';
+
+export const world = await install({ dataDir: './.world' });
+```
+
+`install()` does three things:
+
+1. Creates and opens the `World` (NAPI handle to the Rust storage engine) at `dataDir`. Creates `./.world` if it doesn't exist.
+2. Calls `setWorld()` from `@workflow/core/runtime` so any code that calls `getWorld()` finds it.
+3. Starts the queue dispatcher. The world is now processing work.
+
+Import this file at the top of your entry point — before any handler that starts a workflow:
+
+```ts title="src/main.ts"
+import './world.js'; // boots the world first
+import { start } from 'workflow/api';
+import { serve } from '@hono/node-server';
+import { checkout } from './workflows/checkout.js';
+
+serve(async (req) => {
+  const url = new URL(req.url);
+  if (url.pathname === '/checkout' && req.method === 'POST') {
+    const order = await req.json();
+    const run = await start(checkout, [order]);
+    return Response.json({ runId: run.runId });
+  }
+  return new Response('not found', { status: 404 });
+});
+```
+
+(Any HTTP framework works. The point is `import './world.js'` runs before you start handling requests.)
+
+## 3. Write a workflow
+
+Workflows use the `"use workflow"` directive inside the exported function. Steps use `"use step"` at the top of a step function.
+
+```ts title="src/workflows/checkout.ts"
+import { start } from 'workflow/api';
+
+export async function checkout(order: { id: string }): Promise<{ runId: string }> {
+  'use workflow';
+  return { runId: order.id };
 }
 ```
 
-Set `VERCEL_TOKEN` in your environment, then `cargo run`.
+The compiler (`swc` from `@workflow/core`) extracts these at build time. Run the build transform as part of your build script:
 
-Next: read the [API reference](/worldant) (TODO: API page).
+```json title="package.json"
+{
+  "scripts": {
+    "build": "tsc -p tsconfig.json && workflow build src/workflows"
+  }
+}
+```
+
+The full primitive set — `'use step'`, retries, hooks, streams, child workflows — is on the [Workflows](/worldant/workflows) page. The Vercel Workflow docs cover the underlying model.
+
+## 4. Run it
+
+```bash
+pnpm build
+node dist/main.js
+```
+
+In another terminal:
+
+```bash
+curl -X POST http://localhost:3000/checkout \
+  -H 'content-type: application/json' \
+  -d '{"id": "A1"}'
+
+# {"runId":"wrun_..."}
+```
+
+The server returns a `runId` immediately. The workflow itself runs in the background; the world writes events to SQLite as the steps complete.
+
+## 5. Read the result
+
+```ts
+import { getRun } from 'workflow/api';
+import { checkout } from './workflows/checkout.js';
+
+const run = getRun<{ runId: string }>('wrun_...');
+const result = await run.returnValue; // resolves when the run finishes
+console.log(result);
+```
+
+You can also read events, step results, and stream data through the `world` instance:
+
+```ts
+import { world } from './world.js';
+
+const events = await world.events.list({ runId: 'wrun_...' });
+const steps = await world.steps.list({ runId: 'wrun_...' });
+```
+
+See [Reading runs](/worldant/reading-runs) for the full query surface.
+
+## What's next
+
+You have a working world. Pick the next capability that matters to your code:
+
+- [**Workflows**](/worldant/workflows) — `'use workflow'`, `'use step'`, retries, hooks, streams
+- [**Reading runs**](/worldant/reading-runs) — `getRun`, `run.returnValue`, `world.events` / `steps` / `runs`
+- [**Supervisor**](/worldant/supervisor) — the `worldant` CLI for scale-to-zero
+- [**Configuration**](/worldant/configuration) — `WorldConfig`, env vars, paths, codec
+- [**How it works**](/worldant/how-it-works) — the layers, data flow, supervisor lifecycle
+- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model

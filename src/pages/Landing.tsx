@@ -5,7 +5,6 @@ import { Hero } from "@/components/landing/Hero";
 import { Projects } from "@/components/landing/Projects";
 import { Writing } from "@/components/landing/Writing";
 import { Shipping } from "@/components/landing/Shipping";
-import { Connect } from "@/components/landing/Connect";
 
 const Landing = () => (
   <>
@@ -18,8 +17,6 @@ const Landing = () => (
       <Writing />
       <DivideX />
       <Shipping />
-      <DivideX />
-      <Connect />
       <DivideX />
     </main>
     <Footer />

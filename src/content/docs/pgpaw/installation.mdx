@@ -1,0 +1,88 @@
+---
+title: Installation
+description: cargo install pgpaw or npm install -g pgpaw, plus the upstream init step
+---
+
+# Installation
+
+PgPaw is a single static binary. Install it with whichever toolchain you have, then run `pgpaw init` once against the upstream Postgres to set up the logical replication source.
+
+## Install
+
+```bash
+# via Cargo (builds from source — needs a Rust toolchain)
+cargo install pgpaw
+
+# via npm (downloads a prebuilt binary for your platform)
+npm install -g pgpaw
+```
+
+Prebuilt binaries are published for:
+
+| Platform | Architecture |
+|---|---|
+| Linux | `x86_64` (glibc) |
+| macOS | Apple Silicon (`arm64`) |
+
+Other platforms build from source via `cargo install pgpaw`. Cargo and npm are the only tools you need.
+
+## Verify
+
+```bash
+pgpaw --version
+pgpaw --help
+```
+
+You should see the subcommand list (`init`, `serve`) and the full set of flags.
+
+## Requirements
+
+- **A reachable Postgres 13+** with superuser access. PgPaw needs to set `wal_level=logical` (a server-level setting that requires a Postgres restart) and create a publication and a DDL event trigger. All of this is done by `pgpaw init`.
+- **For `cargo install`:** Rust 1.85+ on the build machine. The resulting binary is static and runs anywhere.
+- **For `npm install`:** nothing. The npm package ships the right prebuilt binary for your OS via platform-specific optional dependencies.
+- **Disk:** the replica data dir lives at `./cache-data` by default. About 23 MB for the embedded engine plus your data.
+- **Network:** the replica connects to the upstream Postgres for logical replication. The PgPaw process binds an HTTP port for `serve`. No other inbound or outbound connections.
+
+## One-time upstream setup: `pgpaw init`
+
+Before serving queries, run `pgpaw init` against the upstream Postgres. It does four things:
+
+1. Sets `wal_level=logical` if it is not already. If this is a change, PgPaw prints a notice — restart Postgres to apply it.
+2. Creates the publication (`cache_server_pub` by default) covering all tables.
+3. Installs the DDL event trigger (`pglite_emit_ddl` on `ddl_command_end`) so the replica sees schema changes.
+4. Verifies the connection and the role has `REPLICATION` and `LOGIN` privileges.
+
+```bash
+pgpaw init \
+    --pg-host 127.0.0.1 \
+    --pg-user postgres \
+    --pg-password "$POSTGRES_PASSWORD" \
+    --pg-database myapp
+```
+
+After `init`, if it printed a notice about `wal_level`, restart Postgres. The publication and trigger are durable in the catalog — you only need to run `init` once per upstream.
+
+## Then serve
+
+```bash
+pgpaw serve \
+    --pg-host 127.0.0.1 \
+    --pg-user postgres \
+    --pg-password "$POSTGRES_PASSWORD" \
+    --pg-database myapp \
+    --port 8080
+```
+
+`serve` opens the embedded pglite-rs replica, starts the queue dispatcher, and binds the HTTP port. On first boot the replica runs an initial backfill under the slot's exported snapshot. Subsequent boots resume from the watermark.
+
+## Health check
+
+```bash
+curl -s http://127.0.0.1:8080/healthz
+```
+
+`{"status":"ok","watermark":12345678}` once the replica is caught up. `{"status":"halted","reason":"…"}` if the applier halted (incompatible DDL, security reconcile failure, etc.).
+
+## Next step
+
+Run the [Quickstart](/pgpaw/quickstart) to send your first snapshot and live query.

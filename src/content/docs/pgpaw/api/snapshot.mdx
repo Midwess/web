@@ -1,0 +1,91 @@
+---
+title: GET /q/{hash}/{version}
+description: Fetch an immutable, CDN-cacheable snapshot
+---
+
+# `GET /q/{hash}/{version}`
+
+Fetch an immutable, CDN-cacheable snapshot. The URL is the content — the same `{hash}/{version}` always returns the same body, even years later.
+
+## Path
+
+```
+GET /q/{hash}/{version}
+```
+
+- `{hash}` — `DefaultHasher` over the parsed SQL statement. Stable for the same query, modulo whitespace and case.
+- `{version}` — the `VersionIndex` value when the snapshot was issued. Monotonic with upstream writes.
+
+## Response
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+ETag: 9a4f:42
+Cache-Control: public, max-age=31536000, immutable
+```
+
+```json
+[
+  { "id": 7, "email": "alice@example.com" }
+]
+```
+
+The response is safe to cache at the CDN edge for a year. The URL is the cache key; the body is content-addressed.
+
+## Headers
+
+| Header | Value | Why |
+|---|---|---|
+| `Content-Type` | `application/json` | result rows are JSON |
+| `ETag` | `{hash}:{version}` | strong validator for tooling that wants it; the URL is the actual cache key |
+| `Cache-Control` | `public, max-age=31536000, immutable` | tell every CDN, browser, and proxy: do not revalidate for a year |
+| `Vary` | *(none — the URL is the key)* | the URL is the cache key; no header-based variation |
+
+The `immutable` directive is RFC 8246. It tells the CDN the response will never change, so it can be served from cache without revalidation for the full `max-age`.
+
+## Stale versions
+
+If the version in the URL is older than the current `VersionIndex` value, the request still returns the frozen snapshot. The current request gets a new URL on the next call to `POST /query`.
+
+This is the right behavior:
+
+- A client that fetches `/q/9a4f/v=42` and caches the URL gets that body for a year.
+- A subsequent `POST /query` for the same SQL returns the new version's URL (`/q/9a4f/v=43`), pointing the client to the new snapshot.
+- The old URL never has to be invalidated because it is content-addressed; the old body is still correct for the moment it was issued.
+
+There is no `If-None-Match` round-trip — the URL itself is the cache key.
+
+## What `404` means
+
+`/q/{hash}/{version}` only returns `404 NotFoundError` if the `{hash}` was never produced or if the local cache evicted the body under memory pressure. The URL is content-addressed, so a valid `{hash}/{version}` should always find its body. `404` is rare and indicates cache eviction, not a missing snapshot.
+
+If you see `404` in normal operation, your `--cache-size-bytes` is too small for the working set of snapshot URLs. Increase it.
+
+## Examples
+
+```bash
+# Follow a 303 from POST /query
+curl -L -X POST http://127.0.0.1:8080/query \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, email from users where id = 7"}'
+# [{"id":7,"email":"alice@example.com"}]
+
+# Fetch a known snapshot URL directly
+curl -i http://127.0.0.1:8080/q/9a4f/v=42
+# HTTP/1.1 200 OK
+# Content-Type: application/json
+# ETag: 9a4f:42
+# Cache-Control: public, max-age=31536000, immutable
+
+# CDN-friendly: same body, no revalidation
+curl -H 'cache-control: max-stale=31536000' \
+     http://127.0.0.1:8080/q/9a4f/v=42
+```
+
+## What's next
+
+- [**`POST /query`**](/pgpaw/api/query) — the entry point that issues these URLs
+- [**`POST /query?live=true`**](/pgpaw/api/live) — SSE event stream for live deltas
+- [**API overview**](/pgpaw/api) — error envelope, CORS, status codes
+- [**How it works**](/pgpaw/how-it-works) — the cache invalidation flow that makes this safe

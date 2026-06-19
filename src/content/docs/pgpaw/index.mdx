@@ -1,0 +1,63 @@
+---
+title: PgPaw
+description: Read-only Postgres cache + realtime server over an embedded pglite-rs logical replica
+---
+
+# PgPaw
+
+PgPaw is a single Rust binary that sits in front of a Postgres and serves **CDN-cacheable, immutable query snapshots** *and* **live realtime updates** from the same endpoint. Unlike shape- or ZQL-based sync engines, you query with plain Postgres SQL — no bespoke query language to learn.
+
+It embeds a [pglite-rs](/pglite-rs) instance as a logical replica of your upstream Postgres, runs every read inside that replica, and gives you three things that are usually painful to bolt on:
+
+1. **Precise, watermark-derived cache invalidation** keyed on per-table / per-PK LSN state.
+2. **CDN-cacheable, immutable versioned snapshots** — `303` redirects to a content-hash URL with `Cache-Control: public, max-age=31536000, immutable`.
+3. **Realtime deltas over SSE** — first event is a snapshot pointer, then `insert` / `update` / `delete` events per affected row.
+
+## Features
+
+- **Single static binary.** `cargo install pgpaw` or `npm install -g pgpaw`. One process, one config, one upstream.
+- **Plain Postgres SQL.** `SELECT id, email FROM users WHERE id = 7` — no DSL, no codegen, no schema sync. Drop it into [TanStack Query](https://tanstack.com) / DB, REST clients, anything that speaks HTTP.
+- **Immutable, CDN-cacheable responses.** Every snapshot lives at `/q/{hash}/{version}` with a year-long `Cache-Control: immutable`. The URL *is* the content; the CDN never re-validates.
+- **Per-row cache anchoring.** A `WHERE pk = literal` becomes a per-row anchor — writes to other rows do not invalidate the cache entry. Per-table fallback for joins and unanchored queries.
+- **Live SSE deltas.** `POST /query?live=true` opens a stream: snapshot event, then row-level `insert` / `update` / `delete` events for affected rows, then `up-to-date` heartbeat on the next relevant commit.
+- **Native Postgres Row-Level Security.** Access-controlled queries are verified by JWT, then run as the token's role inside the embedded replica. Your existing RLS policies are the authority — PgPaw only verifies tokens, never issues them.
+- **Public vs access-controlled split.** Public data (RLS disabled, `GRANT SELECT TO PUBLIC`) serves from the shared cache. Anything else is private, per-token, never cached.
+- **Logical replication out of the box.** One `pgpaw init` sets `wal_level=logical`, creates the publication, and installs the DDL event trigger. After that, the replica stays in sync automatically — DDL, schema changes, and all.
+- **Read-only by construction.** The SQL classifier rejects `INSERT` / `UPDATE` / `DELETE` / `MERGE` / DDL, `FOR UPDATE` / `FOR SHARE`, multi-statement input, volatile functions, and references to non-replicated tables. The replica is also read-only to PgPaw.
+- **Built on [pglite-rs](/pglite-rs).** The replica is the same embedded engine that powers the rest of the stack. Logical replication, DDL tracking, security catalog mirroring, change broadcast — all inherited.
+- **Sub-millisecond cache hits.** `moka` in-process cache keyed on `(sql-fingerprint, version)`. Cache key is immutable until a relevant write actually occurs.
+- **Health endpoint.** `GET /healthz` reports replica watermark and `ok` / `halted` status.
+
+## How it fits
+
+A typical deployment looks like:
+
+```
+[ CDN / browser / mobile app ]
+            │  GET /q/{hash}/{version}            (immutable, CDN-cached)
+            │  POST /query?live=true              (SSE deltas)
+            ▼
+        [ PgPaw ] ─── pglite-rs replica ──── logical replication ────► [ Upstream Postgres ]
+            │    in-process        moka cache     pgoutput stream         publication + slot
+            │    version index     SSE deltas     DDL event trigger       DDL_REPLICATION = on
+```
+
+Reads never touch the upstream. Writes go through your normal path. The replica is the cache.
+
+## What it is not
+
+- **Not a write proxy.** PgPaw is read-only. Writes go to upstream through your existing path.
+- **Not a generic SQL cache.** It does not serve OLTP workloads — every read must fit the classifier and the publication.
+- **Not a Postgres connection pooler.** The replica is a single embedded engine; the upstream connection is one logical-replication client.
+- **Not a sync engine DSL.** It speaks plain Postgres SQL, not a custom query language. If you want a sync engine with shape subscriptions, look at [ElectricSQL](https://electric-sql.com) or [Rocicorp Zero](https://zero.rocicorp.dev) directly.
+
+## Where to go next
+
+- [**How it works**](/pgpaw/how-it-works) — architecture, cache invalidation flow, SSE deltas
+- [**Installation**](/pgpaw/installation) — `cargo install` / `npm install`, upstream `init`
+- [**Quickstart**](/pgpaw/quickstart) — init → serve → first query
+- [**API**](/pgpaw/api) — `POST /query`, `GET /q/{hash}/{version}`, SSE deltas
+- [**SQL classifier**](/pgpaw/sql-classifier) — what queries are allowed, what's rejected
+- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
+- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var
+- [**pglite-rs**](/pglite-rs) — the embedded engine that powers the replica

@@ -5,7 +5,7 @@ import { posts } from "@/content/blogs";
 
 // Static fine grain (fractalNoise), inlined — gives the olive half its texture.
 const GRAIN =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.62' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", {
@@ -39,7 +39,7 @@ export const Writing = () => (
       <div
         aria-hidden
         className="rounded-xl overflow-clip pointer-events-none absolute inset-0 z-0 opacity-90 mix-blend-overlay [mask-image:linear-gradient(to_right,black_50%,transparent_50%)]"
-        style={{ backgroundImage: `url("${GRAIN}")`, backgroundSize: "180px 180px" }}
+        style={{ backgroundImage: `url("${GRAIN}")`, backgroundSize: "230px 230px" }}
       />
       {/* orange glare — a sharp, thin diagonal reflection streak (sun on glass) */}
       <div className="pointer-events-none absolute -bottom-1/4 left-[200%] z-0 h-[170%] w-[9%] -rotate-[33deg] bg-[radial-gradient(closest-side,#ff5e00,#ff5e0000)] blur-md mix-blend-screen" />

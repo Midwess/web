@@ -1,0 +1,116 @@
+---
+title: Multi-process mode
+description: open_multi_process — real concurrent sessions, connection pool, NotifyConn
+---
+
+# Multi-process mode
+
+The in-process engine runs one session. If you need real concurrent sessions — parallel transactions, cross-session locks, an ORM pool with more than one connection — turn on the `multiple-process` cargo feature and call `PGlite::open_multi_process`. The host spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools N real backends behind the same `PGlite` API.
+
+## Cargo feature
+
+```toml title="Cargo.toml"
+pglite-rs = { version = "0.2", features = ["multiple-process"] }
+```
+
+`multiple-process` is **unix-only**. On Windows, compiling with the feature is a `compile_error!`. The feature is also exempt from the one-boot constraint — multi-process mode does not start the in-process engine, so the same process can run a multi-process `PGlite` and *not* an in-process one (or vice versa, but not both at once).
+
+## Open a multi-process database
+
+```rust
+use pglite::{PGlite, MultiProcessOptions};
+
+let opts = MultiProcessOptions {
+    max_connections: 8,
+    extra_connections: 4,
+    ..Default::default()
+};
+let db = PGlite::open_multi_process("./mydata", opts).await?;
+```
+
+What happens:
+
+1. The host extracts `share/postgresql` to a runtime dir (cached; reuses a previous extract).
+2. `initdb` runs at `./mydata` on first open. Same `initdb` output as in-process mode.
+3. The child postmaster is spawned with `-k <ram_dir> -c listen_addresses=''` — no networking, only the private unix socket.
+4. `max_connections` is set on the postmaster to `pool_size + 2 + extra_connections`. The +2 is for the superuser-reserved and replication slots; the `extra_connections` are for direct `psql` / out-of-pool clients.
+5. The host waits up to 15 seconds for the postmaster to be ready, then connects the pool.
+6. `initdb` happens synchronously before the postmaster is spawned — the first `open_multi_process` is slow; subsequent opens against an initialized dir are fast.
+
+## `MultiProcessOptions` in full
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `username` | `String` | `"postgres"` | Postgres role for the postmaster and the pool connections. |
+| `database` | `String` | `"postgres"` | Initial database. |
+| `min_connections` | `usize` | `0` | Pool pre-warm count. Connections spawn lazily up to `max_connections`. |
+| `max_connections` | `usize` | `5` | Pool size. The postmaster is started with `max = pool + 2 + extra_connections`. |
+| `extra_connections` | `usize` | `4` | Extra postmaster slots for `psql` and out-of-pool clients. |
+| `idle_ttl` | `Duration` | `300s` | Idle connections past this age are reaped. The postmaster stays up. |
+| `relaxed_durability` | `bool` | `false` | Starts the postmaster with `fsync=off`. |
+| `start_params` | `Vec<String>` | `[]` | Extra `-c key=value` arguments. |
+| `locale_provider` | `LocaleProvider` | `Libc` | Locale provider. Same interop rules as `PGliteOptions`. |
+
+See [Configuration](/pglite-rs/configuration#multiprocessoptions) for the rest.
+
+## Connection pinning
+
+A `Transaction` borrows one backend exclusively until `commit` / `rollback` / drop. `BEGIN` and `COMMIT` hit the same backend, which is required for Postgres' session state:
+
+- advisory locks (`pg_advisory_lock` / `pg_advisory_xact_lock`)
+- `SET LOCAL` (used by the RLS seam — see [Replication](/pglite-rs/replication))
+- temp tables (`CREATE TEMP TABLE …`)
+- prepared statements (`PREPARE … AS …`)
+- `LISTEN` (the NotifyConn owns this — see below)
+
+While a `Transaction` is alive, the borrowed backend is not returned to the pool. Calls to `db.exec` / `db.query` from other tasks will wait for the backend to free up. Pool acquire waits are bounded by 30 seconds and surface as `Error::PoolExhausted`.
+
+## The NotifyConn
+
+`LISTEN` is held by a dedicated connection outside the pool:
+
+- Created lazily on the first `listen()` or `live_query` call.
+- Holds all `LISTEN` registrations in one place.
+- A blocking reader thread streams `NotificationResponse` out of it and fans them to the Rust listener map.
+- `live_query` and `listen()` both read from the same map, so subscribers do not consume pool slots.
+
+You do not interact with the NotifyConn directly. It is owned by the `PGlite` and is closed on `close()` / last drop.
+
+## Self-healing pool
+
+A pool worker that hits an IO error reconnects. If the postmaster is gone, the worker leaves the rotation. Pool acquire waits are bounded by 30 seconds; if the pool is exhausted, the acquire returns `Error::PoolExhausted`. The postmaster itself is not auto-restarted; a crashed postmaster surfaces as connection errors on the next roundtrip, and the host terminates the `PGlite` cleanly.
+
+Idle connections past `idle_ttl` are reaped. The postmaster stays up.
+
+## ORM compat
+
+The DSN from `db.unix_uri()` is the child postmaster's native socket. Pass it to SQLx, SeaORM, Diesel, or `tokio-postgres` exactly as you would for a remote Postgres:
+
+```rust
+use sqlx::postgres::PgPoolOptions;
+
+let url = db.unix_uri().await?;
+let pool = PgPoolOptions::new()
+    .max_connections(opts.max_connections)
+    .connect(&url)
+    .await?;
+```
+
+See [ORM integration](/pglite-rs/orm) for the full set of driver examples and the per-mode caveats.
+
+## When NOT to use multi-process mode
+
+- **Single-session workloads.** A test harness, a CLI that runs one query at a time, a serverless handler. The in-process engine is faster (no postmaster hop) and uses ~23 MB versus ~84 MB across 12 processes.
+- **No concurrent sessions required.** If the only thing parallel is "many concurrent HTTP requests, each running one query," the in-process engine with a `serial_guard` style API is fine.
+- **Strict process count budgets.** Multi-process mode forks a child postmaster, then forks backends as connections are made. The footprint is dominated by the shared-buffers segment, which the OS deduplicates.
+
+## Orphan caveat
+
+If the host process is `SIGKILL`ed, the child postmaster's process group receives no signal — the child becomes orphaned until the OS reaps it. The next `open_multi_process` on the same data dir relies on Postgres' own stale `postmaster.pid` handling. Abandoned socket dirs under the OS temp dir persist until the OS cleans them. This is rare in practice but worth knowing for crash-recovery tests.
+
+## What's next
+
+- [**Replication**](/pglite-rs/replication) — `Replica::start` for read-only logical replication from upstream
+- [**ORM integration**](/pglite-rs/orm) — `unix_uri()` for SQLx, SeaORM, Diesel
+- [**Configuration**](/pglite-rs/configuration) — `MultiProcessOptions` field reference
+- [**How it works**](/pglite-rs/how-it-works#multi-process-mode) — child postmaster, pool, NotifyConn

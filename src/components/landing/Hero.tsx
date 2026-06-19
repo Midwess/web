@@ -16,7 +16,7 @@ export const Hero = () => (
         animate={{ opacity: 1, y: 0 }}
         className="inline-flex items-center gap-2 rounded-full border border-olive-50/10 bg-olive-50/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-olive-100/70 backdrop-blur-xl"
       >
-        <span>Aim for the top</span>
+        <span className="font-black">Midwess</span>
       </motion.span>
 
       <motion.div

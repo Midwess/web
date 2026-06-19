@@ -1,0 +1,73 @@
+---
+title: Configuration
+description: WorldConfig — dataDir, id, deploymentId, identity derivation, codec
+---
+
+# Configuration
+
+Worldant's user-facing configuration lives in the `WorldConfig` object you pass to `install()`. The supervisor's scale-to-zero knobs are documented separately on the [Supervisor](/worldant/supervisor) page.
+
+## WorldConfig
+
+`WorldConfig` is what you pass when you boot the world. All fields are optional.
+
+```ts title="src/world.ts"
+import { install } from '@midwess/worldant';
+
+await install({
+  dataDir: './.world',
+  deploymentId: 'prod-2024-11',
+  id: 'checkout-app',
+  config: { /* SupervisionConfig — see the Supervisor page */ },
+});
+```
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `dataDir` | `string` | `./.world` (relative to `process.cwd()`) | Where SQLite stores its files. The world creates the dir if it doesn't exist. Use `:memory:` (or omit the field) for an in-memory database in tests |
+| `deploymentId` | `string` | random ULID | Tag written to events so you can tell which build of your app produced them. Set this from your CI's build id or git SHA |
+| `id` | `string` | derived from `package.json` | The supervision id. Used to name the control socket and dedup lock on disk. See [Identity derivation](#identity-derivation) below |
+| `config` | `SupervisionConfig` | `{}` | Scale-to-zero knobs. See [Supervisor](/worldant/supervisor#supervisionconfig) |
+
+### Identity derivation
+
+If you don't set `id`, worldant derives one from the calling app's `package.json`:
+
+```
+<sanitized-package-name>-<sha256("<packageName>:<appRoot>").slice(0, 16)>
+```
+
+The sanitized name has non-alphanumerics replaced with `-` and leading/trailing dashes stripped (defaulting to `app` if empty). The hash is a 16-character hex prefix.
+
+**You must set `id` explicitly when:**
+
+- Your app has no `package.json` (e.g. a one-off script). The derivation throws if it can't find a package name and entry path.
+- You run multiple replicas on the same host. Each needs a unique `id` to avoid colliding on the control socket and dedup lock.
+- You want the socket and lock paths to be stable across deploys. The derived id changes if `appRoot` moves (e.g. across `pnpm` symlinks); an explicit `id` pins it.
+
+## Codec
+
+The TS adapter encodes data as JSON across the NAPI boundary, with two extensions:
+
+- `Uint8Array` values are encoded as `{ __u8b64: <base64> }` and decoded back to `Uint8Array`.
+- `Date` values are encoded as `{ __date: <ISO string> }` and decoded back to `Date`.
+
+This is internal — you do not need to think about it unless you are debugging a serialization issue across the FFI boundary. Plain JSON values (strings, numbers, booleans, objects, arrays, null) pass through unchanged.
+
+## Paths on disk
+
+When the world boots, two kinds of paths appear on disk:
+
+| Path | Purpose | Lifecycle |
+|---|---|---|
+| `<dataDir>/` (default `./.world/`) | The SQLite files: `world.db`, `world.db-wal`, `world.db-shm`. WAL mode, single writer, reader pool | Persistent. Survives restarts. Remove the dir to start over |
+| `$XDG_RUNTIME_DIR/worldant-<idHash>.*` | Control socket, dedup lock, private app socket. See [Supervisor](/worldant/supervisor#on-disk-paths-supervisor) | Created by the supervisor, removed on clean shutdown |
+
+`dataDir` is yours. The runtime dir is shared with the OS — on Linux it is `/run/user/<uid>`, on macOS it is usually `/tmp`.
+
+## Where to go next
+
+- [**Supervisor**](/worldant/supervisor) — `SupervisionConfig`, env vars, on-disk paths, CLI flags
+- [**Quickstart**](/worldant/quickstart) — see these options in context
+- [**How it works**](/worldant/how-it-works) — what the supervisor does with this config
+- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model

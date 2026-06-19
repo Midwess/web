@@ -1,0 +1,79 @@
+---
+title: pglite-rs
+description: In-process PostgreSQL for Rust — embedded like SQLite, full Postgres SQL, async on any runtime
+---
+
+# pglite-rs
+
+pglite-rs is **PostgreSQL that runs inside your Rust process** — no server, no Docker, no install step. Real Postgres semantics (types, transactions, MVCC, extensions, wire protocol) compiled into a native static library and linked straight into your binary. Same embeddable footprint people expect from SQLite, same SQL people expect from Postgres.
+
+It is built for **tests, CLIs, desktop apps, edge/serverless workloads, and cache layers** where standing up a Postgres server is too heavy and an in-memory mock is too lossy.
+
+## Features
+
+- **Real PostgreSQL.** Native static build of a patched Postgres 17 fork. Full SQL, full types (jsonb, arrays, ranges, enums, domains, uuid), full transactions, MVCC, plpgsql.
+- **In-process, single binary.** The engine links into your crate. `cargo add pglite-rs`, `cargo build`, done. No background processes, no listening sockets by default.
+- **Async on any runtime.** Depends on `futures`, not `tokio` / `smol` / `async-std`. Use whichever executor your app already uses — the engine runs on a dedicated thread either way.
+- **Runtime-agnostic API.** `PGlite::open`, `exec`, `query`, `transaction`, `listen`, `live_query`, `copy_in` / `copy_out`. Bound parameters via `&[&(dyn ToSql + Sync)]`, rows returned as `Vec<Row>`.
+- **ORM-friendly.** A `unix_uri()` accessor hands any Postgres driver (SQLx, SeaORM, Diesel, tokio-postgres) a wire-protocol DSN over a unix socket. No code changes to the ORM.
+- **Multi-process mode (`multiple-process` feature).** Spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools connections. True concurrent sessions, parallel transactions, cross-session locks — same `PGlite` API, no networking exposed.
+- **Optional extensions.** `pgvector` (embeddings, similarity search), `pgcrypto` (digests, encryption), `icu` (real Unicode collation, ~+40MB). `cargo add pglite-rs --features full` pulls them all in.
+- **Logical-replication consumer (`replica` feature).** `Replica::start` streams committed changes from a remote Postgres into a local read-only PGlite. Backfill + change stream + watermark, all in one call.
+- **Live queries.** Subscribe to a SQL statement; the host re-runs it on subscribed table changes and pushes fresh rows to a callback. Built on LISTEN/NOTIFY.
+- **Listen/notify.** Native `listen(channel, callback)` and `LISTEN` SQL. UNLISTEN-by-token supported.
+- **COPY support.** `copy_in` and `copy_out` for bulk data movement. In-process engine: `COPY ... TO STDOUT` works; `COPY ... FROM STDIN` is not supported in-process (use multi-process for bulk loads).
+- **Tar dump/restore.** `dump_data_dir(tar_path)` snapshots the data directory; `restore_data_dir(tar, dir)` materializes one. Cross-process reopen fully supported.
+- **Small footprint.** ~23 MB steady-state RSS for a single in-process backend. Shared buffers on the heap, no idle worker processes sitting resident.
+- **Cargo features, not a forked crate.** Pick the modes you need at build time. The library tree stays small.
+
+## What it is not
+
+- **Not a Postgres server.** The in-process backend runs one connection. Use `multiple-process` for pooled concurrency.
+- **Not a replacement for production Postgres.** A real `postgres` daemon with hot standbys, replication slots, and parallel workers remains the right answer for OLTP at scale. pglite-rs is for places where that infrastructure is too heavy.
+- **Not WASM.** Despite the name, this is a native x86_64 / aarch64 static library, not a wasm build. The TS wasm build is [electric-sql/pglite](https://github.com/electric-sql/pglite); this crate is the native sibling.
+
+## How it fits in your stack
+
+You reach for pglite-rs when you want Postgres SQL semantics in a binary that already has to ship — a test harness, a CLI, a desktop app, a serverless function, a cache layer in front of a real Postgres. You open it with `PGlite::open("./data")`, run queries like a normal Postgres client, and close it on shutdown. That's the whole mental model.
+
+```rust
+use pglite::PGlite;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let db = PGlite::open("./mydata").await?;
+    db.exec("CREATE TABLE users (id serial PRIMARY KEY, name text)").await?;
+
+    let rows = db.query("SELECT id, name FROM users WHERE id > $1", &[&0i32]).await?;
+    let name: &str = rows[0].get(1)?;
+
+    let tx = db.transaction().await?;
+    tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
+    tx.commit().await?;
+
+    db.close().await?;
+    Ok(())
+}
+```
+
+When you want an ORM, ask for the socket URI and hand it to your driver — same `PGlite`, same data dir, same SQL:
+
+```rust
+let db = PGlite::open("./data").await?;
+let url = db.unix_uri().await?;
+let pool = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(1)
+    .connect(&url)
+    .await?;
+```
+
+The engine is the same across modes. The mode is a build feature.
+
+## Where to go next
+
+- [**How it works**](/pglite-rs/how-it-works) — engine thread, FFI waist, multi-process pool, replica flow
+- [**Installation**](/pglite-rs/installation) — `cargo add`, features, build-script requirements
+- [**Quickstart**](/pglite-rs/quickstart) — open, exec, query, close
+- [**Guides**](/pglite-rs/transactions) — one page per feature: transactions, listen/notify, ORM, multi-process, replication, dump/restore
+- [**Configuration**](/pglite-rs/configuration) — `PGliteOptions`, `MultiProcessOptions`, `ReplicaConfig`, env vars
+- [**`postgres-pglite` upstream**](https://github.com/electric-sql/postgres-pglite) — the patched Postgres fork

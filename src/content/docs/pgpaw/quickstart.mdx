@@ -1,0 +1,81 @@
+---
+title: Quickstart
+description: End-to-end — init, serve, snapshot, live
+---
+
+# Quickstart
+
+The smallest end-to-end path: `init` against an upstream Postgres, `serve` PgPaw, send one snapshot query, then one live query. If you have done this once, the rest of the guides pick up a single concept at a time.
+
+Assumes `pgpaw` is installed (see [Installation](/pgpaw/installation)) and a reachable Postgres 13+ with superuser access.
+
+## 1. One-time upstream setup
+
+```bash
+pgpaw init \
+    --pg-host 127.0.0.1 \
+    --pg-user postgres \
+    --pg-password "$POSTGRES_PASSWORD" \
+    --pg-database myapp
+```
+
+If `init` reports it changed `wal_level`, restart Postgres. The publication, slot, and DDL trigger are durable in the catalog — `init` is a one-shot.
+
+## 2. Serve
+
+```bash
+pgpaw serve \
+    --pg-host 127.0.0.1 \
+    --pg-user postgres \
+    --pg-password "$POSTGRES_PASSWORD" \
+    --pg-database myapp \
+    --port 8080
+```
+
+First boot runs the initial backfill; later boots resume from the watermark. The HTTP server is up while the replica catches up — queries still work, they just see the current snapshot.
+
+## 3. Wait for healthy
+
+```bash
+curl -s http://127.0.0.1:8080/healthz
+# {"status":"ok","watermark":12345678}
+```
+
+`halted` means the applier ran into an unrecoverable error. See [How it works](/pgpaw/how-it-works#why-the-replica-is-the-right-place-to-run-reads) for the failure modes.
+
+## 4. Send a snapshot query
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/query \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, email from users where id = 7"}'
+```
+
+You get a `303 See Other` with `Location: /q/{hash}/{version}` and `Cache-Control: no-store` on the redirect. Follow the redirect to fetch the body, which sets `Cache-Control: public, max-age=31536000, immutable`:
+
+```bash
+curl -L -X POST http://127.0.0.1:8080/query \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, email from users where id = 7"}'
+# [{"id":7,"email":"alice@example.com"}]
+```
+
+The same URL serves the same body for the next year. A relevant upstream write re-issues a new URL on the next request.
+
+## 5. Open a live stream
+
+```bash
+curl -N -X POST 'http://127.0.0.1:8080/query?live=true' \
+     -H 'content-type: application/json' \
+     -d '{"sql":"select id, status from orders"}'
+```
+
+The stream starts with a snapshot event, then row-level `insert` / `update` / `delete` events for affected rows, then an `up-to-date` heartbeat on the next relevant commit. See [API](/pgpaw/api) for the full event format.
+
+## What's next
+
+- [**API**](/pgpaw/api) — `POST /query`, `GET /q/{hash}/{version}`, `?live=true` SSE, error envelope
+- [**SQL classifier**](/pgpaw/sql-classifier) — what queries are allowed, what's rejected
+- [**Authorization**](/pgpaw/authorization) — JWT, RLS policies, public vs access-controlled
+- [**How it works**](/pgpaw/how-it-works) — architecture, cache invalidation flow, SSE deltas
+- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var

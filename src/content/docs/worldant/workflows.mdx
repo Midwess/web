@@ -1,0 +1,175 @@
+---
+title: Workflows
+description: The 'use workflow' and 'use step' directives, retries, hooks, streams, child workflows
+---
+
+# Workflows
+
+A worldant app is just a Vercel Workflow app — the `"use workflow"` and `"use step"` directives, `getStepMetadata`, `getWorkflowMetadata`, `FatalError` / `RetryableError`, hooks, streams, and child workflows all work unchanged. Worldant hosts them in-process with a Rust-backed SQLite world; the rest of the model is the Vercel Workflow model. See the [Vercel Workflow docs](https://github.com/vercel/workflow) for the underlying primitive set.
+
+This page focuses on what worldant does with the workflow at runtime: the directives, the build transform, the retry semantics, and the world-specific helpers (`world.events`, `world.steps`, `world.runs`).
+
+## The directives
+
+Two string directives tell the compiler which functions to extract:
+
+- `"use workflow"` — sits inside an exported function. Marks the function as the durable entry point. The compiler replaces its body with a call into the world's storage.
+- `"use step"` — sits inside a helper function. The body of that function runs at most once across the lifetime of the run, even across process restarts.
+
+```ts title="src/workflows/checkout.ts"
+import {
+  FatalError,
+  RetryableError,
+  getStepMetadata,
+  getWorkflowMetadata,
+} from 'workflow';
+import { start } from 'workflow/api';
+import type { Order, CheckoutResult } from './types.js';
+
+async function chargePayment(order: Order, idempotencyKey: string) {
+  'use step';
+  const { attempt } = getStepMetadata();
+  if (order.scenario?.chargeFault === 'decline') {
+    throw new FatalError('card_declined');
+  }
+  if (order.scenario?.chargeFault === 'timeout' && attempt === 1) {
+    throw new RetryableError('payment gateway timeout', { retryAfter: '1s' });
+  }
+  // Real charge call here. The idempotency key makes retries safe.
+  return { chargeId: `chg_${order.id}` };
+}
+
+async function shipOrder(order: Order) {
+  'use step';
+  return { trackingId: `trk_${order.id}` };
+}
+
+export async function checkout(order: Order): Promise<CheckoutResult> {
+  'use workflow';
+  const { workflowRunId } = getWorkflowMetadata();
+
+  const { chargeId } = await chargePayment(order, `charge:${workflowRunId}`);
+  const { trackingId } = await shipOrder(order);
+  return { ok: true, runId: workflowRunId, chargeId, trackingId };
+}
+```
+
+A step is a regular async function with `'use step'` at the top. It looks like normal code, but its return value is memoized by the world: once a step body has committed, the same step in the same run never runs again. Even if the process crashes, the next replay sees the recorded return value and skips the body.
+
+## `getStepMetadata` and `getWorkflowMetadata`
+
+These are sync helpers that return the current execution context:
+
+- `getStepMetadata()` — `{ attempt, stepId, ... }`. Branch on `attempt` to fail on the first try and succeed on the second (transient faults), or fail every time (permanent faults).
+- `getWorkflowMetadata()` — `{ workflowRunId, ... }`. The run's stable identifier. Use it as part of idempotency keys for any external system that charges money, sends mail, etc.
+
+```ts
+async function chargePayment(order: Order, idempotencyKey: string) {
+  'use step';
+  const { attempt } = getStepMetadata();
+  if (order.scenario?.chargeFault === 'timeout' && attempt === 1) {
+    throw new RetryableError('payment gateway timeout', { retryAfter: '1s' });
+  }
+  // attempt === 2 here, fall through to the real charge
+  return await payments.charge(order.amount, idempotencyKey);
+}
+```
+
+## `FatalError` vs `RetryableError`
+
+Two error classes decide what the world does with a failure:
+
+- `FatalError` — permanent. The world stops retrying the step. The run moves to a failed state.
+- `RetryableError(message, { retryAfter })` — transient. The world re-runs the step after `retryAfter` (a Postgres interval string: `'1s'`, `'500ms'`, `'5m'`). `attempt` increments on each retry.
+
+Plain `Error` thrown from a step is treated as retryable by default. Use `FatalError` for known-bad inputs (validation failures, declined cards, missing rows that won't appear) so the world doesn't waste cycles retrying.
+
+## Hooks
+
+`createHook` and `await hook` are durable external waits. A hook is a named, typed slot the workflow can wait on; an external caller resumes the workflow by token.
+
+```ts
+import { createHook } from 'workflow';
+
+export async function waitForApproval(order: Order) {
+  'use workflow';
+  const hook = createHook<{ approvedBy: string; at: number }>();
+  // The hook token is what the external system uses to resume the workflow.
+  await database.recordPendingApproval(order.id, hook.token);
+  const result = await hook; // resumes when someone calls hook.resume(...)
+  return result;
+}
+```
+
+Hooks survive process restarts. The world stores the hook's resume state; the next time the workflow replays, the `await hook` sees the recorded result and continues.
+
+## Streams
+
+`getWritable` is a durable byte stream. Writes are persisted to the world's storage and survive process restarts; readers can resume from the last acknowledged offset.
+
+```ts
+import { getWritable } from 'workflow';
+
+export async function streamProgress(jobId: string) {
+  'use workflow';
+  const stream = getWritable({ name: `progress-${jobId}` });
+  const writer = stream.getWriter();
+  for (let i = 0; i < 100; i++) {
+    await writer.write(new TextEncoder().encode(`step ${i}\n`));
+  }
+  await writer.close();
+}
+```
+
+Streams are useful for long-running progress updates, log shipping, and any case where the consumer wants to see partial output before the workflow completes.
+
+## Child workflows
+
+A workflow can start another workflow as a child. The child has its own run id, retry policy, and lifecycle; the parent waits for it to complete (or fires it and continues).
+
+```ts
+import { start } from 'workflow/api';
+import { processOrder } from './process-order.js';
+
+export async function batchOrders(orders: Order[]) {
+  'use workflow';
+  const runs = await Promise.all(
+    orders.map((order) => start(processOrder, [order])),
+  );
+  return runs.map((r) => r.runId);
+}
+```
+
+Each `start(...)` returns a `Run` object. `await run.returnValue` blocks on completion; `run.status` shows the current state. The world tracks the parent-child relationship in the events log.
+
+## Retries and the world
+
+The world is responsible for:
+
+- Persisting step results and workflow state to SQLite.
+- Scheduling retries when a step throws `RetryableError`.
+- Replaying the workflow body from the top each time the run resumes, skipping step bodies whose results are already recorded.
+- Resuming `await hook` / `getWritable` / `await child.returnValue` from the recorded state.
+
+The compile-time transform (`@workflow/core`'s `swc` plugin) replaces step bodies with calls into the world's storage API. You write the steps; the world remembers.
+
+## Build transform
+
+Workflow files need to go through the `@workflow/core` SWC transform. Add it to your build:
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "tsc -p tsconfig.json && workflow build src/workflows"
+  }
+}
+```
+
+The `workflow build` command reads every `.ts` file under `src/workflows/`, runs the SWC transform, and produces a `src/workflows/.swc/` directory that the runtime imports. The NestJS example in the [worldant repo](https://github.com/Midwess/worldant/tree/main/examples/nestjs-checkout-saga) wires this up end to end.
+
+## Where to go next
+
+- [**Reading runs**](/worldant/reading-runs) — `getRun`, `run.returnValue`, the `world.events` / `steps` / `runs` surface
+- [**Supervisor**](/worldant/supervisor) — the `worldant` CLI for scale-to-zero
+- [**Configuration**](/worldant/configuration) — `WorldConfig`, env vars, paths
+- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model

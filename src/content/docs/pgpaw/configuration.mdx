@@ -1,0 +1,105 @@
+---
+title: Configuration
+description: Every CLI flag and env var — HTTP, upstream Postgres, authorization, init
+---
+
+# Configuration
+
+Every CLI flag has a matching `UPPERCASE_SNAKE_CASE` environment variable. The flag wins when both are set. This page scans them all.
+
+## HTTP
+
+| Flag | Env | Default | Description |
+|---|---|---|---|
+| `--host` | `CACHE_HOST` | `127.0.0.1` | bind host |
+| `--port` | `CACHE_PORT` | `8080` | bind port |
+| `--data-dir` | `CACHE_DATA_DIR` | `./cache-data` | pglite-rs replica data directory |
+| `--max-connections` | `CACHE_MAX_CONNECTIONS` | `8` | replica pool size (multi-process) |
+| `--cache-size-bytes` | `CACHE_SIZE_BYTES` | `268_435_456` (256 MiB) | result-cache budget |
+| `--cors-origin` | `CORS_ORIGIN` | *(none)* | allow browser cross-origin calls: an origin, a comma list, or `*`. Required when a browser app on another origin calls PgPaw directly |
+
+`--max-connections` is the size of the pglite-rs multi-process pool that backs reads. Bigger pools cost more memory; the cache hit path does not need more than one. The pool size matters only for concurrent reads, and the in-process cache hits short-circuit the pool entirely.
+
+`--cache-size-bytes` is the `moka` cache budget. Default 256 MiB is comfortable for most workloads. Increase it if your eviction rate is high, decrease it if memory is tight.
+
+`--cors-origin` is the single most common source of "the browser call works from curl but fails in the page". Set it to your app's origin (e.g. `https://app.example.com`) and the preflight goes through.
+
+## Upstream Postgres
+
+| Flag | Env | Default | Description |
+|---|---|---|---|
+| `--pg-host` | `UPSTREAM_HOST` | `127.0.0.1` | upstream hostname or IP |
+| `--pg-port` | `UPSTREAM_PORT` | `5432` | upstream port |
+| `--pg-user` | `UPSTREAM_USER` | `postgres` | upstream role with `REPLICATION` and `LOGIN` |
+| `--pg-password` | `UPSTREAM_PASSWORD` | *(empty)* | upstream password |
+| `--pg-database` | `UPSTREAM_DATABASE` | `postgres` | upstream database |
+| `--publication` | `UPSTREAM_PUBLICATION` | `cache_server_pub` | logical-replication publication name |
+| `--slot` | `UPSTREAM_SLOT` | `cache_server_slot` | replication slot name |
+| `--sslmode` | `UPSTREAM_SSLMODE` | `disable` | one of `disable` / `prefer` / `require` / `verify-full` |
+
+The `pgpaw init` command sets sensible defaults for `--publication` and `--slot`. If you customize the publication name on the upstream, pass the same name to `serve`.
+
+`--sslmode=verify-full` validates the upstream's certificate against the system trust store. PgPaw bundles its own minimal TLS stack (rustls + webpki roots) — no OpenSSL required.
+
+## Authorization (JWT)
+
+Set at most one verification key. With none, PgPaw is anonymous-only (public data only).
+
+| Flag | Env | Default | Description |
+|---|---|---|---|
+| `--jwt-secret` | `JWT_SECRET` | *(none)* | HS256 shared secret |
+| `--jwt-public-key` | `JWT_PUBLIC_KEY` | *(none)* | RS256/ES256 verification public key (PEM) |
+| `--jwt-jwks-url` | `JWT_JWKS_URL` | *(none)* | JWKS endpoint — *planned*; use `--jwt-public-key` today |
+| `--jwt-role-claim` | `JWT_ROLE_CLAIM` | `role` | JWT claim naming the Postgres role to run reads as |
+
+See [Authorization](/pgpaw/authorization) for the full claims contract and policy writing guide.
+
+## `pgpaw init`
+
+`init` is a one-shot command — it does not run continuously and reads the same Postgres flags as `serve`. It also accepts the publication and slot names so it creates the publication matching the names `serve` will use.
+
+```bash
+pgpaw init \
+    --pg-host 127.0.0.1 --pg-user postgres --pg-password "$POSTGRES_PASSWORD" \
+    --pg-database myapp \
+    --publication cache_server_pub --slot cache_server_slot
+```
+
+`init` does four things:
+
+1. Sets `wal_level=logical` if it is not already. If this is a change, PgPaw prints a notice — restart Postgres to apply it.
+2. Creates the publication (`--publication`, default `cache_server_pub`) covering all tables.
+3. Installs the DDL event trigger (`pglite_emit_ddl` on `ddl_command_end`) so the replica sees schema changes.
+4. Verifies the connection and that the role has `REPLICATION` and `LOGIN` privileges.
+
+`init` is durable — the publication, slot, and trigger persist in the catalog. Run it once per upstream.
+
+## `pgpaw serve` vs `pgpaw init`
+
+`init` is for upstream preparation (one-shot). `serve` is the long-running process that serves HTTP. The two commands share the upstream flags but differ in what they do with the database.
+
+| | `init` | `serve` |
+|---|---|---|
+| Sets `wal_level=logical` | yes | no |
+| Creates the publication | yes | no |
+| Installs the DDL trigger | yes | no |
+| Opens the pglite-rs replica | no | yes |
+| Binds the HTTP port | no | yes |
+| Streams CDC to VersionIndex | no | yes |
+| Idempotent | yes (errors if already set) | yes (resumes from watermark) |
+
+## On-disk paths
+
+| Path | Lifetime | Contents |
+|---|---|---|
+| `<dataDir>/` (default `./cache-data/`) | Persistent across runs | pglite-rs replica cluster: tables, RLS, grants, `_pglite_replica` meta table |
+| `<dataDir>/postmaster.pid` | Multi-process mode only | Standard Postgres lock file. Stale on SIGKILL — next boot handles stale-pid per Postgres' own rules |
+
+`dataDir` is yours. There is no separate state directory, no Redis, no schema cache file. Remove the dir to start over.
+
+## What's next
+
+- [**API**](/pgpaw/api) — request/response format
+- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
+- [**SQL classifier**](/pgpaw/sql-classifier) — what's allowed, what's rejected
+- [**How it works**](/pgpaw/how-it-works) — the cache invalidation flow

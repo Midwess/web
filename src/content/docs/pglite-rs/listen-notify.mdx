@@ -1,0 +1,119 @@
+---
+title: Listen & notify
+description: db.listen() callbacks, NOTIFY, live queries, NotifyConn in multi-process mode
+---
+
+# Listen & notify
+
+pglite-rs exposes Postgres `LISTEN` / `NOTIFY` end-to-end — both as SQL you can issue directly, and as a Rust API that registers a callback and parses the `NotificationResponse` frames out of the engine's wire traffic. Live queries ride the same surface: subscribe to a SQL statement, and the host re-runs it on subscribed table changes and pushes fresh rows to your callback.
+
+## Basic listen / notify
+
+`listen(channel, callback)` registers a closure against a `LISTEN` channel. `NOTIFY` issued from any source (the same process, another session in multi-process mode, an external Postgres via the replica) wakes the callback.
+
+```rust
+use pglite::PGlite;
+
+let db = PGlite::open("./mydata").await?;
+
+let _token = db
+    .listen("orders", |payload| {
+        println!("orders channel: {payload}");
+    })
+    .await?;
+
+db.exec("NOTIFY orders, 'order-42 placed'").await?;
+db.exec("NOTIFY orders, 'order-99 placed'").await?;
+// prints:
+//   orders channel: order-42 placed
+//   orders channel: order-99 placed
+```
+
+The callback is `Fn(&str) + Send + Sync + 'static`. It runs on the engine-thread re-entrant path, so keep it short — push to a channel and return, don't do blocking work inside.
+
+## Unlisten
+
+Two ways to drop a subscription:
+
+```rust
+// by token — only this listener is removed; the LISTEN SQL stays if others hold the channel
+db.unlisten_token("orders", token).await?;
+
+// by channel — every subscription on "orders" is removed; the LISTEN SQL is sent
+db.unlisten("orders").await?;
+```
+
+When the last subscription on a channel is dropped, the host sends an `UNLISTEN "<channel>"` SQL to the engine. If the channel still has at least one subscription, the SQL is not sent — the existing `LISTEN` keeps the engine's notification stream open.
+
+## Channel name rules
+
+Channel names are case-insensitive. The host lowercases before storing in the listener map, so `listen("Orders", ...)` and `listen("orders", ...)` resolve to the same subscription. Quoting with double quotes in `NOTIFY` is preserved:
+
+```sql
+NOTIFY "Orders", 'hello';   -- fires both subscribers
+NOTIFY orders, 'hello';     -- same
+```
+
+If a channel name contains special characters, quote it in `NOTIFY`. The host quotes automatically on the `listen` side.
+
+## Native SQL
+
+`LISTEN` and `UNLISTEN` work as raw SQL, too. The host is not involved unless you also want the callback — calling raw `LISTEN foo` SQL works but nothing in Rust will see the notifications.
+
+```rust
+db.exec("LISTEN orders").await?;
+db.exec("NOTIFY orders, 'hello'").await?;
+db.exec("UNLISTEN orders").await?;
+```
+
+This is useful for diagnostics and for tasks that want to handle notifications in plpgsql / triggers.
+
+## Live queries
+
+A live query is a host-layer subscription on top of `LISTEN` / `NOTIFY`. The flow:
+
+1. You give the host a SQL statement.
+2. The host parses it, installs `AFTER` triggers on every table the query references, and registers a `LISTEN` channel.
+3. A committed write to any of those tables fires `NOTIFY`. The host catches it, re-runs the query, and pushes the fresh `Vec<Row>` to your callback.
+
+```rust
+let live = db
+    .live_query("SELECT id, name FROM users WHERE id > $1", &[&0i32], |rows| {
+        for row in rows {
+            let id: i32 = row.get(0).unwrap_or(0);
+            let name: &str = row.get(1).unwrap_or("");
+            println!("{id} {name}");
+        }
+    })
+    .await?;
+
+// somewhere else, or in another task:
+db.exec("INSERT INTO users (name) VALUES ('carol')").await?;
+// callback fires with [id=N, name="carol"]
+```
+
+Live queries are entirely a host concept — they ride the same `LISTEN` / `NOTIFY` surface that the engine already exposes, so they work the same in-process and in multi-process mode. `live_query` is dropped automatically when the `LiveQuery` handle goes out of scope; the host removes the triggers and the `LISTEN` registration.
+
+## Multi-process: the NotifyConn
+
+In multi-process mode, the pool is busy doing real work. `LISTEN` subscriptions are held by a dedicated **NotifyConn** that lives outside the pool:
+
+- Created lazily on the first `listen()` or `live_query` call.
+- Holds all `LISTEN` registrations in one place.
+- A blocking reader thread streams `NotificationResponse` messages out of it and fans them to the Rust listener map.
+- Live queries and `listen()` callbacks both read from the same map, so subscribers do not need a pool slot.
+
+The NotifyConn is owned by the `PGlite` and is closed on `close()` / last drop. You do not interact with it directly.
+
+## Error handling
+
+A `listen()` call that targets a closed engine returns `Error::Closed`. A `NOTIFY` from SQL that fires for a non-subscribed channel is silently dropped on the engine side — no error, no callback.
+
+If the engine thread is busy when a notification arrives, the callback runs as soon as the in-flight `exec` or `query` returns. There is no upper bound on that wait; if you `await` inside the callback, the engine thread blocks until your `await` resolves. The recommended pattern is to push to a `futures::channel::mpsc` channel from the callback and process the events on a separate task.
+
+## What's next
+
+- [**ORM integration**](/pglite-rs/orm) — `unix_uri()` for SQLx, SeaORM, Diesel
+- [**Multi-process mode**](/pglite-rs/multi-process) — the NotifyConn, connection pinning, real concurrency
+- [**Replication**](/pglite-rs/replication) — `Replica::start` for upstream changes
+- [**Configuration**](/pglite-rs/configuration) — `MultiProcessOptions.extra_connections`

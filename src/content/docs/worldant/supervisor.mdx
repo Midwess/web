@@ -1,0 +1,158 @@
+---
+title: Supervisor
+description: The worldant CLI — scale-to-zero, lifecycle, SupervisionConfig, env vars, on-disk paths
+---
+
+# Supervisor
+
+The `worldant` CLI is a thin scale-to-zero proxy in front of your app. It owns the public socket, forwards traffic to a private app socket, and stops the process when it has been idle long enough. The next request restarts it and replays the log.
+
+Without the supervisor, your app is one long-lived Node process — fine for a server, wrong for a function or a serverless handler.
+
+## Install the CLI
+
+```bash
+# npm (prebuilt binaries for darwin-arm64, darwin-x64, linux-x64-gnu)
+npm install -g @midwess/worldant-cli
+
+# or cargo
+cargo install worldant-cli
+```
+
+The npm package picks the right prebuilt binary for your OS via platform-specific optional dependencies — no separate install step.
+
+## Run the app under the supervisor
+
+```bash
+worldant start -- node dist/main.js
+```
+
+The CLI:
+
+1. Resolves a public socket on `--public-host` (default `0.0.0.0`).
+2. Spawns your child process with `WORLDANT_CONTROL_FD` set to a pipe the child can use to announce readiness.
+3. Waits for the child to announce it's listening on the private app socket.
+4. Proxies public traffic to the private socket.
+5. Watches for idleness and signals the child to stop.
+6. Restarts the child on the next request.
+
+Currently only the `start` subcommand is implemented. `stop`, `logs`, and `status` are planned but not yet shipped.
+
+## The lifecycle
+
+```
+    ┌──────────┐                    ┌──────────┐
+    │  worldant│  start             │   node   │
+    │   CLI    │ ──────────────────▶│ dist/main│
+    └────┬─────┘                    └────┬─────┘
+         │                               │
+         │  ◀── wake (request arrives) ──│
+         │  ──── spawn if stopped ─────▶│
+         │                               │ boot
+         │  ◀── announced (ready) ───────│
+         │                               │
+         │  ──── forward traffic ──────▶ │
+         │                               │  (idle)
+         │  ◀── stop (grace expired) ───│
+         │                               │ shutdown
+         │  ──── wait for next request ──│
+```
+
+The CLI makes three decisions, in order:
+
+1. **Spawn or wait?** If the child is running, forward. If it is stopped, spawn.
+2. **Forward or stop?** Watch for idleness (see "When does the supervisor stop the process?" below). When all three signals are quiet, signal the child to stop.
+3. **Give up?** If the child crashes `maxRestarts` times within `windowMs`, the CLI exits with an error rather than continuing to restart.
+
+## CLI flags
+
+| Flag | Argument | What it does |
+|------|----------|--------------|
+| `--public-host` | `<host>` | Host the public socket binds on. Defaults to the OS default (`0.0.0.0` on Linux, `::` on macOS) |
+| `--` | | Separator. Everything after `--` is the child command |
+| `<command>` | | The command to run as the child. Required. Use the same form as a shell command: `node dist/main.js`, `npm start`, etc. |
+
+The CLI does not currently take a `--port` flag — the public port is allocated by the OS, then read by the child via `WORLDANT_CONTROL_FD`. See the [how-it-works](/worldant/how-it-works) page for the full handshake.
+
+## `SupervisionConfig`
+
+The `config` field of `WorldConfig` is `SupervisionConfig`. It only matters when the app is launched under the `worldant` CLI — without the CLI, the supervisor is a no-op.
+
+```ts
+await install({
+  dataDir: './.world',
+  id: 'checkout-app',
+  config: {
+    graceMs: 30_000,
+    minAliveMs: 60_000,
+    wakeHoldMs: 5_000,
+    restart: {
+      maxRestarts: 5,
+      windowMs: 60_000,
+      delayMs: 1_000,
+    },
+  },
+});
+```
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `graceMs` | `number` | `30_000` | How long the process must be idle (no in-flight requests, no pending queue work) before the supervisor stops it |
+| `minAliveMs` | `number` | `60_000` | Minimum time the process stays up after the last request, regardless of idleness. Prevents thrashing on a bursty workload |
+| `wakeHoldMs` | `number` | `5_000` | Dedupe window for "wake" signals. Multiple restart triggers within this window collapse to a single restart |
+| `restart.maxRestarts` | `number` | `5` | Maximum restart attempts within `windowMs` before the supervisor gives up and exits |
+| `restart.windowMs` | `number` | `60_000` | Sliding window over which `maxRestarts` is counted |
+| `restart.delayMs` | `number` | `1_000` | Delay between restart attempts. Backoff is linear (not exponential) in the current implementation |
+
+## When does the supervisor stop the process?
+
+The supervisor watches three signals to decide when to stop the process:
+
+1. **HTTP traffic** through the private socket is quiet.
+2. **Queue work** in SQLite is drained — `world.nextDueMs()` returns `null` or a far-future timestamp.
+3. **In-flight runs** have no active step executing.
+
+If all three are quiet for `graceMs`, **and** `minAliveMs` has passed since the last request, the supervisor stops the process.
+
+## When does the supervisor restart?
+
+When the next request arrives. Within `wakeHoldMs` of a previous restart, additional restart requests collapse — the CLI waits for the child to be ready rather than spawning duplicates.
+
+If the child crashes `maxRestarts` times within `windowMs`, the CLI gives up. This is the difference between "the app is idle" (which is expected) and "the app is broken" (which is not).
+
+## Environment variables (supervisor)
+
+| Variable | Set by | Read by | What it does |
+|---|---|---|---|
+| `WORLDANT_CONTROL_FD` | `worldant` CLI (via FD inheritance) | `connectSupervisor()` | Numeric FD for the announce pipe. If unset, the supervisor code is a no-op and the app runs standalone |
+| `XDG_RUNTIME_DIR` | shell | `supervisor.ts` | Directory for control socket, dedup lock, and private app sockets. Falls back to `os.tmpdir()` if unset |
+
+`WORLDANT_CONTROL_FD` is the on/off switch. You do not set it yourself — the `worldant` CLI does when it spawns your app.
+
+`XDG_RUNTIME_DIR` follows the [XDG Base Directory spec](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html). On most Linux systems it is `/run/user/<uid>`. On macOS it is usually unset, in which case `/tmp` is used.
+
+## On-disk paths (supervisor)
+
+When the supervisor is active, three paths appear on disk. All are derived from `id` and the runtime dir.
+
+| Path | Purpose |
+|---|---|
+| `$XDG_RUNTIME_DIR/worldant-<idHash>.sock` | Control socket. The CLI sends "stop", "wake", and lifecycle commands to the app process over this socket |
+| `$XDG_RUNTIME_DIR/worldant-<idHash>.lock` | Dedup lock. Prevents two CLI instances from supervising the same app id at the same time |
+| `$XDG_RUNTIME_DIR/worldant-<idHash>.<port>.app.sock` | Private app socket. The app binds here instead of the public port. The CLI forwards traffic from the public port to this socket |
+
+`<idHash>` is `sha256(id).slice(0, 16)`. If you run `ls -la $XDG_RUNTIME_DIR/worldant-*` while a supervised app is running, you can see all three paths in place.
+
+The app process is responsible for unlinking its private app socket on exit. The supervisor code installs a `process.on('exit', ...)` hook to do this. If the process is killed forcefully, the socket is left behind; the supervisor removes it before the next `listen()` call.
+
+## When NOT to use the supervisor
+
+- **You want a long-lived server.** Skip the CLI; run `node dist/main.js` directly. The supervisor only stops processes that are idle.
+- **You need sticky connections** (WebSockets, long-lived streams). The supervisor's "stop the process when idle" semantics conflict with persistent connections. Run a long-lived process and skip the scale-to-zero layer.
+- **You are in tests.** The supervisor adds a hop. Test against `install({ dataDir: ':memory:' })` directly.
+
+## Where to go next
+
+- [**Configuration**](/worldant/configuration) — `WorldConfig`, `id`, `dataDir`, codec
+- [**How it works**](/worldant/how-it-works) — what the supervisor does with this config
+- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model

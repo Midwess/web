@@ -1,0 +1,22 @@
+{
+  "title": "pglite-rs",
+  "description": "In-process PostgreSQL for Rust — embedded like SQLite, full Postgres SQL, async on any runtime",
+  "pages": [
+    "index",
+    "how-it-works",
+    {
+      "name": "Guides",
+      "pages": [
+        "installation",
+        "quickstart",
+        "transactions",
+        "listen-notify",
+        "orm",
+        "multi-process",
+        "replication",
+        "dump-restore"
+      ]
+    },
+    "configuration"
+  ]
+}

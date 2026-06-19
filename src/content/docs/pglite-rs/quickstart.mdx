@@ -1,0 +1,66 @@
+---
+title: Quickstart
+description: Open an in-process Postgres, run a statement, read the result, close
+---
+
+# Quickstart
+
+The smallest end-to-end path: open an in-process database, run a statement, read the result back, close. If you have done this once, the rest of the guides pick up a single concept at a time.
+
+Assumes a Rust project on stable 1.85+ with the crate already added.
+
+## 1. Open a database
+
+`PGlite::open(path)` opens a persistent on-disk data dir; `PGlite::open_temp()` opens a fresh dir under the OS temp dir, runs `initdb` on first open, and removes the dir on drop. Both return a `PGlite` that owns the engine.
+
+```rust
+use pglite::PGlite;
+
+let db = PGlite::open("./mydata").await?;       // persistent
+// or
+let db = PGlite::open_temp().await?;            // ephemeral, cleaned on drop
+```
+
+`initdb` runs on first open. After that, the data dir is a regular Postgres cluster — on disk, the files look exactly like a real `initdb` output, because they are.
+
+## 2. Run a statement
+
+`exec` runs a statement that produces no rows; `query` runs a statement that does and returns `Vec<Row>`. Bound parameters use `&[&(dyn ToSql + Sync)]` — any type that implements `postgres-types::ToSql`.
+
+```rust
+db.exec("CREATE TABLE users (id serial PRIMARY KEY, name text)").await?;
+
+let rows = db
+    .query("SELECT id, name FROM users WHERE id > $1", &[&0i32])
+    .await?;
+for row in &rows {
+    let id: i32 = row.get(0)?;
+    let name: &str = row.get(1)?;
+    println!("{id} {name}");
+}
+```
+
+Rows are typed accessors — `row.get::<T, _>(idx)` decodes a column into `T` using the standard `postgres-types` codecs. Use `try_get` if the decode can fail.
+
+## 3. Close
+
+`close()` shuts down the engine thread and drops any temp data dir. It is idempotent and safe to call explicitly; `Drop` also cleans up.
+
+```rust
+db.close().await?;
+```
+
+After `close`, attempting to open another in-process `PGlite` in the same process returns `Error::ReopenUnsupported`. Cross-process reopen is fine.
+
+## What's next
+
+You have a working `PGlite`. Pick the next capability that matters to your code:
+
+- [**Transactions**](/pglite-rs/transactions) — `db.transaction()`, rollback on drop, connection pinning
+- [**Listen & notify**](/pglite-rs/listen-notify) — `listen()` callbacks, `NOTIFY`, live queries
+- [**ORM integration**](/pglite-rs/orm) — `unix_uri()` for SQLx, SeaORM, Diesel, tokio-postgres
+- [**Multi-process mode**](/pglite-rs/multi-process) — real concurrent sessions with a child postmaster + pool
+- [**Replication**](/pglite-rs/replication) — `Replica::start` for read-only logical replication from upstream
+- [**Dump & restore**](/pglite-rs/dump-restore) — `dump_data_dir` / `restore_data_dir`, cross-process reopen
+
+Or read [**How it works**](/pglite-rs/how-it-works) to understand the engine thread, FFI waist, and the three operating modes behind the same API.

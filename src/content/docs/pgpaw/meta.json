@@ -1,0 +1,22 @@
+{
+  "title": "PgPaw",
+  "description": "Read-only Postgres cache + realtime server over an embedded pglite-rs logical replica",
+  "pages": [
+    "index",
+    "how-it-works",
+    {
+      "name": "Guides",
+      "pages": [
+        "installation",
+        "quickstart",
+        {
+          "name": "API",
+          "pages": ["api", "api/query", "api/snapshot", "api/live"]
+        },
+        "sql-classifier",
+        "authorization",
+        "configuration"
+      ]
+    }
+  ]
+}

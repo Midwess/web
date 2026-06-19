@@ -1,0 +1,61 @@
+---
+title: API
+description: HTTP endpoints, error envelope, CORS, status codes
+---
+
+# API
+
+Four endpoints. All bodies are JSON, all errors are JSON, all snapshot responses are CDN-cacheable.
+
+| Endpoint | Mode | Purpose |
+|---|---|---|
+| [`POST /query`](/pgpaw/api/query) | snapshot | Run a read-only `SELECT`, return a `303` redirect to the snapshot URL |
+| [`POST /query?live=true`](/pgpaw/api/live) | SSE | Run, then open an SSE stream of row-level deltas |
+| [`GET /q/{hash}/{version}`](/pgpaw/api/snapshot) | fetch | Fetch an immutable, CDN-cacheable snapshot |
+| `GET /healthz` | health | Liveness + replica watermark (`ok` / `halted`) |
+
+`POST /query` is the entry point. It returns either a `303 See Other` to a snapshot URL (public queries) or the rows inline (access-controlled). The snapshot URL is content-addressed and immutable for a year.
+
+`POST /query?live=true` is the same entry point with `live=true`. It opens an SSE stream after the initial snapshot, emitting row-level deltas on every relevant upstream commit.
+
+`GET /q/{hash}/{version}` is the immutable snapshot fetch. Same URL → same body, forever. No revalidation round-trip.
+
+`GET /healthz` is the liveness check. Returns `{ status, watermark }` while the replica is keeping up; `{ status: "halted", reason }` if the applier ran into an unrecoverable error.
+
+## Error envelope
+
+Every error response is JSON:
+
+```json
+{ "name": "RejectedError", "message": "table `secrets` is not available in this cache (not replicated)" }
+```
+
+| Status | `name` | When |
+|---|---|---|
+| `400` | `ParseError` | SQL does not parse, or the [classifier](/pgpaw/sql-classifier) rejects it (writes / DDL / volatile funcs / multi-statement / non-replicated table) |
+| `401` | `UnauthorizedError` | Query is access-controlled and the bearer token is missing, invalid, or expired |
+| `403` | `ForbiddenError` | The token's role is denied the table or columns |
+| `404` | `NotFoundError` | `/q/{hash}/{version}` does not match a known snapshot (the URL is the cache key, so this is rare) |
+| `503` | `ServiceUnavailableError` | Replica is halted; reads cannot be served |
+| `500` | `InternalError` | Unhandled — check the server log |
+
+The `name` is stable across releases and safe to switch on client-side. The `message` is for humans.
+
+## CORS
+
+Browsers on a different origin than PgPaw need a `CORS_ORIGIN` (or `--cors-origin`) — pass an origin, a comma list, or `*` to allow cross-origin `POST /query` and SSE:
+
+```bash
+pgpaw serve --cors-origin "https://app.example.com,https://staging.example.com"
+```
+
+The default is no `Access-Control-Allow-Origin` — browser calls fail until you set this.
+
+## What's next
+
+- [**`POST /query`**](/pgpaw/api/query) — the entry point; request, public `303`, access-controlled inline, hash + version
+- [**`GET /q/{hash}/{version}`**](/pgpaw/api/snapshot) — immutable snapshot fetch
+- [**`POST /query?live=true`**](/pgpaw/api/live) — SSE event stream format
+- [**SQL classifier**](/pgpaw/sql-classifier) — what queries pass, what gets rejected
+- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
+- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var

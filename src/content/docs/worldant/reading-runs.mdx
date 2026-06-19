@@ -1,0 +1,123 @@
+---
+title: Reading runs
+description: getRun, run.returnValue, world.events / steps / runs — query and audit
+---
+
+# Reading runs
+
+Once a workflow has started, three surfaces let you observe it: `getRun` for the handle you got back from `start()`, and the `world.events` / `world.steps` / `world.runs` query APIs for everything you did not start yourself.
+
+## The `Run` handle
+
+`start(workflow, args)` returns a `Run` object immediately. The workflow body runs in the background; the `Run` is the live handle to it.
+
+```ts
+import { start } from 'workflow/api';
+import { checkout } from './workflows/checkout.js';
+
+const run = await start(checkout, [order]);
+// run.runId      — stable identifier, used everywhere
+// run.status     — 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+// run.returnValue — Promise<CheckoutResult>, resolves on completion
+// run.createdAt  — Date the run was started
+```
+
+The handle is cheap and serializable — store it in a database, return it to a client, log it. Re-resolve the handle later with `getRun(runId)`.
+
+## Awaiting the result
+
+`run.returnValue` is a Promise that resolves when the run finishes, with the value the workflow function returned. It rejects when the run fails with an unhandled `FatalError`.
+
+```ts
+const run = getRun<CheckoutResult>(runId);
+try {
+  const result = await run.returnValue;
+  console.log(result.ok, result.chargeId, result.trackingId);
+} catch (e) {
+  console.error('workflow failed:', e);
+}
+```
+
+If the process restarts before the run completes, the `returnValue` Promise resolves on the next process — the world replays the workflow body from the top, skipping recorded step results, until the workflow returns. `await run.returnValue` works across the restart transparently.
+
+## Status
+
+`run.status` is a snapshot of the current state. Read it when you want to show progress in a UI; do not poll it for completion — `await run.returnValue` is the right primitive.
+
+| Status | Meaning |
+|---|---|
+| `pending` | The run has been created but no step has executed yet |
+| `running` | At least one step is executing or scheduled to execute |
+| `completed` | The workflow function returned. `returnValue` is now resolved |
+| `failed` | A step threw a `FatalError`, or the workflow body itself threw. `returnValue` is rejected |
+| `cancelled` | The run was cancelled by an explicit `cancel` call (rare; usually the world never sees this — the workflow's `AbortSignal` is the right place to handle cancellation) |
+
+## `world.events.list` — the audit log
+
+Every step start, step result, retry schedule, hook creation, hook resume, and stream write is recorded as an event. The events list is the audit trail.
+
+```ts
+const events = await world.events.list({ runId: 'wrun_...' });
+for (const event of events) {
+  console.log(event.createdAt, event.type, event.payload);
+}
+```
+
+`world.events.list` accepts:
+
+- `runId` — filter to one run
+- `deploymentId` — filter to one deployment (use the `deploymentId` from `WorldConfig`)
+- `type` — filter by event type (`step.started`, `step.completed`, `step.failed`, `hook.created`, `hook.resumed`, …)
+- `since` / `until` — time bounds
+- `limit` / `offset` — pagination
+
+The event log is append-only. It is the source of truth for what happened in a run, even after the run is long over.
+
+## `world.steps.list` — recorded step results
+
+The step list shows what each step returned (or threw) for a given run, in execution order:
+
+```ts
+const steps = await world.steps.list({ runId: 'wrun_...' });
+for (const step of steps) {
+  console.log(step.stepName, step.attempt, step.status, step.result);
+}
+```
+
+Useful for:
+
+- "What step is the run stuck on?" diagnostics
+- Reconstructing the input/output of a step from the audit log without re-running it
+- Building a debugging UI
+
+## `world.runs.list` — cross-run queries
+
+The runs list is for cross-cutting questions: "what runs are still pending?", "which runs failed in the last hour?", "show me everything from the canary deployment":
+
+```ts
+const stuck = await world.runs.list({ status: 'running' });
+const failed = await world.runs.list({ status: 'failed', since: yesterday });
+const canary = await world.runs.list({ deploymentId: 'canary-2024-11-12' });
+```
+
+`world.runs.list` accepts the same filter shape as `world.events.list`. Both methods return a paginated list.
+
+## `world.nextDueMs()`
+
+The world knows when the next queued step is scheduled to run. The supervisor uses this to decide when to stop the process — if `nextDueMs()` is `null` or far in the future, there is no work pending.
+
+```ts
+const next = world.nextDueMs();
+if (next === null || next > Date.now() + idleThreshold) {
+  // safe to stop the process
+}
+```
+
+You usually do not call this directly — it is the supervisor's signal. But it is exposed for custom schedulers and tests.
+
+## Where to go next
+
+- [**Workflows**](/worldant/workflows) — `'use workflow'`, `'use step'`, retries, hooks, streams
+- [**Supervisor**](/worldant/supervisor) — how the supervisor uses `nextDueMs()` to scale to zero
+- [**Configuration**](/worldant/configuration) — `WorldConfig`, `dataDir`, `deploymentId`
+- [**How it works**](/worldant/how-it-works) — what the world stores in SQLite

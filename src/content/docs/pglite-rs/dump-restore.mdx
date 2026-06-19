@@ -1,0 +1,61 @@
+---
+title: Dump & restore
+description: dump_data_dir / restore_data_dir — checkpoint + tar, cross-process reopen
+---
+
+# Dump & restore
+
+A `PGlite` data dir is a regular Postgres cluster — on disk, the files look exactly like a real `initdb` output. `dump_data_dir` writes a tar of the directory; `restore_data_dir` materializes one into a new path. Cross-process reopen is fully supported.
+
+## Dump
+
+```rust
+let db = PGlite::open("./mydata").await?;
+db.dump_data_dir("./mydata.tar").await?;
+```
+
+`dump_data_dir` runs an explicit `CHECKPOINT` first so the on-disk state matches a clean shutdown, then writes a tar of the entire data dir to the destination path. The tar is a `tar::Builder` archive of the directory's contents — no compression, no Postgres-specific format. You can untar it with `tar -xf` and inspect the files with normal Postgres tools (`pg_controldata`, `psql`, etc.) on the same major version.
+
+## Restore
+
+```rust
+PGlite::restore_data_dir("./mydata.tar", "./mydata-restored")?;
+let db = PGlite::open("./mydata-restored").await?;
+```
+
+`restore_data_dir` extracts the tar into the destination path and removes any stale `postmaster.pid` file (which would prevent a new process from starting on this data dir). It is a synchronous filesystem operation — no engine boot is required.
+
+The restored dir is a fully bootable Postgres cluster. You can open it with `PGlite::open` from any process, in any mode (in-process, multi-process), and the engine runs `initdb`-equivalent recovery automatically on first open.
+
+## Cross-process reopen
+
+```rust
+// process 1
+let db = PGlite::open("./mydata").await?;
+// ... use it ...
+db.close().await?;
+
+// process 2
+let db = PGlite::open("./mydata").await?;     // works — cross-process reopen
+```
+
+The in-process engine boots once per process lifetime, but a different process can open the same data dir after the first closes. This is the right model for:
+
+- **Tests.** Each test gets a fresh process. Dump once, restore per test, no shared state.
+- **Serverless handlers.** Each invocation is a new process; the data dir is the persistent artifact.
+- **Child-process supervisors.** A parent process holds a `PGlite` and forks children; each child opens the same data dir.
+
+The dump + tar flow is one way to move that persistent artifact between processes or machines. Another is to keep the data dir on shared storage and let each process open it directly.
+
+## Use cases
+
+- **Golden fixtures.** Dump a known-good state in CI setup, restore in each test, run the test, drop the dir.
+- **Snapshot tests.** Dump the data dir after a setup, restore in a comparison test, diff the result.
+- **Seeding.** Dump a production-shaped fixture, restore into a local dev environment, run migrations and seeds on top.
+- **Snapshotting before a destructive migration.** `dump_data_dir` before, run the migration, restore on failure.
+
+## What's next
+
+- [**Quickstart**](/pglite-rs/quickstart) — open, exec, query, close
+- [**Multi-process mode**](/pglite-rs/multi-process) — multi-process `PGlite` and tar dumps
+- [**Replication**](/pglite-rs/replication) — `Replica::start` for read-only logical replication

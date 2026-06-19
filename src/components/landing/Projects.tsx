@@ -12,9 +12,13 @@ type Project = {
   name: string;
   /** URL slug used by the docs pipeline + internal route. */
   slug: string;
+  /** Whether the project has docs at `/${slug}`. Drives the row's
+   *  primary click target — docs if true, the website otherwise. */
+  hasDocs: boolean;
   tagline: string;
   sprite: string;
-  /** Detail site — opened when the row itself is clicked. */
+  /** External site — used as the row's click target when the project has
+   *  no docs, and as a fallback for projects whose docs are still in flight. */
   website: string;
   /** GitHub repo — opened via the star. Omit for projects without one. */
   repo?: string;
@@ -27,6 +31,7 @@ const projects: Project[] = [
   {
     name: "Worldant",
     slug: "worldant",
+    hasDocs: true,
     tagline: "Vercel world implementation in Rust for agentic",
     sprite: "/pets/capvolt.webp",
     website: "https://github.com/Midwess/worldant",
@@ -37,6 +42,7 @@ const projects: Project[] = [
   {
     name: "Pglite",
     slug: "pglite-rs",
+    hasDocs: true,
     tagline: "Lightweight embedded Postgres like SQLite",
     sprite: "/pets/goose-default.png",
     website: "https://github.com/Midwess/pglite-rs",
@@ -47,6 +53,7 @@ const projects: Project[] = [
   {
     name: "PgPaw",
     slug: "pgpaw",
+    hasDocs: true,
     tagline: "A high performance realtime service with full SQL syntax support",
     sprite: "/pets/kaka-2.webp",
     website: "https://github.com/Midwess/PgPaw",
@@ -57,6 +64,7 @@ const projects: Project[] = [
   {
     name: "Bytover",
     slug: "bytover",
+    hasDocs: false,
     tagline: "P2P file management and P2P transfer solution",
     sprite: "/pets/froggle.webp",
     website: "https://bytover.com",
@@ -83,47 +91,49 @@ const ProgressBar = ({ value }: { value: number }) => (
   </div>
 );
 
-const ProjectCard = ({ project }: { project: Project }) => (
-  <div className="group border-1 border-olive-700 relative flex items-center gap-3 rounded-lg px-3 py-1.5 transition-colors duration-300 bg-olive-700/80">
-    {/* Whole-row click → the project's detail site. */}
-    <Link
-      href={project.website}
-      aria-label={`${project.name} — open site`}
-      className="absolute inset-0 z-10"
-    />
-    <span className="relative flex shrink-0 items-center gap-3">
-      <span
-        className="flex items-center justify-center rounded-lg p-1"
-        style={{ backgroundColor: project.accent }}
-      >
-        <PetSprite src={project.sprite} size={36} />
-      </span>
-      <span className="font-display text-sm font-medium text-olive-50">
-        {project.name}
-      </span>
-    </span>
-    <span className="relative min-w-0 flex-1 truncate text-center text-xs text-olive-400">
-      {project.tagline}
-    </span>
-    <ProgressBar value={project.progress} />
-    <Link
-      href={`/${project.slug}`}
-      aria-label={`${project.name} docs`}
-      className="relative z-20 shrink-0 rounded-md border border-olive-600 px-2 py-0.5 text-xs font-medium text-olive-100 transition-colors hover:border-olive-300 hover:text-olive-50"
-    >
-      Docs
-    </Link>
-    {project.repo && (
+const ProjectCard = ({ project }: { project: Project }) => {
+  // Row click target: docs if the project has them, otherwise the
+  // external website. The `Docs` button is gone — the whole row is the
+  // primary action. GitHub stays as a separate secondary target.
+  const primaryHref = project.hasDocs ? `/${project.slug}` : project.website;
+  const primaryLabel = project.hasDocs
+    ? `${project.name} — open docs`
+    : `${project.name} — open site`;
+  return (
+    <div className="group border-1 border-olive-700 relative flex items-center gap-3 rounded-lg px-3 py-1.5 transition-colors duration-300 bg-olive-700/80">
+      {/* Whole-row click → docs (if available) or website. */}
       <Link
-        href={`https://github.com/${project.repo}`}
-        aria-label={`${project.name} on GitHub`}
-        className="relative z-20 shrink-0"
-      >
-        <GitHubStars repo={project.repo} />
-      </Link>
-    )}
-  </div>
-);
+        href={primaryHref}
+        aria-label={primaryLabel}
+        className="absolute inset-0 z-10"
+      />
+      <span className="relative flex shrink-0 items-center gap-3">
+        <span
+          className="flex items-center justify-center rounded-lg p-1"
+          style={{ backgroundColor: project.accent }}
+        >
+          <PetSprite src={project.sprite} size={36} />
+        </span>
+        <span className="font-display text-sm font-medium text-olive-50">
+          {project.name}
+        </span>
+      </span>
+      <span className="relative min-w-0 flex-1 truncate text-center text-xs text-olive-400">
+        {project.tagline}
+      </span>
+      <ProgressBar value={project.progress} />
+      {project.repo && (
+        <Link
+          href={`https://github.com/${project.repo}`}
+          aria-label={`${project.name} on GitHub`}
+          className="relative z-20 shrink-0"
+        >
+          <GitHubStars repo={project.repo} />
+        </Link>
+      )}
+    </div>
+  );
+};
 
 const springConfig = { stiffness: 300, damping: 30 };
 

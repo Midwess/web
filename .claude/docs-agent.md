@@ -39,16 +39,48 @@ You produce TWO things and nothing else:
 - Keep it **short and vision-level**: where Midwess is headed, in plain technical language. No marketing fluff, no version numbers, no milestone lists.
 - Read the existing `src/content/vision.json` first. Only change it if this project's actual direction (from its source) shifts the overall vision. If it still reads true, leave it unchanged.
 
+# Source grounding (anti-hallucination) — MANDATORY
+
+Every API you document MUST exist in the source at `REF`. Do not paraphrase from headers or
+memory; invented method names, enum variants, field names, and signatures are the #1 failure mode
+of this job. Before writing any code example:
+
+1. **Build an API inventory from the source.** Extract the real public surface, e.g. for Rust:
+   `grep -rnE 'pub (async )?fn|pub struct|pub enum|pub trait' <crate>/src` and read the definitions
+   you intend to use. For JS/TS, read the actual exports. Keep this inventory open while writing.
+2. **Examples and tests are executable truth.** Read `examples/`, `tests/`, and doctests FIRST.
+   Adapt real, working snippets verbatim instead of composing new ones from imagination. If an
+   example shows `replica.subscribe()` returning a channel, your docs use exactly that — not an
+   invented `.subscribe().await` or a method that isn't there.
+3. **Signatures must match exactly** — async vs sync, return type, parameter names, enum variant
+   field names. If you are unsure, open the definition and read it. Never guess.
+4. **No invention.** If a capability is plausible but you cannot find it in the source, it does not
+   exist for documentation purposes. Write `[TODO: confirm]` rather than inventing an API.
+
+# Self-verification pass (before `pnpm build`) — MANDATORY
+
+After writing the pages, audit your own output against the source:
+
+- For every `Type::method`, `.method(`, enum variant, and struct field you used in a code block,
+  confirm it appears in the source inventory. `grep` the cloned source for each unfamiliar token.
+- Remove or correct anything that does not resolve to a real symbol at `REF`.
+- Treat any pre-existing page you are keeping with the same scrutiny — old docs may carry stale or
+  hallucinated APIs; fix them, do not preserve them.
+
+Only proceed to the build once every documented API resolves to real source.
+
 # Workflow
 
-1. `cd /tmp/project`. **Read the source comprehensively** — `ls -R`, `README`, manifest (`package.json` / `Cargo.toml`), and the full `src/` tree. Do not skim: understand the real public API, features, and architecture before writing anything. Prefer reading too much over too little.
+1. `cd /tmp/project`. **Read the source comprehensively** — `ls -R`, `README`, manifest (`package.json` / `Cargo.toml`), the full `src/` tree, AND `examples/` + `tests/`. Do not skim: understand the real public API, features, and architecture before writing anything. Prefer reading too much over too little. Build the API inventory described in "Source grounding" above.
 2. Compare against the EXISTING docs in `src/content/docs/<SLUG>/`. Treat them as possibly stale.
 3. Plan the page set that reflects the CURRENT source (minimum 5: index, installation, quickstart, api/<main>, guides/<notable>).
 4. **Invalidate stale docs.** For every existing page that no longer matches the source — removed features, renamed/changed APIs, dropped modules — rewrite it or DELETE it (`rm`). The final `src/content/docs/<SLUG>/` must describe only what exists at `REF`. Do not leave orphaned or contradicted pages.
 5. Write each page (frontmatter first, then body) following the doc-coauthoring quality bar. Write `meta.json` last with the canonical page order, omitting any deleted pages.
 6. Update `src/content/vision.json` per the Vision rules above (often a no-op).
-7. `cd /Users/tiendang/Projects/web`. Run `pnpm build`. Fix errors. Re-run until green.
-8. `git status` must show changes ONLY under `src/content/docs/<SLUG>/` and/or `src/content/vision.json` (additions, edits, OR deletions). Revert anything else.
+7. **Run the self-verification pass** (see section above): grep the cloned source for every API token
+   you used and remove/fix anything that does not resolve to a real symbol at `REF`.
+8. `cd /Users/tiendang/Projects/web`. Run `pnpm build`. Fix errors. Re-run until green.
+9. `git status` must show changes ONLY under `src/content/docs/<SLUG>/` and/or `src/content/vision.json` (additions, edits, OR deletions). Revert anything else.
 
 # Hard rules
 

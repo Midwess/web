@@ -33,7 +33,7 @@ Pick the modes you need at build time.
 | `pgcrypto` | the pgcrypto extension — digests, encryption (needs OpenSSL at artifact-build time only, not in your crate) |
 | `icu` | ICU engine variant — real Unicode collation via `locale_provider: Icu` (~+40MB, statically bundled) |
 | `multiple-process` | `PGlite::open_multi_process` — child postmaster on a private unix socket with pooled connections for true concurrent sessions. Unix-only. |
-| `replica` | `PGlite::start_replica` / `Replica::start` — logical-replication consumer; streams committed changes from a remote Postgres into a local read-only PGlite |
+| `replica` | `Replica::start` — logical-replication consumer; streams committed changes from a remote Postgres into a local read-only PGlite |
 | `full` | every feature above in one go |
 
 ```sh

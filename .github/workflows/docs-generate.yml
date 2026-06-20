@@ -91,6 +91,20 @@ jobs:
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code@2.1.183
 
+      - name: Install midwess/dev-workflow plugin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eo pipefail
+          # Public marketplace repo (org: midwess). The install target is
+          # <plugin>@<marketplace-name>, where the marketplace name is the
+          # `name` field in midwess/dev-workflow's .claude-plugin/marketplace.json
+          # (assumed `dev-workflow`). --dangerously-skip-permissions bypasses the
+          # non-interactive trust prompt (claude-code >= 2.1.154).
+          claude plugin marketplace add midwess/dev-workflow --dangerously-skip-permissions
+          claude plugin install dev-workflow@dev-workflow --dangerously-skip-permissions
+          claude plugin list --enabled
+
       - name: Run doc agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
@@ -107,8 +121,13 @@ jobs:
           REF=$REF
           PROJECT_PATH=$PROJECT_PATH
 
-          Generate docs per the contract in the system prompt file.
-          Then run 'pnpm build' until green. Commit only files under src/content/docs/$SLUG/.
+          Follow the contract in the system prompt file: use the /dev-workflow:doc-coauthoring
+          skill to (re)generate docs for $SLUG and refresh the single global vision.
+          Read ALL of the project source first. Invalidate any out-of-date docs — rewrite or
+          delete pages that no longer match the source. Keep src/content/vision.json short
+          (one or two sentences) and only change it if this project shifts the overall vision.
+          Then run 'pnpm build' until green. Change only files under src/content/docs/$SLUG/
+          and src/content/vision.json.
           EOF
           )"
           claude \
@@ -124,12 +143,14 @@ jobs:
           SLUG: ${{ env.SLUG }}
         run: |
           git add -N .
+          # Include deletions (status code ' D') so invalidated pages are caught too.
           git status --porcelain | awk '{print $2}' | sort > /tmp/changed.txt
           cat /tmp/changed.txt
           EXPECTED="src/content/docs/${SLUG}/index.mdx src/content/docs/${SLUG}/meta.json"
           while read -r f; do
             case "$f" in
               src/content/docs/"$SLUG"/*) ;;
+              src/content/vision.json) ;;
               dist/*|node_modules/*|.next/*) ;;
               *) echo "::error::agent modified file outside allowlist: $f"; exit 1 ;;
             esac
@@ -152,12 +173,13 @@ jobs:
           SHORT="${REF::7}"
           BRANCH="docs/${SLUG}-${SHORT}"
           git checkout -B "$BRANCH"
-          git add "src/content/docs/${SLUG}"
+          # -A so deletions of invalidated pages are staged, plus the global vision.
+          git add -A "src/content/docs/${SLUG}" src/content/vision.json
           git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
-          git commit -m "docs(${SLUG}): regenerate from ${PROJECT}@${SHORT}"
+          git commit -m "docs(${SLUG}): regenerate from ${PROJECT}@${SHORT} (+ vision)"
           git push -u origin "$BRANCH" --force-with-lease
           gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "docs(${SLUG}): regenerate (${PROJECT}@${SHORT})" \
-            --body "Auto-generated from \`${PROJECT}\` (\`${REPO}\`) @ \`${REF}\` via \`repository_dispatch:docs.generate\`."
+            --body "Auto-generated docs for \`${SLUG}\` and refreshed global vision from \`${PROJECT}\` (\`${REPO}\`) @ \`${REF}\` via the \`/dev-workflow:doc-coauthoring\` skill (\`repository_dispatch:docs.generate\`)."

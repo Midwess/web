@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
 import { Container } from "./Container";
-import { SectionHeading, Badge } from "./Typography";
+import { SectionHeading } from "./Typography";
 import { Link } from "./_link";
 import { GitHubStars } from "./GitHubStars";
 import { PetSprite } from "./PetSprite";
@@ -25,6 +25,9 @@ type Project = {
   progress: number;
   /** Avatar backdrop tint, matched to each pet's own color. */
   accent: string;
+  /** 2–4 factual capability points, sourced from the project's own docs
+   *  (`src/content/docs/<slug>/index.mdx`). Omitted for projects without docs. */
+  features?: string[];
 };
 
 const projects: Project[] = [
@@ -38,6 +41,12 @@ const projects: Project[] = [
     repo: "Midwess/worldant",
     progress: 80,
     accent: "rgb(250 204 21 / 0.18)", // pikachu yellow
+    features: [
+      "In-process Vercel Workflow world",
+      "Embedded SQLite — no external DB",
+      "Scale-to-zero supervisor",
+      "Cross-process exactly-once",
+    ],
   },
   {
     name: "Pglite",
@@ -49,6 +58,12 @@ const projects: Project[] = [
     repo: "Midwess/pglite-rs",
     progress: 100,
     accent: "rgb(96 165 250 / 0.18)", // goose blue
+    features: [
+      "Real Postgres 17 in your binary",
+      "Async on any runtime",
+      "Multi-process mode",
+      "pgvector & logical replication",
+    ],
   },
   {
     name: "PgPaw",
@@ -60,6 +75,12 @@ const projects: Project[] = [
     repo: "Midwess/PgPaw",
     progress: 100,
     accent: "rgb(244 114 182 / 0.18)", // kaka pink
+    features: [
+      "Plain Postgres SQL over HTTP",
+      "Immutable CDN-cacheable snapshots",
+      "Realtime SSE deltas",
+      "Built on pglite-rs",
+    ],
   },
   {
     name: "Bytover",
@@ -100,36 +121,50 @@ const ProjectCard = ({ project }: { project: Project }) => {
     ? `${project.name} — open docs`
     : `${project.name} — open site`;
   return (
-    <div className="group border-1 border-olive-700 relative flex items-center gap-3 rounded-lg px-3 py-1.5 transition-colors duration-300 bg-olive-700/80">
-      {/* Whole-row click → docs (if available) or website. */}
+    <div className="group border-1 border-olive-700 relative flex flex-col gap-2 rounded-lg px-3 py-2 transition-colors duration-300 bg-olive-700/80">
+      {/* Whole-card click → docs (if available) or website. */}
       <Link
         href={primaryHref}
         aria-label={primaryLabel}
         className="absolute inset-0 z-10"
       />
-      <span className="relative flex shrink-0 items-center gap-3">
-        <span
-          className="flex items-center justify-center rounded-lg p-1"
-          style={{ backgroundColor: project.accent }}
-        >
-          <PetSprite src={project.sprite} size={36} />
+      <div className="flex items-center gap-3">
+        <span className="relative flex shrink-0 items-center gap-3">
+          <span
+            className="flex items-center justify-center rounded-lg p-1"
+            style={{ backgroundColor: project.accent }}
+          >
+            <PetSprite src={project.sprite} size={36} />
+          </span>
+          <span className="font-display text-sm font-medium text-olive-50">
+            {project.name}
+          </span>
         </span>
-        <span className="font-display text-sm font-medium text-olive-50">
-          {project.name}
+        <span className="relative min-w-0 flex-1 truncate text-center text-xs text-olive-400">
+          {project.tagline}
         </span>
-      </span>
-      <span className="relative min-w-0 flex-1 truncate text-center text-xs text-olive-400">
-        {project.tagline}
-      </span>
-      <ProgressBar value={project.progress} />
-      {project.repo && (
-        <Link
-          href={`https://github.com/${project.repo}`}
-          aria-label={`${project.name} on GitHub`}
-          className="relative z-20 shrink-0"
-        >
-          <GitHubStars repo={project.repo} />
-        </Link>
+        <ProgressBar value={project.progress} />
+        {project.repo && (
+          <Link
+            href={`https://github.com/${project.repo}`}
+            aria-label={`${project.name} on GitHub`}
+            className="relative z-20 shrink-0"
+          >
+            <GitHubStars repo={project.repo} />
+          </Link>
+        )}
+      </div>
+      {project.features && (
+        <ul className="pointer-events-none relative z-20 flex flex-wrap gap-1.5 pl-1 sm:pl-12">
+          {project.features.map((f) => (
+            <li
+              key={f}
+              className="rounded-full border border-olive-600/70 bg-olive-800/60 px-2 py-0.5 text-[10px] font-medium text-olive-300"
+            >
+              {f}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -223,7 +258,10 @@ const ProjectsPanel = () => {
 };
 
 export const Projects = () => (
-  <Container className="flex min-h-screen flex-col border-x border-divide">
+  <Container
+    id="projects"
+    className="flex min-h-screen scroll-mt-20 flex-col border-x border-divide"
+  >
     <ProjectsPanel />
   </Container>
 );

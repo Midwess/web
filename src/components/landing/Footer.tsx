@@ -1,7 +1,6 @@
 import { Container } from "./Container";
 import { Link } from "./_link";
 import { GithubIcon } from "./_icons/GithubIcon";
-import { XIcon } from "./_icons/XIcon";
 
 const SocialLink = ({
   href,
@@ -27,9 +26,6 @@ export const Footer = () => (
       <div className="mt-4 flex items-center gap-4 md:mt-0">
         <SocialLink href="https://github.com/Midwess">
           <GithubIcon className="size-4" />
-        </SocialLink>
-        <SocialLink href="https://twitter.com">
-          <XIcon className="size-4" />
         </SocialLink>
       </div>
     </div>

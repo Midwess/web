@@ -96,14 +96,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail
-          # Public marketplace repo (org: midwess). The install target is
-          # <plugin>@<marketplace-name>, where the marketplace name is the
-          # `name` field in midwess/dev-workflow's .claude-plugin/marketplace.json
-          # (assumed `dev-workflow`). --dangerously-skip-permissions bypasses the
-          # non-interactive trust prompt (claude-code >= 2.1.154).
-          claude plugin marketplace add midwess/dev-workflow --dangerously-skip-permissions
-          claude plugin install dev-workflow@dev-workflow --dangerously-skip-permissions
-          claude plugin list --enabled
+          # Public marketplace repo midwess/dev-workflow. Its
+          # .claude-plugin/marketplace.json declares name "midwess-dev" and a
+          # plugin "dev-workflow", so the install target is dev-workflow@midwess-dev.
+          # `plugin marketplace add` / `install` take no --dangerously-skip-permissions
+          # flag (they don't prompt non-interactively).
+          claude plugin marketplace add midwess/dev-workflow
+          claude plugin install dev-workflow@midwess-dev
+          claude plugin list
 
       - name: Run doc agent
         env:

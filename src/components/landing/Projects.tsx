@@ -121,50 +121,51 @@ const ProjectCard = ({ project }: { project: Project }) => {
     ? `${project.name} — open docs`
     : `${project.name} — open site`;
   return (
-    <div className="group border-1 border-olive-700 relative flex flex-col gap-2 rounded-lg px-3 py-2 transition-colors duration-300 bg-olive-700/80">
+    <div className="group border-1 border-olive-700 relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-300 bg-olive-700/80">
       {/* Whole-card click → docs (if available) or website. */}
       <Link
         href={primaryHref}
         aria-label={primaryLabel}
         className="absolute inset-0 z-10"
       />
-      <div className="flex items-center gap-3">
-        <span className="relative flex shrink-0 items-center gap-3">
-          <span
-            className="flex items-center justify-center rounded-lg p-1"
-            style={{ backgroundColor: project.accent }}
-          >
-            <PetSprite src={project.sprite} size={36} />
-          </span>
-          <span className="font-display text-sm font-medium text-olive-50">
-            {project.name}
-          </span>
+      <span className="relative flex shrink-0 items-center gap-3">
+        <span
+          className="flex items-center justify-center rounded-lg p-1"
+          style={{ backgroundColor: project.accent }}
+        >
+          <PetSprite src={project.sprite} size={36} />
         </span>
-        <span className="relative min-w-0 flex-1 truncate text-center text-xs text-olive-400">
+        <span className="font-display text-sm font-medium text-olive-50">
+          {project.name}
+        </span>
+      </span>
+      {/* Description + feature tags stacked: tags sit immediately under the tagline. */}
+      <div className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5">
+        <span className="w-full truncate text-center text-xs text-olive-400">
           {project.tagline}
         </span>
-        <ProgressBar value={project.progress} />
-        {project.repo && (
-          <Link
-            href={`https://github.com/${project.repo}`}
-            aria-label={`${project.name} on GitHub`}
-            className="relative z-20 shrink-0"
-          >
-            <GitHubStars repo={project.repo} />
-          </Link>
+        {project.features && (
+          <ul className="pointer-events-none flex flex-wrap justify-center gap-1.5">
+            {project.features.map((f) => (
+              <li
+                key={f}
+                className="rounded-full border border-olive-600/70 bg-olive-800/60 px-2 py-0.5 text-[10px] font-medium text-olive-300"
+              >
+                {f}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-      {project.features && (
-        <ul className="pointer-events-none relative z-20 flex flex-wrap gap-1.5 pl-1 sm:pl-12">
-          {project.features.map((f) => (
-            <li
-              key={f}
-              className="rounded-full border border-olive-600/70 bg-olive-800/60 px-2 py-0.5 text-[10px] font-medium text-olive-300"
-            >
-              {f}
-            </li>
-          ))}
-        </ul>
+      <ProgressBar value={project.progress} />
+      {project.repo && (
+        <Link
+          href={`https://github.com/${project.repo}`}
+          aria-label={`${project.name} on GitHub`}
+          className="relative z-20 shrink-0"
+        >
+          <GitHubStars repo={project.repo} />
+        </Link>
       )}
     </div>
   );

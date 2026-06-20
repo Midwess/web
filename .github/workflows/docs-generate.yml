@@ -122,12 +122,13 @@ jobs:
           PROJECT_PATH=$PROJECT_PATH
 
           Follow the contract in the system prompt file: use the /dev-workflow:doc-coauthoring
-          skill to (re)generate docs for $SLUG and refresh the single global vision.
+          skill to (re)generate docs for $SLUG and refresh the shipping milestones.
           Read ALL of the project source first. Invalidate any out-of-date docs — rewrite or
-          delete pages that no longer match the source. Keep src/content/vision.json short
-          (one or two sentences) and only change it if this project shifts the overall vision.
+          delete pages that no longer match the source. In src/content/milestones.json, add or
+          refresh this project's most recent entry (short, factual, dated) and keep the list tight;
+          leave it unchanged if nothing milestone-worthy shipped.
           Then run 'pnpm build' until green. Change only files under src/content/docs/$SLUG/
-          and src/content/vision.json.
+          and src/content/milestones.json.
           EOF
           )"
           claude \
@@ -150,7 +151,7 @@ jobs:
           while read -r f; do
             case "$f" in
               src/content/docs/"$SLUG"/*) ;;
-              src/content/vision.json) ;;
+              src/content/milestones.json) ;;
               dist/*|node_modules/*|.next/*) ;;
               *) echo "::error::agent modified file outside allowlist: $f"; exit 1 ;;
             esac
@@ -173,13 +174,13 @@ jobs:
           SHORT="${REF::7}"
           BRANCH="docs/${SLUG}-${SHORT}"
           git checkout -B "$BRANCH"
-          # -A so deletions of invalidated pages are staged, plus the global vision.
-          git add -A "src/content/docs/${SLUG}" src/content/vision.json
+          # -A so deletions of invalidated pages are staged, plus the milestones list.
+          git add -A "src/content/docs/${SLUG}" src/content/milestones.json
           git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
-          git commit -m "docs(${SLUG}): regenerate from ${PROJECT}@${SHORT} (+ vision)"
+          git commit -m "docs(${SLUG}): regenerate from ${PROJECT}@${SHORT} (+ milestones)"
           git push -u origin "$BRANCH" --force-with-lease
           gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "docs(${SLUG}): regenerate (${PROJECT}@${SHORT})" \
-            --body "Auto-generated docs for \`${SLUG}\` and refreshed global vision from \`${PROJECT}\` (\`${REPO}\`) @ \`${REF}\` via the \`/dev-workflow:doc-coauthoring\` skill (\`repository_dispatch:docs.generate\`)."
+            --body "Auto-generated docs for \`${SLUG}\` and refreshed shipping milestones from \`${PROJECT}\` (\`${REPO}\`) @ \`${REF}\` via the \`/dev-workflow:doc-coauthoring\` skill (\`repository_dispatch:docs.generate\`)."

@@ -5,7 +5,7 @@ import { Link } from "./_link";
 const navLinks = [
   { label: "Projects", href: "#projects" },
   { label: "Blog", href: "#writing" },
-  { label: "Vision", href: "#vision" },
+  { label: "Shipping", href: "#shipping" },
   { label: "GitHub", href: "https://github.com/Midwess" },
 ];
 

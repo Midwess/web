@@ -22,7 +22,7 @@ Invoke the **`/dev-workflow:doc-coauthoring`** skill and follow its structure an
 You produce TWO things and nothing else:
 
 1. **Project docs** under `src/content/docs/<SLUG>/`.
-2. **Global vision** in `src/content/vision.json`.
+2. **Shipping milestones** in `src/content/milestones.json`.
 
 ## Docs
 
@@ -33,11 +33,12 @@ You produce TWO things and nothing else:
 - Code blocks: ```ts title="path/to/file.ts" {1,3-5} for highlights.
 - Group pages in subfolders (`guides/<topic>.mdx`, `api/<module>.mdx`) and reference them in `meta.json.pages` as `<group>/<page>`.
 
-## Vision (`src/content/vision.json`)
+## Milestones (`src/content/milestones.json`)
 
-- Shape: `{ "vision": "<one to two sentences>" }`. A SINGLE global Midwess vision — not a changelog, not per-project, not dated.
-- Keep it **short and vision-level**: where Midwess is headed, in plain technical language. No marketing fluff, no version numbers, no milestone lists.
-- Read the existing `src/content/vision.json` first. Only change it if this project's actual direction (from its source) shifts the overall vision. If it still reads true, leave it unchanged.
+- Shape: a JSON array of `{ "date": "YYYY · MM", "project": "<name>", "title": "<short>", "body": "<one or two sentences>" }`, newest first. This is the public shipping timeline across ALL projects.
+- Read the existing `src/content/milestones.json` first. For THIS project (`SLUG`), add or refresh its most recent milestone(s) based on what actually shipped in the source at `REF`. Keep each `title` short and each `body` to one or two sentences — vision-level, not a changelog dump.
+- **Factual only.** Do not invent dates, versions, or milestones. If nothing milestone-worthy changed, leave the file unchanged.
+- **Keep it tight.** Trim to roughly the 5–6 most recent entries across all projects; drop the oldest when you add a newer one. Do not let the list grow without bound.
 
 # Source grounding (anti-hallucination) — MANDATORY
 
@@ -76,15 +77,15 @@ Only proceed to the build once every documented API resolves to real source.
 3. Plan the page set that reflects the CURRENT source (minimum 5: index, installation, quickstart, api/<main>, guides/<notable>).
 4. **Invalidate stale docs.** For every existing page that no longer matches the source — removed features, renamed/changed APIs, dropped modules — rewrite it or DELETE it (`rm`). The final `src/content/docs/<SLUG>/` must describe only what exists at `REF`. Do not leave orphaned or contradicted pages.
 5. Write each page (frontmatter first, then body) following the doc-coauthoring quality bar. Write `meta.json` last with the canonical page order, omitting any deleted pages.
-6. Update `src/content/vision.json` per the Vision rules above (often a no-op).
+6. Update `src/content/milestones.json` per the Milestones rules above — add/refresh this project's most recent entry, keep the list short, factual, and dated. Often a no-op.
 7. **Run the self-verification pass** (see section above): grep the cloned source for every API token
    you used and remove/fix anything that does not resolve to a real symbol at `REF`.
 8. `cd /Users/tiendang/Projects/web`. Run `pnpm build`. Fix errors. Re-run until green.
-9. `git status` must show changes ONLY under `src/content/docs/<SLUG>/` and/or `src/content/vision.json` (additions, edits, OR deletions). Revert anything else.
+9. `git status` must show changes ONLY under `src/content/docs/<SLUG>/` and/or `src/content/milestones.json` (additions, edits, OR deletions). Revert anything else.
 
 # Hard rules
 
-- Allowed to write/delete ONLY: files under `src/content/docs/<SLUG>/` and `src/content/vision.json`.
+- Allowed to write/delete ONLY: files under `src/content/docs/<SLUG>/` and `src/content/milestones.json`.
 - Never modify: `package.json`, `vite.config.ts`, `src/components/**`, `src/pages/**`, routing. The catch-all `/:slug/*` already serves docs — do NOT add routes.
 - Never write real secrets, API keys, or internal URLs.
 - Never run `npm publish`, `git push`, `gh pr create` — CI handles delivery.

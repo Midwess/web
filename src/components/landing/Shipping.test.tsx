@@ -1,16 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { Shipping } from "./Shipping";
-import vision from "@/content/vision.json";
+import milestones from "@/content/milestones.json";
 
-describe("Shipping (vision)", () => {
-  it("renders the single global vision statement from vision.json", () => {
+describe("Shipping (milestone timeline)", () => {
+  it("renders an entry from milestones.json in the timeline", () => {
     render(<Shipping />);
-    expect(screen.getByText(vision.vision)).toBeInTheDocument();
+    expect(screen.getByText(milestones[0].title)).toBeInTheDocument();
+    expect(screen.getByText(milestones[0].body)).toBeInTheDocument();
   });
 
-  it("frames the section as Vision", () => {
+  it("frames the section as the shipping timeline", () => {
     render(<Shipping />);
-    expect(screen.getByText("Vision")).toBeInTheDocument();
+    expect(screen.getByText("Recent milestones")).toBeInTheDocument();
   });
 });

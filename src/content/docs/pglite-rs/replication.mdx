@@ -134,14 +134,14 @@ This is the only safe way to do access-controlled reads on replicated tables —
 In addition to applying changes to the local store, the replica exposes an in-process fan-out: `Replica::subscribe()` returns a stream of `CommittedTransaction` values, each carrying the xid, commit LSN, commit timestamp, and the row changes (`RowChange::Insert | Update | Delete | Truncate`). This is the seam for a future cache layer (Electric-style shape logs, live deltas).
 
 ```rust
-let mut sub = replica.subscribe().await?;
-while let Some(tx) = sub.next().await {
+let events = replica.subscribe();
+while let Ok(tx) = events.recv() {
     for change in tx.changes {
         match change {
             RowChange::Insert { schema, table, row } => { /* ... */ }
             RowChange::Update { schema, table, key, row } => { /* ... */ }
             RowChange::Delete { schema, table, key } => { /* ... */ }
-            RowChange::Truncate { schemas, cascade } => { /* ... */ }
+            RowChange::Truncate { schema, table } => { /* ... */ }
         }
     }
 }

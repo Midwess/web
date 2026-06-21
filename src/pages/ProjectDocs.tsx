@@ -11,6 +11,23 @@ import type { Root } from "fumadocs-core/page-tree";
 import { FileText, BookOpen } from "lucide-react";
 import { DocsProvider } from "@/components/docs/_provider";
 import { LogoSVG } from "@/components/landing/Logo";
+import {
+  Diagram,
+  DNode,
+  DLane,
+  DEdge,
+  DBadge,
+  DLabel,
+} from "@/components/docs/diagram";
+import {
+  DChart,
+  DRow,
+  DCol,
+  DBox,
+  DArrow,
+  DGroup,
+  DNote,
+} from "@/components/docs/diagram/flow";
 
 const KNOWN = slugs as readonly string[];
 
@@ -24,8 +41,25 @@ const modules = import.meta.glob<MdxModule>("/src/content/docs/*/**/*.mdx", {
   eager: true,
 });
 
-/** MDX tag/components map — fumadocs defaults (Heading, CodeBlock, Callout, …). */
-const mdxComponents = { ...defaultMdxComponents };
+/** MDX tag/components map — fumadocs defaults + Midwess diagram primitives. */
+const mdxComponents = {
+  ...defaultMdxComponents,
+  // SVG primitives (legacy — being migrated to the auto-layout flow DSL below)
+  Diagram,
+  DNode,
+  DLane,
+  DEdge,
+  DBadge,
+  DLabel,
+  // auto-layout flow DSL (flexbox — overlap-proof)
+  DChart,
+  DRow,
+  DCol,
+  DBox,
+  DArrow,
+  DGroup,
+  DNote,
+};
 
 const pageIcon = <FileText className="size-4" />;
 const folderIcon = <BookOpen className="size-4" />;

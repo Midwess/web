@@ -9,6 +9,32 @@ The smallest end-to-end path: open an in-process database, run a statement, read
 
 Assumes a Rust project on stable 1.85+ with the crate already added.
 
+<DChart label="Lifecycle of a PGlite instance" title="Minimal lifecycle: open, then loop exec/query/transaction, then close">
+  <DRow gap={18} align="start">
+    <DBox kind="accent" badge={1} title="open" sub={["open() / open_temp()", "initdb on first open, boots engine"]} />
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" />
+    </DCol>
+    <DCol align="center">
+      <DBox kind="accent" badge={2} mono title="run work" sub={["exec()", "query() → Vec<Row>", "transaction()"]} />
+      <DArrow dir="down" kind="accent" dashed label="repeat as needed" />
+      <DArrow dir="down" kind="muted" dashed />
+      <DBox kind="warn" title="uncommitted Transaction" sub="drop fires-and-forgets ROLLBACK" />
+    </DCol>
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" />
+    </DCol>
+    <DCol align="center">
+      <DBox kind="accent" badge={3} title="close" sub={["close(self) or Drop", "engine torn down once"]} />
+      <DArrow dir="down" kind="muted" dashed />
+      <DGroup kind="warn" label="After close">
+        <DBox title="same-process reopen" sub="→ Error::ReopenUnsupported" />
+        <DBox kind="success" title="cross-process reopen" sub="→ fine (new process)" />
+      </DGroup>
+    </DCol>
+  </DRow>
+</DChart>
+
 ## 1. Open a database
 
 `PGlite::open(path)` opens a persistent on-disk data dir; `PGlite::open_temp()` opens a fresh dir under the OS temp dir, runs `initdb` on first open, and removes the dir on drop. Both return a `PGlite` that owns the engine.
@@ -40,17 +66,17 @@ for row in &rows {
 }
 ```
 
-Rows are typed accessors — `row.get::<T, _>(idx)` decodes a column into `T` using the standard `postgres-types` codecs. Use `try_get` if the decode can fail.
+Rows are typed accessors — `row.get::<T>(idx)` decodes the column at positional index `idx` into `T` using the standard `postgres-types` codecs. `try_get::<T>(name)` does the same thing but looks the column up by name instead of by index. Both return `Result`, so a failed decode surfaces as an `Err` either way.
 
 ## 3. Close
 
-`close()` shuts down the engine thread and drops any temp data dir. It is idempotent and safe to call explicitly; `Drop` also cleans up.
+`close()` shuts down the engine thread and drops any temp data dir. Calling it (or simply dropping the handle) tears the engine down exactly once — `PGlite` is `Clone`, and the actual teardown is ref-counted through an internal `CloseOnDrop`, so explicit `close()` and implicit `Drop` are both safe and you never need to call it twice.
 
 ```rust
 db.close().await?;
 ```
 
-After `close`, attempting to open another in-process `PGlite` in the same process returns `Error::ReopenUnsupported`. Cross-process reopen is fine.
+After `close`, attempting to open another in-process `PGlite` in the same process returns `Error::ReopenUnsupported` — the one-boot guard stays set for the life of the process. Cross-process reopen is fine.
 
 ## What's next
 

@@ -7,6 +7,25 @@ description: SSE event stream — snapshot pointer, row-level deltas, up-to-date
 
 Opens a Server-Sent Events stream. The first event is a snapshot pointer (or, for access-controlled queries, the initial rows inline). Subsequent events are row-level deltas. The stream stays open and emits another batch on every relevant upstream commit.
 
+<DChart label="Subscription lifetime" title="SSE event sequence: snapshot, then per-commit deltas plus up-to-date, then reset on lag">
+  <DBox badge={1} kind="success" title="snapshot" sub={["public: {type:snapshot, url:/q/{hash}/{version}, version}", "private: {type:snapshot, rows, version}"]} />
+  <DArrow dir="down" kind="muted" />
+  <DGroup kind="accent" label="2 · on each relevant upstream commit">
+    <DNote>a round of per-row frames, each carrying the commit txid, then a terminal heartbeat</DNote>
+    <DRow gap={10} align="center" wrap>
+      <DBox kind="success" mono title={"insert · txid"} />
+      <DBox kind="accent" mono title={"update · txid"} />
+      <DBox kind="error" mono title={"delete · txid"} />
+      <DArrow dir="right" kind="success" />
+      <DBox kind="success" mono title={"up-to-date · txid"} sub={["always emitted", "even on zero diffs"]} />
+    </DRow>
+    <DNote>repeats while the stream is open ↻</DNote>
+  </DGroup>
+  <DArrow dir="down" kind="muted" />
+  <DBox badge={"×"} kind="error" title={"on replication Lagged → {op:reset}"} sub="the subscription is dropped; the client must re-load the snapshot from a clean state" />
+  <DNote>SSE framing for every event: <code>data: &lt;json&gt;\n\n</code></DNote>
+</DChart>
+
 ## Request
 
 ```json
@@ -21,6 +40,31 @@ Headers:
 
 The body shape is identical to `POST /query`. The `?live=true` query string is what switches the response from `303` to SSE.
 
+<DChart label="Request → query() handler → one of two live streams" title="Routing a live request: halt check, auth, classify, privacy verdict, then public url snapshot or private inline rows">
+  <DRow gap={10} align="center" wrap>
+    <DBox kind="accent" mono title="POST /query" sub={["?live=true", "{sql} · Bearer?"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox title="halt check" sub="503 if halted" />
+    <DArrow dir="right" kind="accent" />
+    <DBox title="auth" sub="401 on err" />
+    <DArrow dir="right" kind="accent" />
+    <DBox title="classify" sub="400 if rejected" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="success" mono title="is_private(tables)" sub="verdict over catalog" />
+  </DRow>
+  <DRow gap={18} align="stretch">
+    <DGroup kind="success" label="public">
+      <DBox kind="success" title="PUBLIC" sub={["materialize → cache snapshot, then live().subscribe(hash, version)", "first event → url pointer", "{type:snapshot, url:/q/{hash}/{version}, version}"]} />
+    </DGroup>
+    <DGroup kind="info" label="access-controlled">
+      <DBox kind="info" title="ACCESS-CONTROLLED" sub={["Bearer required · 401 if missing", "query_json_as(role, claims) under RLS", "first event → inline rows"]} />
+    </DGroup>
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DBox kind="accent" title="200 text/event-stream" sub="Cache-Control: no-store  ·  in both branches" />
+  <DNote>A private live stream is never CDN-cached: the rows are inlined, not pointed at a shared /q/ resource.</DNote>
+</DChart>
+
 ## Event format
 
 Every event is a single `data:` line followed by a blank line. The payload is JSON.
@@ -28,7 +72,7 @@ Every event is a single `data:` line followed by a blank line. The payload is JS
 ### Public query
 
 ```
-data: {"type":"snapshot","url":"/q/9a4f/v=42","version":42}
+data: {"type":"snapshot","url":"/q/9a4f/42","version":42}
 
 data: {"op":"insert","key":"7","row":{"id":7,"status":"paid"},"txid":7654321}
 
@@ -39,7 +83,7 @@ data: {"op":"delete","key":"7","txid":7654323}
 data: {"op":"up-to-date","txid":7654323}
 ```
 
-The first event is the **snapshot pointer** — clients can fetch the body once (`GET /q/9a4f/v=42`) and then apply only the deltas. The terminal `up-to-date` event marks the end of one round of diffs; the stream stays open and emits another batch on the next relevant commit.
+The first event is the **snapshot pointer** — clients can fetch the body once (`GET /q/9a4f/42`) and then apply only the deltas. The terminal `up-to-date` event marks the end of one round of diffs; the stream stays open and emits another batch on the next relevant commit.
 
 ### Access-controlled query
 
@@ -62,9 +106,27 @@ Access-controlled queries have no shared cacheable snapshot — the initial rows
 | `up-to-date` | end of one round of diffs | `op`, `txid` |
 | `reset` | replication lag dropped transactions | `op` |
 
-The `key` is the row's primary key, or the hash of the row if the table has no PK / no `REPLICA IDENTITY FULL`. The `row` is the new state of the row for `insert` and `update`. `delete` carries no `row` — just the `key`.
+The `key` is the row's single-column primary key. If the subscription has no resolvable single-column PK — which includes multi-table queries and tables whose PK was dropped during schema scan — the row is keyed by a hash of its JSON instead. (`REPLICA IDENTITY FULL` is what enables per-column version anchoring; it does not contribute a key here.) The `row` is the new state of the row for `insert` and `update`. `delete` carries no `row` — just the `key`.
 
-The `txid` is the low 32 bits of `pg_current_xact_id()` on the upstream at commit. It is stable across reconnects (replay from the watermark skips already-applied transactions) and is the same identifier used for optimistic-write reconciliation in client libraries.
+The `txid` is the upstream transaction id — the 32-bit `xid` of the commit, passed straight through from the CDC stream. It is the same identifier used for optimistic-write reconciliation in client libraries.
+
+<DChart label="One commit → row-level deltas (LiveHub::on_commit)" title="LiveHub turns one upstream commit into row deltas: filter subscriptions, re-run SQL, key, diff, send frames">
+  <DRow gap={10} align="center" wrap>
+    <DBox badge={1} kind="accent" title="CdcBridge" sub={["broadcast →", "CommittedTransaction"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={2} title="filter subs" sub={["tables intersect", "the changed tables"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={3} mono title="re-run SQL" sub={["query_json (public)", "query_json_as (RLS)"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={4} mono title="key + diff" sub={["keyed_map(body, pk)", "diff(last, next)"]} />
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DRow gap={18} align="stretch">
+    <DBox badge={5} kind="success" title="send to subscriber (mpsc), then update last snapshot" sub={["insert / update / delete (each + txid)  →  up-to-date {txid}", "closed senders are reaped after the round (subscription dropped)"]} />
+    <DBox kind="error" title="RecvError::Lagged" sub={["worker calls reset_all():", "send {op:reset} to all · clear subs"]} />
+  </DRow>
+  <DNote>The whole loop runs in one tokio worker task draining the CdcBridge broadcast channel.</DNote>
+</DChart>
 
 ## The `up-to-date` heartbeat
 
@@ -81,6 +143,21 @@ for await (const event of stream) {
 
 The stream stays open. If the next relevant commit does not affect the query, no `insert` / `update` / `delete` events are sent — just the `up-to-date` heartbeat for the new txid. A client that is only interested in txid progress gets the heartbeat without paying for row diffs.
 
+<DChart label="Confirming an optimistic write with txid" title="Optimistic write reconciliation: write commits with xid, CDC delivers it, LiveHub emits up-to-date with matching txid, client awaits it">
+  <DRow gap={10} align="center" wrap>
+    <DBox badge={1} title="client write" sub={["optimistic update", "applied upstream"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={2} title={"commit → xid"} sub={["upstream assigns the", "32-bit transaction id"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={3} title="CDC → LiveHub" sub={["recompute affected subs,", "emit deltas + up-to-date"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={4} kind="accent" mono title="emit" sub={["up-to-date", "{txid: xid}"]} />
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DBox badge={5} kind="success" title={"client awaits the matching up-to-date{txid}"} sub="works even with zero row diffs — the heartbeat is always emitted → write now visible" />
+  <DNote>Because up-to-date fires every round, awaitTxId resolves even when the write touched no row the query selects.</DNote>
+</DChart>
+
 ## Reset events
 
 If the replication feed lags and transactions are dropped, PgPaw emits a `reset` control event:
@@ -95,14 +172,14 @@ The right response to a `reset`:
 
 ```js
 if (event.op === "reset") {
-  // 1. Re-fetch the snapshot
-  const snap = await fetch(`/q/${hash}/v=${currentVersion}`);
-  rows = snap.rows;
+  // 1. Re-fetch the snapshot (the body is a bare JSON array of rows)
+  const snap = await fetch(`/q/${hash}/${currentVersion}`);
+  rows = await snap.json();
   // 2. Resume applying deltas from the new stream
 }
 ```
 
-A `reset` is rare and indicates upstream replication lag, not normal operation.
+A `reset` is rare and indicates upstream replication lag, not normal operation. The server has no per-client replay: on `reset` the subscription is dropped, and reconnecting opens a brand-new stream that begins with a fresh `snapshot` event. Resume-from-a-clean-snapshot is the only recovery path; client libraries such as `@pgpaw/tanstack-db` handle the reconnect for you.
 
 ## Examples
 
@@ -112,7 +189,7 @@ Open a public stream:
 curl -N -X POST 'http://127.0.0.1:8080/query?live=true' \
      -H 'content-type: application/json' \
      -d '{"sql":"select id, status from orders"}'
-# data: {"type":"snapshot","url":"/q/9a4f/v=42","version":42}
+# data: {"type":"snapshot","url":"/q/9a4f/42","version":42}
 #
 # data: {"op":"insert","key":"7","row":{"id":7,"status":"paid"},"txid":7654321}
 # data: {"op":"up-to-date","txid":7654321}

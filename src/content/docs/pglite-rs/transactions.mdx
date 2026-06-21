@@ -7,6 +7,34 @@ description: db.transaction(), rollback on drop, connection pinning in multi-pro
 
 `db.transaction()` returns a `Transaction<'_>` that borrows the `PGlite`. The transaction owns a single session — in-process mode serializes it with the rest of the engine, multi-process mode pins it to one backend. Drop the transaction without committing and the host sends a fire-and-forget `ROLLBACK` so Postgres unwinds the session.
 
+<DChart label="Transaction lifecycle" title="Transaction lifecycle from begin through commit, rollback, or drop-rollback">
+  <DRow gap={18} align="center">
+    <DBox kind="accent" badge={1} mono title="db.transaction()" sub="sends BEGIN, done = false" />
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" />
+      <DArrow dir="left" kind="accent" dashed label="loop" />
+    </DCol>
+    <DBox kind="accent" badge={2} mono title="exec / query" sub={"repeatable, borrows &self"} />
+  </DRow>
+  <DNote center>Three ways out — each consumes the handle</DNote>
+  <DRow gap={14} align="stretch">
+    <DCol align="center">
+      <DArrow dir="down" kind="success" />
+      <DBox kind="success" title="commit(mut self)" sub={["done = true", "sends COMMIT over the wire"]} />
+    </DCol>
+    <DCol align="center">
+      <DArrow dir="down" kind="warn" />
+      <DBox kind="warn" title="rollback(mut self)" sub={["done = true", "sends ROLLBACK explicitly"]} />
+    </DCol>
+    <DCol align="center">
+      <DArrow dir="down" kind="error" />
+      <DBox kind="error" title="Drop (no commit)" sub={["done == false → fire-and-forget", "ROLLBACK (early ? lands here)"]} />
+    </DCol>
+  </DRow>
+  <DNote center>commit / rollback take mut self; the borrow on PGlite ends, the session is released back</DNote>
+  <DNote center>transaction.rs — commit/rollback set done = true; Drop rolls back only when !done</DNote>
+</DChart>
+
 ## Basic transaction
 
 ```rust
@@ -42,7 +70,7 @@ fn maybe_insert(db: &PGlite, name: &str) -> Result<(), pglite::Error> {
 
 ## Reading inside a transaction
 
-`Transaction::query` returns rows just like `PGlite::query`. Bind parameters work the same way; types are decoded with `row.get::<T, _>(idx)`.
+`Transaction::query` returns rows just like `PGlite::query`. Bind parameters work the same way; types are decoded with `row.get::<T>(idx)` — a single type parameter — or, more commonly, let inference fill it in via the positional form `let id: i32 = row.get(0)?` as the code block below does.
 
 ```rust
 let tx = db.transaction().await?;
@@ -62,6 +90,29 @@ tx.commit().await?;
 In multi-process mode the pool is a set of real Postgres backends. A `Transaction` borrows one backend exclusively — `BEGIN` and `COMMIT` hit the same backend, which is required for Postgres' session state (advisory locks, `SET LOCAL`, temp tables, prepared statements, etc.).
 
 The host enforces this. While a `Transaction` is alive, the borrowed backend is not returned to the pool, even if you call `db.query` from another task — that call will wait for the backend to free up or surface `Error::PoolExhausted` after 30 seconds. So `Transaction` borrows are exclusive by design.
+
+<DChart label="Transaction isolation" title="Transaction isolation differs between in-process tx_lock and multi-process connection pinning">
+  <DBox kind="accent" title="db.transaction()" sub={"Transaction::begin → BEGIN"} />
+  <DRow gap={18} align="start">
+    <DGroup kind="warn" label="In-process — tx_lock">
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="warn" title={"holds MutexGuard<()>"} sub={["lock_for_transaction() — one session", "serializes the whole engine thread"]} />
+      <DArrow dir="down" kind="warn" />
+      <DBox title="single pglite-engine thread" sub="all FFI calls confined here" />
+      <DArrow dir="down" kind="error" dashed />
+      <DBox kind="error" title="another db.query()" sub="blocks on tx_lock until commit/drop" />
+    </DGroup>
+    <DGroup kind="warn" label="Multi-process — pinned conn">
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="warn" title={"pool.checkout() → PinnedConn"} sub={["pins one UnixStream backend;", "held out of the pool until done"]} />
+      <DArrow dir="down" kind="warn" />
+      <DBox title="dedicated postmaster backend" sub="BEGIN / COMMIT pinned to it" />
+      <DArrow dir="down" kind="success" dashed />
+      <DBox kind="success" title="another db.query()" sub="gets a different conn — concurrent" />
+    </DGroup>
+  </DRow>
+  <DNote center>pool exhausted (all conns pinned) → waits up to ACQUIRE_TIMEOUT (30s) then Error::PoolExhausted</DNote>
+</DChart>
 
 ## Savepoints
 

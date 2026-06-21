@@ -7,6 +7,35 @@ description: Every CLI flag and env var — HTTP, upstream Postgres, authorizati
 
 Every CLI flag has a matching `UPPERCASE_SNAKE_CASE` environment variable. The flag wins when both are set. This page scans them all.
 
+Every flag is a global `clap` option, so the same values apply to both `pgpaw init` and `pgpaw serve`. From the CLI they flow into `UpstreamConfig` / `ServerConfig`, then into `Di::init`, which fans them out to the subsystems they configure.
+
+<DChart label="FLAG / ENV → CONFIG → SUBSYSTEM" title="How a flag or env value flows from the CLI into a running subsystem">
+  <DRow gap={18} align="center">
+    <DCol align="center">
+      <DBox kind="accent" title="Options (clap)" sub={["#[arg(long, env, global)]", "flag wins over env"]} />
+      <DArrow dir="right" kind="accent" />
+    </DCol>
+    <DCol align="center">
+      <DBox kind="info" title="Config structs" sub={["UpstreamConfig", "ServerConfig", "→ Di::init"]} />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="accent" title="Di::init" sub="fan-out" />
+    </DCol>
+    <DCol align="center" gap={8}>
+      <DArrow dir="right" kind="success" />
+      <DArrow dir="right" kind="info" />
+      <DArrow dir="right" kind="warn" />
+    </DCol>
+    <DGroup label="Subsystems">
+      <DBox kind="success" title="bind_addr → HttpServer" sub="host + port → listen socket" />
+      <DBox kind="success" title="max_connections → pglite pool" sub="MultiProcessOptions" />
+      <DBox kind="success" title="cache_size_bytes → QueryCache" sub="moka byte budget" />
+      <DBox kind="info" title="sslmode → ReplicaConfig" sub="pglite-rs upstream conn" />
+      <DBox kind="info" title="jwt_* → Verifier" sub="secret / public_key / role_claim" />
+      <DBox kind="warn" title="cors_origin → Cors" sub="none / * / allowlist" />
+    </DGroup>
+  </DRow>
+</DChart>
+
 ## HTTP
 
 | Flag | Env | Default | Description |
@@ -20,9 +49,9 @@ Every CLI flag has a matching `UPPERCASE_SNAKE_CASE` environment variable. The f
 
 `--max-connections` is the size of the pglite-rs multi-process pool that backs reads. Bigger pools cost more memory; the cache hit path does not need more than one. The pool size matters only for concurrent reads, and the in-process cache hits short-circuit the pool entirely.
 
-`--cache-size-bytes` is the `moka` cache budget. Default 256 MiB is comfortable for most workloads. Increase it if your eviction rate is high, decrease it if memory is tight.
+`--cache-size-bytes` is the `moka` cache budget, weighed by each cached body's byte length. Default 256 MiB is comfortable for most workloads. Increase it if your eviction rate is high, decrease it if memory is tight.
 
-`--cors-origin` is the single most common source of "the browser call works from curl but fails in the page". Set it to your app's origin (e.g. `https://app.example.com`) and the preflight goes through.
+`--cors-origin` is the single most common source of "the browser call works from curl but fails in the page". It maps directly to the actix CORS layer: leave it unset for the same-origin default, set `*` to allow any origin / method / header, or pass a comma-separated allowlist of origins (e.g. `https://app.example.com`) and the preflight goes through.
 
 ## Upstream Postgres
 
@@ -39,7 +68,7 @@ Every CLI flag has a matching `UPPERCASE_SNAKE_CASE` environment variable. The f
 
 The `pgpaw init` command sets sensible defaults for `--publication` and `--slot`. If you customize the publication name on the upstream, pass the same name to `serve`.
 
-`--sslmode=verify-full` validates the upstream's certificate against the system trust store. PgPaw bundles its own minimal TLS stack (rustls + webpki roots) — no OpenSSL required.
+`--sslmode` is parsed by `parse_sslmode` and forwarded into pglite-rs's `ReplicaConfig` for the upstream logical-replication connection that `serve` opens. Recognized values are `prefer`, `require`, and `verify-full` (also spelled `verify_full` / `verifyfull`); anything else — including the default `disable` — falls back to `Disable`. Note that `--sslmode` applies only to `serve`: the one-shot `pgpaw init` connects without TLS (`NoTls`), so the flag does not affect it.
 
 ## Authorization (JWT)
 
@@ -52,11 +81,13 @@ Set at most one verification key. With none, PgPaw is anonymous-only (public dat
 | `--jwt-jwks-url` | `JWT_JWKS_URL` | *(none)* | JWKS endpoint — *planned*; use `--jwt-public-key` today |
 | `--jwt-role-claim` | `JWT_ROLE_CLAIM` | `role` | JWT claim naming the Postgres role to run reads as |
 
+`--jwt-jwks-url` is accepted as a flag but is not yet implemented — if it is the chosen key, `Verifier::build` returns a configuration error at startup. Use `--jwt-public-key` for asymmetric verification today.
+
 See [Authorization](/pgpaw/authorization) for the full claims contract and policy writing guide.
 
 ## `pgpaw init`
 
-`init` is a one-shot command — it does not run continuously and reads the same Postgres flags as `serve`. It also accepts the publication and slot names so it creates the publication matching the names `serve` will use.
+`init` is a one-shot command — it does not run continuously and reads the same Postgres flags as `serve`. It also accepts the publication and slot names so it creates the publication matching the names `serve` will use. It connects with plain `tokio-postgres` (no TLS).
 
 ```bash
 pgpaw init \
@@ -65,28 +96,61 @@ pgpaw init \
     --publication cache_server_pub --slot cache_server_slot
 ```
 
-`init` does four things:
+`init` does three things:
 
-1. Sets `wal_level=logical` if it is not already. If this is a change, PgPaw prints a notice — restart Postgres to apply it.
-2. Creates the publication (`--publication`, default `cache_server_pub`) covering all tables.
-3. Installs the DDL event trigger (`pglite_emit_ddl` on `ddl_command_end`) so the replica sees schema changes.
-4. Verifies the connection and that the role has `REPLICATION` and `LOGIN` privileges.
+1. Sets `wal_level=logical` if it is not already, and raises `max_wal_senders` and `max_replication_slots` to `10` if either is below `10`. These settings are restart-only — if any changes, PgPaw prints a notice telling you to restart Postgres to apply them.
+2. Creates the publication (`--publication`, default `cache_server_pub`) covering all tables, if it does not already exist.
+3. Installs the DDL event trigger `pglite_ddl_watch` on `ddl_command_end`, which calls the function `pglite_emit_ddl()`. That function emits a logical message (using pglite's `DDL_SIGNAL_PREFIX`) so the replica sees schema changes. If the role lacks the privilege to install it, `init` prints a warning and continues — online schema changes fall back to reactive recovery.
 
-`init` is durable — the publication, slot, and trigger persist in the catalog. Run it once per upstream.
+`init` does not precheck role privileges; it just runs each step. If the role cannot apply a setting or create the publication, that step warns and falls back rather than failing a privilege gate.
+
+`init` is durable — the publication and trigger persist in the catalog. The replication slot is **not** created by `init`; it is created automatically when `serve` first starts the replica. Run `init` once per upstream.
 
 ## `pgpaw serve` vs `pgpaw init`
 
-`init` is for upstream preparation (one-shot). `serve` is the long-running process that serves HTTP. The two commands share the upstream flags but differ in what they do with the database.
+`init` is for upstream preparation (one-shot, no TLS). `serve` is the long-running process that serves HTTP. The two commands share the upstream flags but differ in what they do with the database.
 
 | | `init` | `serve` |
 |---|---|---|
-| Sets `wal_level=logical` | yes | no |
+| Sets `wal_level=logical` (+ senders/slots) | yes | no |
 | Creates the publication | yes | no |
 | Installs the DDL trigger | yes | no |
+| Creates the replication slot | no | yes (at startup) |
 | Opens the pglite-rs replica | no | yes |
 | Binds the HTTP port | no | yes |
 | Streams CDC to VersionIndex | no | yes |
-| Idempotent | yes (errors if already set) | yes (resumes from watermark) |
+| Idempotent | yes (safe to re-run; prints "already exists"/"already set" and skips) | yes (resumes from watermark) |
+
+<DChart title="What pgpaw init touches on the upstream versus what pgpaw serve does, and which flags are shared">
+  <DBox kind="success" title="Shared upstream flags" sub="--pg-host / -user / -password / -database / --publication / --slot" />
+  <DRow gap={18} align="start">
+    <DArrow dir="down" kind="success" label="init" />
+    <DArrow dir="down" kind="success" label="serve" />
+  </DRow>
+  <DRow gap={18} align="start">
+    <DGroup kind="accent" label="PGPAW INIT · one-shot, NoTls, idempotent">
+      <DBox kind="accent" badge={1} title="ALTER SYSTEM" sub="wal_level=logical · senders/slots ≥ 10 (restart-only)" />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="accent" badge={2} title="CREATE PUBLICATION FOR ALL TABLES" sub="skipped if it already exists" />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="accent" badge={3} title="install event trigger pglite_ddl_watch" sub="on ddl_command_end → pglite_emit_ddl()" />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="success" title="Re-runnable: no error on already-set" sub={"prints \"already exists\" / \"already set\" and moves on"} />
+    </DGroup>
+    <DGroup kind="info" label="PGPAW SERVE · long-running">
+      <DBox kind="info" badge={1} title="preflight" sub="validate wal_level / senders / slots / publication" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" badge={2} title="open_multi_process pglite" sub="embedded replica cluster" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" badge={3} title="Replica::start" sub="slot created here · --sslmode applies" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" badge={4} title="scan_schema → wire CDC / LiveHub" sub="VersionIndex + live hub" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="success" badge={5} title="bind HTTP" sub="actix HttpServer on bind_addr" />
+    </DGroup>
+  </DRow>
+  <DNote center>slot is created at serve, not at init</DNote>
+</DChart>
 
 ## On-disk paths
 

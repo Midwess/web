@@ -9,7 +9,7 @@ pglite-rs exposes Postgres `LISTEN` / `NOTIFY` end-to-end — both as SQL you ca
 
 ## Basic listen / notify
 
-`listen(channel, callback)` registers a closure against a `LISTEN` channel. `NOTIFY` issued from any source (the same process, another session in multi-process mode, an external Postgres via the replica) wakes the callback.
+`listen(channel, callback)` registers a closure against a `LISTEN` channel. A `NOTIFY` issued from any source — the same process, or another session in multi-process mode — wakes the callback.
 
 ```rust
 use pglite::PGlite;
@@ -29,7 +29,9 @@ db.exec("NOTIFY orders, 'order-99 placed'").await?;
 //   orders channel: order-99 placed
 ```
 
-The callback is `Fn(&str) + Send + Sync + 'static`. It runs on the engine-thread re-entrant path, so keep it short — push to a channel and return, don't do blocking work inside.
+The callback is `Fn(&str) + Send + Sync + 'static`. In in-process mode, native delivery is **not** a background stream: a `NOTIFY` surfaces only when its `NotificationResponse` rides back in the response buffer of some `exec` / `query` roundtrip you issue. The self-`NOTIFY` example above works because the notification frame is included in the reply to that same `exec`. Those frames are parsed by `process_response`, which runs on **your** calling task — not on the engine thread, which only pumps wire bytes and never inspects notifications. So a blocking callback stalls the calling task, not the engine; keep it short — push to a channel and return, don't do blocking work inside.
+
+Continuous, async delivery exists only on the two paths that have a dedicated reader: the socket gateway doorman (the in-process ORM path) and the multi-process `NotifyConn` reader thread, both covered below.
 
 ## Unlisten
 
@@ -43,18 +45,33 @@ db.unlisten_token("orders", token).await?;
 db.unlisten("orders").await?;
 ```
 
-When the last subscription on a channel is dropped, the host sends an `UNLISTEN "<channel>"` SQL to the engine. If the channel still has at least one subscription, the SQL is not sent — the existing `LISTEN` keeps the engine's notification stream open.
+When the last subscription on a channel is dropped, the host sends an `UNLISTEN "<channel>"` SQL to the engine. If the channel still has at least one subscription, the SQL is not sent — the existing `LISTEN` keeps the engine's notification stream open. `unlisten(channel)` removes every callback on the channel and always sends `UNLISTEN`.
+
+<DChart label="One subscription · two layers" title="A single listen subscription: case-insensitive Rust map vs case-sensitive engine LISTEN, plus token-based unlisten">
+  <DNote>{"db.listen(\"Orders\", cb)"}</DNote>
+  <DRow gap={18} align="center">
+    <DBox kind="accent" title="Rust listener map · case-insensitive" sub={["key = channel.to_lowercase()", "\"Orders\" → key \"orders\" · entry [(token, cb), …]", "token from next_listener counter"]} />
+    <DArrow dir="right" kind="warn" label="sends" />
+    <DBox kind="warn" title="Engine LISTEN · case-sensitive" sub={["LISTEN \"Orders\" · host double-quotes original name", "plain NOTIFY orders folds to lowercase orders", "→ NOT delivered to this session"]} />
+  </DRow>
+  <DGroup kind="warn" label="Unlisten semantics">
+    <DBox badge={1} kind="accent" mono title="unlisten_token(channel, token)" sub="removes one entry; emits UNLISTEN only when the channel's list becomes empty" />
+    <DBox badge={2} kind="warn" mono title="unlisten(channel)" sub="removes ALL entries on the channel and always sends UNLISTEN" />
+  </DGroup>
+</DChart>
 
 ## Channel name rules
 
-Channel names are case-insensitive. The host lowercases before storing in the listener map, so `listen("Orders", ...)` and `listen("orders", ...)` resolve to the same subscription. Quoting with double quotes in `NOTIFY` is preserved:
+Channel handling has two layers, and they disagree on case. The **Rust listener map is case-insensitive** — the host lowercases the channel both when storing a callback and when dispatching an incoming notification, so `listen("Orders", ...)` and `listen("orders", ...)` share the same map entry. But the **engine-side `LISTEN` is case-sensitive**: the host sends the original name double-quoted, so `listen("Orders", ...)` issues `LISTEN "Orders"` and `listen("orders", ...)` issues `LISTEN "orders"` — two distinct engine channels.
+
+What actually gets delivered is decided by the engine's case-sensitive `LISTEN`, not by the map. So a plain `NOTIFY orders` (which Postgres folds to lowercase `orders`) will **not** reach a session that ran `listen("Orders", ...)`:
 
 ```sql
-NOTIFY "Orders", 'hello';   -- fires both subscribers
-NOTIFY orders, 'hello';     -- same
+NOTIFY "Orders", 'hello';   -- delivered to listen("Orders", ...)
+NOTIFY orders, 'hello';     -- folds to lowercase "orders"; NOT delivered to listen("Orders", ...)
 ```
 
-If a channel name contains special characters, quote it in `NOTIFY`. The host quotes automatically on the `listen` side.
+If a channel name contains special characters or mixed case, quote it in `NOTIFY` to match. The host quotes automatically on the `listen` side.
 
 ## Native SQL
 
@@ -68,13 +85,29 @@ db.exec("UNLISTEN orders").await?;
 
 This is useful for diagnostics and for tasks that want to handle notifications in plpgsql / triggers.
 
+## Delivery in each mode
+
+A `NOTIFY` reaches a Rust callback by three different routes, but all three converge on the same shared, lowercased listener map and fan out from there. The crucial difference is **which thread drives delivery** — and whether delivery is continuous or piggybacked on a roundtrip you initiate.
+
+<DChart label="Three routes · one map" title="How a NOTIFY reaches a Rust listen callback in three modes, all converging on the shared lowercased listener map">
+  <DRow gap={14} align="start">
+    <DBox badge={1} kind="accent" title="In-process native" sub={["NotificationResponse rides back", "in an exec / query reply", "process_response() on CALLER task · no reader"]} />
+    <DBox badge={2} kind="warn" title="In-process ORM (socket)" sub={["gateway doorman \"pglite-socket\"", "dispatch_notifications_to()", "side-channels NOTIFY off client stream"]} />
+    <DBox badge={3} kind="info" title="Multi-process" sub={["out-of-pool NotifyConn reader", "thread \"pglite-notify\"", "blocking reader streams frames into map"]} />
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DBox kind="accent" title="shared listener map" sub={["Mutex<HashMap<lowercased channel, [(token, cb)]>>", "native listen() and live_query() both read here"]} />
+  <DArrow dir="down" kind="accent" label="fan out" />
+  <DBox kind="warn" mono title={"Fn(&str) + Send + Sync"} sub="your callbacks, invoked once per matching token" />
+</DChart>
+
 ## Live queries
 
 A live query is a host-layer subscription on top of `LISTEN` / `NOTIFY`. The flow:
 
 1. You give the host a SQL statement.
-2. The host parses it, installs `AFTER` triggers on every table the query references, and registers a `LISTEN` channel.
-3. A committed write to any of those tables fires `NOTIFY`. The host catches it, re-runs the query, and pushes the fresh `Vec<Row>` to your callback.
+2. The host wraps it in a `VIEW`, introspects every base table the query references (a recursive CTE), installs a refcounted `AFTER INSERT OR UPDATE OR DELETE` statement-level trigger per table, and `LISTEN`s on a `table_change__<schemaoid>__<tableoid>` channel for each.
+3. A committed write to any watched table fires `pg_notify` on its channel. The host catches it, debounces, re-runs `SELECT * FROM <view>`, and pushes the fresh `Vec<Row>` to your callback.
 
 ```rust
 let live = db
@@ -90,9 +123,37 @@ let live = db
 // somewhere else, or in another task:
 db.exec("INSERT INTO users (name) VALUES ('carol')").await?;
 // callback fires with [id=N, name="carol"]
+
+// when you are done — tear it down explicitly:
+live.unsubscribe().await?;
 ```
 
-Live queries are entirely a host concept — they ride the same `LISTEN` / `NOTIFY` surface that the engine already exposes, so they work the same in-process and in multi-process mode. `live_query` is dropped automatically when the `LiveQuery` handle goes out of scope; the host removes the triggers and the `LISTEN` registration.
+Live queries are entirely a host concept — they ride the same `LISTEN` / `NOTIFY` surface that the engine already exposes, so they work the same in-process and in multi-process mode.
+
+**`LiveQuery` is not cleaned up on drop.** There is no `Drop` impl. Dropping the handle drops the wake channel sender, which stops the `pglite-live-refresh` thread — but it leaves the `VIEW`, the per-table triggers, and the `LISTEN` registrations (and their listener-map entries) in place. To tear all of that down you must call `LiveQuery::unsubscribe(self).await`, which `UNLISTEN`s each channel via `unlisten_token`, decrements (and drops on zero) the per-table triggers, and `DROP`s the view. Orphaned views left behind by a dropped-but-not-unsubscribed handle are only reclaimed on the next `open()`, via `sweep_live_views`.
+
+<DChart title="How a live query turns a committed table write into a refreshed callback, and how it is torn down">
+  <DNote>Setup &amp; steady state</DNote>
+  <DRow gap={14} align="start">
+    <DBox badge={1} kind="accent" mono title="live_query(sql, params, cb)" sub={["CREATE VIEW live_query_<id>_view", "introspect base tables · WATCHED_TABLES_SQL", "per table: refcounted AFTER trigger pg_notify"]} />
+    <DBox badge={2} kind="warn" title="listen() on each channel" sub={["each callback pushes a wake into wake_tx", "mpsc::Sender<()>", "thread \"pglite-live-refresh\" debounces, re-runs view"]} />
+  </DRow>
+  <DNote>A committed write flows through</DNote>
+  <DRow gap={10} align="center">
+    <DBox kind="warn" title="INSERT / UPDATE" sub="commits on a watched table" />
+    <DArrow dir="right" kind="warn" />
+    <DBox kind="warn" title="trigger fires pg_notify" sub={"table_change__<sch>__<tbl>"} />
+    <DArrow dir="right" kind="warn" />
+    <DBox kind="accent" title={"wake → mpsc"} sub="refresher debounces" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="accent" mono title={"cb(&[Row])"} sub="fresh rows" />
+  </DRow>
+  <DNote>Teardown — two outcomes</DNote>
+  <DRow gap={14} align="start">
+    <DBox kind="success" mono title="unsubscribe(self).await" sub={["set done, wake refresher to exit", "UNLISTEN each via unlisten_token", "decrement / DROP triggers · DROP VIEW — fully clean"]} />
+    <DBox kind="error" mono title="drop(live) — NO Drop impl" sub={["wake_tx drops → refresher thread exits", "VIEW, triggers, LISTEN state LEAK", "reclaimed later by sweep_live_views on next open()"]} />
+  </DRow>
+</DChart>
 
 ## Multi-process: the NotifyConn
 
@@ -100,7 +161,7 @@ In multi-process mode, the pool is busy doing real work. `LISTEN` subscriptions 
 
 - Created lazily on the first `listen()` or `live_query` call.
 - Holds all `LISTEN` registrations in one place.
-- A blocking reader thread streams `NotificationResponse` messages out of it and fans them to the Rust listener map.
+- A blocking reader thread (`pglite-notify`) streams `NotificationResponse` messages out of it and fans them to the Rust listener map.
 - Live queries and `listen()` callbacks both read from the same map, so subscribers do not need a pool slot.
 
 The NotifyConn is owned by the `PGlite` and is closed on `close()` / last drop. You do not interact with it directly.
@@ -109,7 +170,7 @@ The NotifyConn is owned by the `PGlite` and is closed on `close()` / last drop. 
 
 A `listen()` call that targets a closed engine returns `Error::Closed`. A `NOTIFY` from SQL that fires for a non-subscribed channel is silently dropped on the engine side — no error, no callback.
 
-If the engine thread is busy when a notification arrives, the callback runs as soon as the in-flight `exec` or `query` returns. There is no upper bound on that wait; if you `await` inside the callback, the engine thread blocks until your `await` resolves. The recommended pattern is to push to a `futures::channel::mpsc` channel from the callback and process the events on a separate task.
+In in-process mode, a native notification is only delivered when its `NotificationResponse` is piggybacked on the reply to an `exec` / `query` roundtrip, and `process_response` invokes your callback on the calling task. So if you `await` or block inside the callback, you stall **that task**, not the engine thread (which never sees notifications). The recommended pattern is to push to a `futures::channel::mpsc` channel from the callback and process the events on a separate task. On the socket-gateway and multi-process paths the same advice holds, except the callback runs on the doorman or `pglite-notify` reader thread respectively, so a slow callback stalls that reader.
 
 ## What's next
 

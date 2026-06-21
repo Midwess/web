@@ -5,7 +5,7 @@ description: cargo add pglite-rs — prebuilt native static library, no Postgres
 
 # Installation
 
-pglite-rs is published as the `pglite-rs` crate on [crates.io](https://crates.io/crates/pglite-rs). The build script downloads a prebuilt static library for your target. No Postgres server, no Docker, no system packages.
+pglite-rs is published as the `pglite-rs` crate on [crates.io](https://crates.io/crates/pglite-rs). The engine ships as a prebuilt static library that the build script resolves for your target — from the bundled per-target artifact crate, a local cache, or a network download. No Postgres server, no Docker, no system packages.
 
 ## Install
 
@@ -13,13 +13,46 @@ pglite-rs is published as the `pglite-rs` crate on [crates.io](https://crates.io
 cargo add pglite-rs
 ```
 
-This pulls in `pglite-rs-sys` (the FFI) and triggers `build.rs` to download a per-target tarball of `libpglite.a` + headers + the `share/postgresql` runtime. Subsequent builds reuse the cache at `~/.cache/pglite-rs/`.
+This pulls in `pglite-rs-sys` (the FFI layer, `links = "pglite"`). When you install from crates.io, the engine rides along inside the bundled per-target artifact crate as `libpglite.a.zst`, which `pglite-sys/build.rs` zstd-decompresses into `OUT_DIR` and links — no network needed. The runtime payload (`pglite-runtime.tar`, which carries `share/postgresql`) is resolved separately by `pglite/build.rs` and embedded into the library via `include_bytes!`. No C headers are involved — the FFI is hand-written in `pglite-sys/src/lib.rs` with no bindgen.
+
+If no artifact crate is available for your target, the build script downloads a per-target tarball (`pglite-<target>.tar.gz`) of `libpglite.a` and sha256-verifies it against the release. Downloaded artifacts are cached at `~/.cache/pglite-rs/<ENGINE_TAG>/<target-triple>/<variant>` (the `<variant>` subdir is `icu` when the `icu` feature is on, empty otherwise). The current `ENGINE_TAG` is `engine-06c837c6a303-p3`.
 
 > **Heads up:** the **package** is `pglite-rs`; the **library** is `pglite` (`use pglite::PGlite`).
 
 ```rust
 use pglite::PGlite;
 ```
+
+### How `build.rs` finds `libpglite.a`
+
+The static library is resolved through an ordered precedence chain. The first match wins, so `PGLITE_LIB_DIR` always overrides the bundled artifact crate, and the network download is the last resort.
+
+<DChart label="Resolution order — pglite-sys/build.rs" title="How build.rs resolves libpglite.a: an ordered precedence chain, first match wins">
+  <DRow gap={18} align="start">
+    <DCol>
+      <DBox kind="accent" badge={1} title="PGLITE_LIB_DIR env" sub="explicit override → use directory as-is" />
+      <DArrow dir="down" label="unset" />
+      <DBox badge={2} title="Artifact crate" sub="DEP_PGLITE_LIB_*_ROOT (crates.io path)" />
+      <DArrow dir="down" label="absent" />
+      <DBox badge={3} title="Local native/out" sub="dev tree / from-source build output" />
+      <DArrow dir="down" label="missing" />
+      <DBox badge={4} kind="warn" title="Download + verify" sub="GitHub release → sha256 → cache" />
+    </DCol>
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" dashed label="chosen lib dir" />
+    </DCol>
+    <DCol>
+      <DGroup kind="accent" label="prepare_static_lib()">
+        <DNote>libpglite.a.zst present?</DNote>
+        <DNote kind="accent">yes → zstd-decompress → OUT_DIR</DNote>
+        <DNote kind="muted">no → link the plain .a in place</DNote>
+        <DNote>icu feature → uses the icu variant subdir</DNote>
+      </DGroup>
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="success" mono title="link static:+whole-archive=pglite" sub="+ z, export-dynamic (and c++/stdc++ on icu)" />
+    </DCol>
+  </DRow>
+</DChart>
 
 ## Features
 
@@ -33,7 +66,7 @@ Pick the modes you need at build time.
 | `pgcrypto` | the pgcrypto extension — digests, encryption (needs OpenSSL at artifact-build time only, not in your crate) |
 | `icu` | ICU engine variant — real Unicode collation via `locale_provider: Icu` (~+40MB, statically bundled) |
 | `multiple-process` | `PGlite::open_multi_process` — child postmaster on a private unix socket with pooled connections for true concurrent sessions. Unix-only. |
-| `replica` | `PGlite::start_replica` / `Replica::start` — logical-replication consumer; streams committed changes from a remote Postgres into a local read-only PGlite |
+| `replica` | `Replica::start(db, config)` — logical-replication consumer; streams committed changes from a remote Postgres into a local read-only PGlite |
 | `full` | every feature above in one go |
 
 ```sh
@@ -47,14 +80,40 @@ cargo add pglite-rs --features "pgvector,multiple-process"
 ## Requirements
 
 - **Rust.** Stable toolchain, **1.85+** (edition 2021). No nightly required.
-- **A C toolchain at *build* time** (only the one pglite-sys uses). The build script needs `cc` to compile the native shim (`native/pglite_native.c`) and link `libpglite.a` into your crate. On macOS, install Xcode Command Line Tools (`xcode-select --install`). On Debian/Ubuntu, `apt install build-essential`. On Windows, the MSVC toolchain that ships with `rustup` is enough.
-- **Network access on first build** so the build script can download the prebuilt tarball for your target triple. The default cache lives under `~/.cache/pglite-rs/`. Once cached, builds work offline.
+- **A linker / system toolchain at *build* time** — not a C compiler. The consuming build compiles **no C**: the native shim (`pglite_native.o`) is already precompiled inside the prebuilt `libpglite.a`, and `pglite-sys/build.rs` has no `cc` build-dependency. You only need your platform's standard linker to fold the static library into your binary. On macOS, install Xcode Command Line Tools (`xcode-select --install`). On Debian/Ubuntu, `apt install build-essential`. On Windows, the toolchain that ships with `rustup` is enough. (A full C toolchain is only needed if you compile the engine yourself — see [build from source](#optional-build-the-engine-from-source).)
+- **Network access on first build** *only when no bundled artifact crate or cache is available* for your target, so the build script can download and sha256-verify the prebuilt tarball. Downloaded artifacts are cached under `~/.cache/pglite-rs/<ENGINE_TAG>/<target-triple>/<variant>`. Once cached — or when installing from crates.io, which ships the engine in-crate — builds work offline.
 
 That's it. No Postgres server. No `libpq`. No system SQLite. The native engine is statically linked straight into your binary.
+
+### What actually links into your binary
+
+No C is compiled at your build, and no headers ship. The prebuilt static library — carrying the precompiled `pglite_native.o` — is linked whole-archive through the hand-written FFI layer, while the runtime tar is baked into the library at compile time.
+
+<DChart label="Link stack — consumer binary ↓ prebuilt engine" title="What links into your binary: safe API embeds the runtime tar, FFI waist, prebuilt static lib">
+  <DBox kind="accent" title="Your crate" sub="use pglite::PGlite — no C compiled, no headers · Rust + safe async API" />
+  <DArrow dir="down" kind="accent" />
+  <DBox title="pglite" sub="safe API · include_bytes!(pglite-runtime.tar) → share/postgresql · runtime embedded" />
+  <DArrow dir="down" kind="accent" />
+  <DBox kind="warn" title="pglite-rs-sys" sub={"hand-written extern \"C\" decls (no bindgen) · links=\"pglite\" · FFI waist"} />
+  <DArrow dir="down" kind="accent" />
+  <DBox kind="error" mono title="libpglite.a" sub="prebuilt static lib · precompiled pglite_native.o + patched Postgres 17 · static:+whole-archive" />
+</DChart>
 
 ## Build-script note for extensions and plpgsql
 
 If you turn on `pgvector`, `pgcrypto`, or use `plpgsql`, the engine `dlopen`s extension `.so` / `.dylib` files at runtime, and those modules need to resolve engine symbols back into your binary. **You must export dynamic symbols from the consuming binary**, or you will get mysterious "undefined symbol" errors at first query.
+
+<DChart label="Dynamic symbol export — extension / plpgsql path" title="Why extension consumers export dynamic symbols, and why the base path does not">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" badge={1} title="Consumer binary" sub={["-export_dynamic (macOS)", "--export-dynamic (else)"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={2} title="Engine" sub={["dlopen() extension module", "at first CREATE EXTENSION / query"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="warn" badge={3} title="vector / pgcrypto" sub={[".so / .dylib needs engine", "symbols at load"]} />
+  </DRow>
+  <DArrow dir="left" kind="accent" dashed label="resolves symbols back into the binary" />
+  <DBox kind="muted" title="Base feature set" sub="no extensions, no plpgsql → nothing is dlopen'd → no export flag needed" />
+</DChart>
 
 Add a `build.rs` to your crate with this content:
 
@@ -78,7 +137,7 @@ For the base feature set (no extensions, no plpgsql) this is not required.
 
 ## Verify
 
-Create a new project to confirm the toolchain, the prebuilt artifact download, and the in-process engine all line up:
+Create a new project to confirm the toolchain, the prebuilt artifact resolution, and the in-process engine all line up:
 
 ```sh
 cargo new pglite-check --bin
@@ -114,11 +173,11 @@ Expected output:
 got 1 row(s): "world"
 ```
 
-The first build takes a few seconds (downloads the prebuilt artifact, compiles the native shim, links it in). Subsequent builds skip the download.
+The first build takes a few seconds (resolves and links the prebuilt artifact, decompressing the bundled `libpglite.a.zst` or downloading the tarball on a cache miss). Subsequent builds reuse the cached library.
 
 ## Optional: build the engine from source
 
-The prebuilt static library is what `cargo build` downloads by default. If you want to compile the patched Postgres yourself (for a target triple that doesn't have a prebuilt, or to audit the source), build the artifact once and point the build script at it:
+The prebuilt static library is what `cargo build` resolves by default (bundled artifact crate, cache, or download). If you want to compile the patched Postgres yourself (for a target triple that doesn't have a prebuilt, or to audit the source), build the artifact once and point the build script at it via `PGLITE_LIB_DIR` — which sits first in the resolution order, so it overrides everything else:
 
 ```sh
 # in the pglite-rs repo
@@ -126,7 +185,7 @@ The prebuilt static library is what `cargo build` downloads by default. If you w
 PGLITE_LIB_DIR=/path/to/dir cargo test --workspace
 ```
 
-`PGLITE_LIB_DIR` is read by `pglite-sys/build.rs`; the directory must contain `libpglite.a` and `pglite-runtime.tar`.
+`PGLITE_LIB_DIR` is read by `pglite-sys/build.rs` for `libpglite.a`; the same directory must also carry `pglite-runtime.tar` (resolved by `pglite/build.rs`) for a full local build.
 
 ## Where to go next
 

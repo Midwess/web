@@ -9,6 +9,23 @@ pglite-rs is **PostgreSQL that runs inside your Rust process** — no server, no
 
 It is built for **tests, CLIs, desktop apps, edge/serverless workloads, and cache layers** where standing up a Postgres server is too heavy and an in-memory mock is too lossy.
 
+<DChart label="One async call, round trip" title="A Rust async call crosses the FFI waist into libpglite.a on the dedicated engine thread and returns over a oneshot channel">
+  <DBox kind="accent" title="Your async code · crate pglite" sub={["PGlite::query / exec on any executor — depends on futures, never tokio", "postgres-protocol encodes SQL + binds into Postgres v3 wire bytes"]} />
+  <DRow gap={18} align="center">
+    <DBox kind="accent" mono grow={1} title="IN · wire bytes over std::sync::mpsc" />
+    <DBox kind="accent" mono grow={1} title="OUT · reply bytes over oneshot" />
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DGroup kind="warn" label={"Dedicated OS thread · \"pglite-engine\""}>
+    <DBox kind="warn" title="The only thread that touches FFI" sub={["thread_local EngineIo buffers · pumps bytes into the backend", "drains the reply · contains every longjmp"]} />
+    <DArrow dir="down" />
+    <DBox kind="error" mono title="FFI waist · crate pglite-rs-sys" sub={"~30 hand-written pgl_* extern \"C\" decls · no bindgen · links = \"pglite\""} />
+  </DGroup>
+  <DArrow dir="down" kind="accent" dashed label="native call boundary" />
+  <DBox kind="error" title="libpglite.a · patched PostgreSQL 17 (postgres-pglite fork)" sub="single backend, --single mode, parallel + background workers disabled" />
+  <DArrow dir="up" kind="accent" label="reply bytes return over oneshot" />
+</DChart>
+
 ## Features
 
 - **Real PostgreSQL.** Native static build of a patched Postgres 17 fork. Full SQL, full types (jsonb, arrays, ranges, enums, domains, uuid), full transactions, MVCC, plpgsql.

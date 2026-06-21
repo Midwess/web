@@ -1,0 +1,248 @@
+/*
+ * Auto-layout flow diagrams — rendered with flexbox so the browser computes
+ * every position. Overlap is structurally impossible: boxes are flex items with
+ * padding and gaps, and text WRAPS instead of overflowing. Reuses the Claude-warm
+ * tokens from diagram.css (the .mw-diagram scope).
+ */
+
+.mw-chart {
+  background: var(--dg-bg);
+  border: 1px solid var(--dg-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  overflow-x: auto; /* very wide flows scroll, never overlap */
+  color: var(--dg-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+.mw-chart-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dg-muted);
+  margin: 0 0 1rem;
+}
+.mw-chart-cap {
+  font-size: 12px;
+  color: var(--dg-muted);
+  margin: 1rem 0 0;
+  line-height: 1.5;
+}
+
+/* flex containers */
+.mw-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 11px;
+  min-width: 0;
+}
+.mw-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 11px;
+  min-width: 0;
+}
+.mw-row > * {
+  min-width: 0;
+}
+.mw-row > .mw-box,
+.mw-row > .mw-group {
+  flex: 1 1 0;
+}
+/* Flex containers must not collapse narrower than their content, or a child box
+   spills into the neighbor (overlap). Plain boxes still shrink to their own
+   min-width then the row scrolls. */
+.mw-row > .mw-group,
+.mw-row > .mw-col {
+  min-width: min-content;
+}
+.mw-col > .mw-box,
+.mw-col > .mw-group {
+  width: 100%;
+}
+
+/* node card */
+.mw-box {
+  position: relative;
+  background: linear-gradient(var(--dg-card), var(--dg-card-2));
+  border: 1px solid var(--dg-border);
+  border-left: 3px solid var(--dg-accent);
+  border-radius: 11px;
+  padding: 11px 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+  min-width: 132px;
+}
+.mw-box-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.mw-box-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--dg-text);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
+.mw-box-sub {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dg-muted);
+  line-height: 1.5;
+  margin-top: 2px;
+  overflow-wrap: break-word;
+}
+.mw-box.mono .mw-box-title,
+.mw-box.mono .mw-box-sub {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* kind = accent-bar color (+ badge color) */
+.mw-box.accent {
+  border-left-color: var(--dg-accent);
+}
+.mw-box.success {
+  border-left-color: var(--dg-success);
+}
+.mw-box.warn {
+  border-left-color: var(--dg-warn);
+}
+.mw-box.error {
+  border-left-color: var(--dg-error);
+}
+.mw-box.info {
+  border-left-color: var(--dg-info);
+}
+.mw-box.muted {
+  border-left-color: var(--dg-border);
+}
+
+/* numbered badge */
+.mw-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--dg-accent);
+  color: var(--dg-bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+.mw-badge.success {
+  background: var(--dg-success);
+}
+.mw-badge.warn {
+  background: var(--dg-warn);
+}
+.mw-badge.error {
+  background: var(--dg-error);
+}
+.mw-badge.info {
+  background: var(--dg-info);
+}
+.mw-badge.muted {
+  background: var(--dg-muted);
+}
+
+/* connector */
+.mw-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  color: var(--dg-muted);
+  align-self: center;
+}
+.mw-arrow.accent {
+  color: var(--dg-accent);
+}
+.mw-arrow.success {
+  color: var(--dg-success);
+}
+.mw-arrow.warn {
+  color: var(--dg-warn);
+}
+.mw-arrow.error {
+  color: var(--dg-error);
+}
+.mw-arrow.info {
+  color: var(--dg-info);
+}
+.mw-arrow svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.mw-arrow-label {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: inherit;
+}
+
+/* group / lane container */
+.mw-group {
+  border: 1.5px dashed var(--dg-border);
+  border-radius: 13px;
+  padding: 13px;
+  min-width: 0;
+}
+.mw-group.accent {
+  border-color: color-mix(in srgb, var(--dg-accent) 55%, transparent);
+}
+.mw-group.success {
+  border-color: color-mix(in srgb, var(--dg-success) 55%, transparent);
+}
+.mw-group.warn {
+  border-color: color-mix(in srgb, var(--dg-warn) 55%, transparent);
+}
+.mw-group.error {
+  border-color: color-mix(in srgb, var(--dg-error) 55%, transparent);
+}
+.mw-group.info {
+  border-color: color-mix(in srgb, var(--dg-info) 55%, transparent);
+}
+.mw-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dg-muted);
+  margin: 0 0 11px;
+}
+
+/* caption / note */
+.mw-note {
+  font-size: 12.5px;
+  color: var(--dg-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+.mw-note.center {
+  text-align: center;
+}
+.mw-note.accent {
+  color: var(--dg-accent);
+}
+.mw-note.success {
+  color: var(--dg-success);
+}
+.mw-note.warn {
+  color: var(--dg-warn);
+}
+.mw-note.error {
+  color: var(--dg-error);
+}
+.mw-note.info {
+  color: var(--dg-info);
+}

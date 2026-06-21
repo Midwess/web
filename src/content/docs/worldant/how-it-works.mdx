@@ -5,332 +5,156 @@ description: Architecture, data flow, storage, and the supervisor lifecycle
 
 # How it works
 
-Worldant is a single-process implementation of the Vercel Workflow world. Three things to understand: the layers that make it up, how a workflow run flows through them, and how the supervisor keeps the process alive.
+Worldant is a self-hosted, durable `@workflow/world` implementation on embedded SQLite. It ships as two fate-shared units: the in-app library (`@midwess/worldant` — a TS adapter over a native addon backed by `world-core`) and the `worldant` supervisor process that sits in front of it. Three things to understand: the layers that make it up, how a workflow run flows through them, and how the supervisor keeps the process alive.
 
 ## Layers
 
 The system has two OS-level processes: your Node app, and the `worldant` CLI that sits in front of it. The Node app hosts the workflow runtime and the storage engine in one process.
 
-<svg viewBox="0 0 720 520" xmlns="http://www.w3.org/2000/svg" style={{maxWidth:"100%",height:"auto",fontFamily:"ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    {/* Node process gradient (container) */}
-    <linearGradient id="nodeBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-muted, #f8fafc)" stopOpacity="0.5" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f8fafc)" stopOpacity="0" />
-    </linearGradient>
-
-    {/* Layer card gradient (subtle, light) */}
-    <linearGradient id="cardBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f1f5f9)" />
-    </linearGradient>
-
-    {/* Accent bar (left border) gradient */}
-    <linearGradient id="accentBar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-primary, #3b82f6)" />
-      <stop offset="100%" stopColor="#06b6d4" />
-    </linearGradient>
-
-    {/* Rust card gradient (warmer, distinct) */}
-    <linearGradient id="rustCardBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="#fef3c7" stopOpacity="0.4" />
-    </linearGradient>
-
-    {/* FFI arrow gradient */}
-    <linearGradient id="ffiArrow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="0.4" />
-      <stop offset="100%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="1" />
-    </linearGradient>
-
-    {/* Drop shadow filter (soft, subtle) */}
-    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-
-    {/* Arrowhead */}
-    <marker id="arrowDown" viewBox="0 0 10 10" refX="5" refY="9" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 5 9 L 10 0 z" fill="var(--fd-muted-foreground, #94a3b8)" />
-    </marker>
-    <marker id="arrowFfi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fd-primary, #3b82f6)" />
-    </marker>
-  </defs>
-
-  {/* Node process container (dashed outline) */}
-  <rect x="20" y="36" width="500" height="420" rx="20" fill="url(#nodeBg)" stroke="var(--fd-border, #cbd5e1)" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.9" />
-
-  {/* Node process label (badge) */}
-  <rect x="40" y="24" width="116" height="24" rx="6" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #cbd5e1)" strokeWidth="1" />
-  <text x="98" y="40" fontSize="11" fontWeight="600" letterSpacing="0.6" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">NODE.JS PROCESS</text>
-
-  {/* Layer 1: your app */}
-  <g filter="url(#cardShadow)">
-    <rect x="60" y="68" width="420" height="60" rx="12" fill="url(#cardBg)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="60" y="68" width="4" height="60" rx="2" fill="url(#accentBar)" />
-  <text x="80" y="93" fontSize="15" fontWeight="600" fill="var(--fd-foreground, #0f172a)">your app</text>
-  <text x="80" y="113" fontSize="12" fill="var(--fd-muted-foreground, #64748b)">workflows, steps, hooks, streams — code you write</text>
-
-  {/* Arrow 1 */}
-  <line x1="270" y1="132" x2="270" y2="148" stroke="var(--fd-muted-foreground, #cbd5e1)" strokeWidth="1.5" markerEnd="url(#arrowDown)" />
-
-  {/* Layer 2: @workflow/core */}
-  <g filter="url(#cardShadow)">
-    <rect x="60" y="152" width="420" height="60" rx="12" fill="url(#cardBg)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="60" y="152" width="4" height="60" rx="2" fill="url(#accentBar)" />
-  <text x="80" y="177" fontSize="15" fontWeight="600" fill="var(--fd-foreground, #0f172a)">@workflow/core</text>
-  <text x="80" y="197" fontSize="12" fill="var(--fd-muted-foreground, #64748b)">SWC transform · runtime replay · determinism guard</text>
-
-  {/* Arrow 2 */}
-  <line x1="270" y1="216" x2="270" y2="232" stroke="var(--fd-muted-foreground, #cbd5e1)" strokeWidth="1.5" markerEnd="url(#arrowDown)" />
-
-  {/* Layer 3: @midwess/worldant */}
-  <g filter="url(#cardShadow)">
-    <rect x="60" y="236" width="420" height="60" rx="12" fill="url(#cardBg)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="60" y="236" width="4" height="60" rx="2" fill="url(#accentBar)" />
-  <text x="80" y="261" fontSize="15" fontWeight="600" fill="var(--fd-foreground, #0f172a)">@midwess/worldant</text>
-  <text x="80" y="281" fontSize="12" fill="var(--fd-muted-foreground, #64748b)">TS adapter for the @workflow/world interface</text>
-
-  {/* Arrow 3 */}
-  <line x1="270" y1="300" x2="270" y2="316" stroke="var(--fd-muted-foreground, #cbd5e1)" strokeWidth="1.5" markerEnd="url(#arrowDown)" />
-
-  {/* Layer 4: World (NAPI) */}
-  <g filter="url(#cardShadow)">
-    <rect x="60" y="320" width="420" height="60" rx="12" fill="url(#cardBg)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="60" y="320" width="4" height="60" rx="2" fill="url(#accentBar)" />
-  <text x="80" y="345" fontSize="15" fontWeight="600" fill="var(--fd-foreground, #0f172a)">World (NAPI)</text>
-  <text x="80" y="365" fontSize="12" fill="var(--fd-muted-foreground, #64748b)">Rust storage engine exposed to Node (cdylib)</text>
-
-  {/* FFI bridge label */}
-  <rect x="120" y="402" width="100" height="22" rx="11" fill="var(--fd-card, #ffffff)" stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.2" />
-  <text x="170" y="417" fontSize="11" fontWeight="600" letterSpacing="0.5" textAnchor="middle" fill="var(--fd-primary, #3b82f6)">FFI BOUNDARY</text>
-
-  {/* FFI vertical line from NAPI to world-core */}
-  <line x1="270" y1="380" x2="270" y2="450" stroke="url(#ffiArrow)" strokeWidth="2" markerEnd="url(#arrowFfi)" />
-
-  {/* Rust process: world-core + SQLite */}
-  <g filter="url(#cardShadow)">
-    <rect x="60" y="452" width="420" height="84" rx="12" fill="url(#rustCardBg)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="60" y="452" width="4" height="84" rx="2" fill="#f59e0b" />
-
-  <text x="80" y="478" fontSize="15" fontWeight="600" fill="var(--fd-foreground, #0f172a)">world-core (Rust)</text>
-  <text x="80" y="498" fontSize="12" fill="var(--fd-muted-foreground, #64748b)">Storage + Queue + Streamer over embedded SQLite</text>
-
-  {/* SQLite cylinder icon */}
-  <g transform="translate(380, 470)">
-    <ellipse cx="0" cy="0" rx="32" ry="8" fill="var(--fd-card, #ffffff)" stroke="var(--fd-muted-foreground, #94a3b8)" strokeWidth="1.2" />
-    <path d="M -32 0 L -32 24 A 32 8 0 0 0 32 24 L 32 0" fill="none" stroke="var(--fd-muted-foreground, #94a3b8)" strokeWidth="1.2" />
-    <ellipse cx="0" cy="0" rx="32" ry="8" fill="var(--fd-muted, #f1f5f9)" />
-    <text x="0" y="42" fontSize="11" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">SQLite</text>
-    <text x="0" y="55" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">./.world.db</text>
-  </g>
-</svg>
+<DChart label="Architecture" title="Two OS processes: the Node app hosting the runtime + storage, and the worldant supervisor in front of it">
+  <DRow gap={18} align="start">
+    <DGroup label="Node.js process">
+      <DBox kind="accent" title="your app" sub="workflows, steps, hooks, streams — code you write" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="accent" title="@workflow/core" sub="compiler transform · runtime replay · determinism guard" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="accent" title="@midwess/worldant" sub="TS shim implementing the @workflow/world interface" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="accent" title="World — napi addon" sub="cdylib loaded into the Node process · JSON-marshalled" />
+      <DNote center kind="info">FFI boundary</DNote>
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" title="world-core (Rust) — runtime-free" sub="reduce-to-SQL event log · queue · streams · embedded SQLite (WAL)" />
+    </DGroup>
+    <DCol align="center">
+      <DArrow dir="left" kind="info" dashed label="private unix socket" />
+      <DNote center>tokio lives only at the napi + CLI edges</DNote>
+    </DCol>
+    <DGroup kind="accent" label="Supervisor process">
+      <DBox kind="accent" title="worldant CLI" sub={["owns public TCP port", "byte-forwards every byte", "scale-to-zero"]} />
+    </DGroup>
+  </DRow>
+  <DNote>Durability lives entirely in the app library — the supervisor never opens the World or the database.</DNote>
+</DChart>
 
 | Layer | Where | Role |
 |-------|-------|------|
 | App code | `your files` | Workflows, steps, hooks, streams. Imports `workflow` and `workflow/api` |
 | `@workflow/core` | npm | Compiler transform (`"use workflow"` / `"use step"`), runtime replay, determinism guard |
-| `@midwess/worldant` | `src/` | TS adapter that implements the `@workflow/world` interface on top of the native `World` |
-| `World` (NAPI) | `crates/world-napi` | Exposes the Rust storage engine to Node as a `cdylib` |
-| `world-core` (Rust) | `crates/world-core` | Storage + Queue + Streamer over embedded SQLite. The durable layer |
+| `@midwess/worldant` | `src/` | TS shim that implements the `@workflow/world` interface on top of the native `World` |
+| `World` (napi addon) | `crates/world-napi` | Exposes `world-core` to Node as a `cdylib`, marshalling every method as JSON strings |
+| `world-core` (Rust) | `crates/world-core` | Reduce-to-SQL event log, queue, and streams over embedded SQLite. The durable layer |
 | Supervisor | `src/supervisor.ts` | Hijacks `http.Server.prototype.listen`, reports the private socket up to the CLI |
 | `worldant` CLI | `crates/worldant-cli` | Owns the public socket, forwards traffic, decides when the process can stop |
 
-`tokio` only appears at the NAPI and CLI edges. `world-core` and `world-config` carry no async runtime — the durable layer is runtime-agnostic.
+`tokio` only appears at the napi and CLI edges. `world-core` and `world-config` carry no async runtime — their `async fn` signatures have synchronous `rusqlite`/`r2d2` bodies, so the durable layer is runtime-agnostic.
 
 ## A run, start to finish
 
 Six steps from trigger to terminal. The world writes events to SQLite as the workflow progresses; every step and event write is one transaction.
 
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style={{maxWidth:"100%",height:"auto",fontFamily:"ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="stepCard" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f8fafc)" />
-    </linearGradient>
-    <linearGradient id="activeStep" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="0.08" />
-      <stop offset="100%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="0.02" />
-    </linearGradient>
-    <filter id="stepShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="stepArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fd-primary, #3b82f6)" />
-    </marker>
-  </defs>
+<DChart label="Run lifecycle" title="Six steps from trigger to terminal, each committing before the next runs">
+  <DRow gap={10} align="center" wrap>
+    <DBox badge={1} title="trigger" sub={["events.create", "run_created"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox badge={2} title="dispatch" sub={["claim_next", "__wkf_workflow_"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="accent" badge={3} title="replay" sub={["workflow body", "to next await"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox badge={4} title="commit" sub={["event + queue", "in 1 tx (CBOR)"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox badge={5} title="continue" sub={["next step /", "hook / wait"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="success" badge={6} title="terminal" sub={["run_completed", "event written"]} />
+  </DRow>
+  <DNote center>Each step commits before the next runs. The workflow body replays from the top on every wake-up, skipping step bodies whose results are already recorded in the durable log.</DNote>
+</DChart>
 
-  {/* Connecting arrows (drawn first, behind cards) */}
-  <g stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.5" fill="none" opacity="0.6">
-    <line x1="100" y1="130" x2="118" y2="130" markerEnd="url(#stepArrow)" />
-    <line x1="220" y1="130" x2="238" y2="130" markerEnd="url(#stepArrow)" />
-    <line x1="340" y1="130" x2="358" y2="130" markerEnd="url(#stepArrow)" />
-    <line x1="460" y1="130" x2="478" y2="130" markerEnd="url(#stepArrow)" />
-    <line x1="580" y1="130" x2="598" y2="130" markerEnd="url(#stepArrow)" />
-  </g>
-
-  {/* 6 step cards */}
-  {(() => null)()}
-
-  {/* Step 1: trigger */}
-  <g filter="url(#stepShadow)">
-    <rect x="10" y="80" width="100" height="100" rx="12" fill="url(#stepCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="32" cy="102" r="11" fill="var(--fd-primary, #3b82f6)" />
-  <text x="32" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">1</text>
-  <text x="60" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">trigger</text>
-  <text x="60" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">start(workflow, args)</text>
-  <text x="60" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">app calls</text>
-
-  {/* Step 2: dispatch */}
-  <g filter="url(#stepShadow)">
-    <rect x="130" y="80" width="100" height="100" rx="12" fill="url(#stepCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="152" cy="102" r="11" fill="var(--fd-primary, #3b82f6)" />
-  <text x="152" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">2</text>
-  <text x="180" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">dispatch</text>
-  <text x="180" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">queue loop</text>
-  <text x="180" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">picks up</text>
-
-  {/* Step 3: replay */}
-  <g filter="url(#stepShadow)">
-    <rect x="250" y="80" width="100" height="100" rx="12" fill="url(#activeStep)" stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.5" strokeOpacity="0.4" />
-  </g>
-  <circle cx="272" cy="102" r="11" fill="var(--fd-primary, #3b82f6)" />
-  <text x="272" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">3</text>
-  <text x="300" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">replay</text>
-  <text x="300" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">workflow body</text>
-  <text x="300" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">to next await</text>
-
-  {/* Step 4: step commit */}
-  <g filter="url(#stepShadow)">
-    <rect x="370" y="80" width="100" height="100" rx="12" fill="url(#stepCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="392" cy="102" r="11" fill="var(--fd-primary, #3b82f6)" />
-  <text x="392" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">4</text>
-  <text x="420" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">commit</text>
-  <text x="420" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">event + queue</text>
-  <text x="420" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">in 1 tx</text>
-
-  {/* Step 5: continue */}
-  <g filter="url(#stepShadow)">
-    <rect x="490" y="80" width="100" height="100" rx="12" fill="url(#stepCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="512" cy="102" r="11" fill="var(--fd-primary, #3b82f6)" />
-  <text x="512" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">5</text>
-  <text x="540" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">continue</text>
-  <text x="540" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">next step /</text>
-  <text x="540" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">hook / sleep</text>
-
-  {/* Step 6: terminal */}
-  <g filter="url(#stepShadow)">
-    <rect x="610" y="80" width="100" height="100" rx="12" fill="url(#stepCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="632" cy="102" r="11" fill="#10b981" />
-  <text x="632" y="106" fontSize="12" fontWeight="700" textAnchor="middle" fill="#ffffff">✓</text>
-  <text x="660" y="135" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">terminal</text>
-  <text x="660" y="153" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">run_completed</text>
-  <text x="660" y="166" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">event written</text>
-
-  {/* Below: explanation flow */}
-  <g>
-    <line x1="20" y1="220" x2="700" y2="220" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" strokeDasharray="2 3" />
-    <text x="360" y="245" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">Each step commits before the next runs. The workflow body replays from the top on every wake-up,</text>
-    <text x="360" y="261" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">skipping step bodies whose results are already recorded in the durable log.</text>
-  </g>
-</svg>
-
-1. **Trigger.** Your code calls `start(checkout, [order])` from `workflow/api`. The TS adapter calls `world.events.create(...)` on the native `World`, which inserts a `run_created` event into SQLite and enqueues a `workflow` queue message.
-2. **Dispatch.** The world's queue loop picks up the message, replays the workflow body to its first `await`, and reaches the first step call.
+1. **Trigger.** Your code calls `start(checkout, [order])` from `workflow/api`. The TS shim calls `world.events.create(...)` on the native `World`, which inserts a `run_created` event into SQLite and enqueues a workflow queue message (prefix `__wkf_workflow_`).
+2. **Dispatch.** The in-process queue worker calls `claim_next`, picks up the message, replays the workflow body to its first `await`, and reaches the first step call.
 3. **Step commit.** The step function is a regular JS function in the steps bundle. Its return value (or thrown error) is wrapped as a step event, committed to SQLite atomically with the queue message, and returned to the workflow body.
 4. **Continue.** The workflow body resumes with the step's return value. It calls the next step, sleeps, awaits a hook, or returns.
-5. **Hooks and streams.** `createHook()` creates a hook record and a queue message the workflow is waiting on. External code calls `world.hooks.getByToken()` and resolves the hook — the workflow body wakes up. `getWritable()` is similar but for byte streams.
+5. **Hooks and streams.** `createHook()` creates a hook record and a wait the workflow is blocked on. External code calls `world.hooks.getByToken()` and resolves the hook — the workflow body wakes up. Streams are similar but for append-only byte chunks.
 6. **Terminal.** The workflow body returns or throws. The world writes a `run_completed` (or failed) event and stops processing the run.
+
+### Inside an event create: reduce to SQL
+
+Every state change is an event, and every event reduces itself into SQL. There is no ORM and no separate event-sourcing framework — the reducer *is* the write path.
+
+<DChart label="Reduce to SQL" title="An events.create call crosses the FFI as JSON, reduces to SQL in Rust, and the result flows back">
+  <DRow gap={18} align="start">
+    <DGroup label="JS / TS shim">
+      <DBox kind="accent" mono title="world.events.create(...)" sub="called by @workflow/core" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="accent" mono title="codec.encode → eventsCreate" sub={"Uint8Array→__u8b64 · Date→__date"} />
+      <DArrow dir="down" kind="success" dashed label="EventResult JSON" />
+      <DBox kind="success" mono title="EventResult → codec.decode" sub="rehydrate __u8b64/__date → back to core" />
+    </DGroup>
+    <DCol align="center">
+      <DNote center kind="info">FFI · JSON</DNote>
+      <DArrow dir="right" kind="info" label="encoded JSON" />
+      <DArrow dir="left" kind="success" dashed label="EventResult JSON" />
+    </DCol>
+    <DGroup kind="info" label="Rust · world-core">
+      <DBox kind="info" mono title="marshal::events_create" sub="parse EventRequest · resolve run id" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" mono title="EventCommand.reduce" sub={"ambassador Reduce · spec_version ≤ 3"} />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" mono title="UPDATE/INSERT world_*" sub={["JSON payloads → CBOR blobs (to_cbor)", "ON CONFLICT dedup for *_created"]} />
+      <DArrow dir="down" kind="info" label="append_event" />
+      <DBox kind="info" mono title="SQLite" />
+    </DGroup>
+  </DRow>
+</DChart>
+
+`events_create` resolves the run id (a `run_created` event with no id mints a `wrun_<ULID>`), rejects any `spec_version` greater than 3 (`RunNotSupported`), and builds an `EventCommand`. The `ambassador`-generated `Reduce` enum dispatches each event to its per-event reducer (run, step, hook, wait), which `UPDATE`s/`INSERT`s the `world_*` tables and `append_event()`s into `world_events`. JSON payloads are CBOR-encoded into blob columns; reads project them back to JSON through the custom `cbor_json()` SQLite scalar function.
+
+### How a queued job is dispatched and retried
+
+The queue is not a broker or a second database — it is the `world_jobs` SQLite table, drained by an in-process worker.
+
+<DChart label="Queue" title="The in-process worker claims a job, dispatches it, and maps the reply to Done, Retry, or Failed">
+  <DRow gap={12} align="center" wrap>
+    <DBox title="QueueWorker" sub={["Semaphore · concurrency 128", "tokio (napi edge)"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox title="claim_next" sub={["atomic UPDATE · attempts+1", "15s lease reclaims abandoned"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox title="NapiDispatch → JS dispatcher" sub={["ThreadsafeFunction · prefix → handler", "__wkf_step_ = step · __wkf_workflow_ = flow", "ActivityGuard ++active (supervisor busy)"]} />
+  </DRow>
+  <DNote center>DispatchOutcome</DNote>
+  <DArrow dir="down" kind="info" />
+  <DRow gap={14} align="start">
+    <DBox grow={1} kind="success" title="Done" sub={["complete_job", "(delete the row)"]} />
+    <DBox grow={1} kind="warn" title={"Retry { delay }"} sub={["fail_job(delay) — handler", "asked to wait, then re-run"]} />
+    <DCol>
+      <DBox kind="error" title="Failed" sub={["exp-backoff fail_job", "base 1s → cap 300s"]} />
+      <DArrow dir="down" kind="error" dashed />
+      <DBox kind="error" title="dead-letter after 25 attempts" sub="attempts ≥ max_attempts → stop, log and drop" />
+    </DCol>
+  </DRow>
+</DChart>
+
+A workflow or step enqueues via `world.queue(name, msg, opts)`, which inserts into `world_jobs` with `kind` derived from the queue-name prefix (`__wkf_step_` = step, `__wkf_workflow_` = flow). The worker loops: it takes a `Semaphore` permit, calls `claim_next` (an atomic `UPDATE ... RETURNING` that bumps `attempts` and reclaims any job whose 15-second lease has expired), then dispatches through `NapiDispatch` to the JS dispatcher `ThreadsafeFunction`. The dispatcher matches the prefix to a registered handler, runs it, and the reply maps to a `DispatchOutcome`: `Done` deletes the job (`complete_job`), `Retry { delay }` reschedules it, and `Failed` applies exponential backoff (base 1s, capped at 300s) or dead-letters after 25 attempts. While a handler runs, an `ActivityGuard` increments the control server's active counter so the supervisor sees the app as busy.
 
 ## Crash recovery
 
-When a process restarts with the same `dataDir`, the world reads the in-flight runs and replays them from the durable log. A step whose `completed` event was already committed is **memoized** — its function body never runs again. A step that crashed mid-body is re-enqueued for retry.
+When a process restarts with the same `dataDir`, the world reads the in-flight runs (`reenqueue_active_runs`) and replays them from the durable log. A step whose `StepStatus` is already terminal (`completed`) is **memoized** — its function body never runs again, and the `*_created` events that recorded it dedup through a partial `UNIQUE` index (`ON CONFLICT`) so replays never double-write. A step that crashed mid-body is re-enqueued for retry.
 
-<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" style={{maxWidth:"100%",height:"auto",fontFamily:"ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="processBar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="0.5" />
-      <stop offset="100%" stopColor="var(--fd-primary, #3b82f6)" stopOpacity="0.2" />
-    </linearGradient>
-    <filter id="markerShadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#0f172a" floodOpacity="0.15" />
-    </filter>
-    <marker id="replayArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fd-primary, #3b82f6)" />
-    </marker>
-  </defs>
-
-  {/* "Process running" bar — two segments (before crash, after restart) */}
-  <rect x="60" y="60" width="280" height="14" rx="7" fill="url(#processBar)" />
-  <rect x="460" y="60" width="200" height="14" rx="7" fill="url(#processBar)" />
-  <text x="60" y="50" fontSize="10" fontWeight="600" letterSpacing="0.5" fill="var(--fd-muted-foreground, #94a3b8)">PROCESS RUNNING</text>
-
-  {/* Crash gap indicator (between bars) */}
-  <text x="370" y="71" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">— process down —</text>
-
-  {/* Timeline track */}
-  <line x1="60" y1="130" x2="660" y2="130" stroke="var(--fd-border, #cbd5e1)" strokeWidth="1.5" />
-
-  {/* Markers along timeline */}
-  {/* 1. trigger */}
-  <g filter="url(#markerShadow)">
-    <circle cx="100" cy="130" r="9" fill="var(--fd-primary, #3b82f6)" />
-  </g>
-  <text x="100" y="110" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">trigger</text>
-  <text x="100" y="160" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">run started</text>
-
-  {/* 2. step A committed */}
-  <g filter="url(#markerShadow)">
-    <circle cx="260" cy="130" r="9" fill="var(--fd-primary, #3b82f6)" />
-  </g>
-  <text x="260" y="110" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">step A</text>
-  <text x="260" y="160" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">committed ✓</text>
-
-  {/* 3. crash */}
-  <g filter="url(#markerShadow)">
-    <circle cx="370" cy="130" r="11" fill="#ef4444" />
-    <path d="M 365 125 L 375 135 M 375 125 L 365 135" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
-  </g>
-  <text x="370" y="110" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">crash</text>
-  <text x="370" y="160" fontSize="11" textAnchor="middle" fill="#ef4444">mid step B</text>
-
-  {/* 4. restart */}
-  <g filter="url(#markerShadow)">
-    <circle cx="500" cy="130" r="11" fill="var(--fd-card, #ffffff)" stroke="var(--fd-primary, #3b82f6)" strokeWidth="2.5" />
-  </g>
-  <text x="500" y="110" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">restart</text>
-  <text x="500" y="160" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">fresh process</text>
-
-  {/* 5. replay */}
-  <g filter="url(#markerShadow)">
-    <circle cx="620" cy="130" r="9" fill="var(--fd-primary, #3b82f6)" />
-  </g>
-  <text x="620" y="110" fontSize="13" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">replay</text>
-  <text x="620" y="160" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">A memoized, B retried</text>
-
-  {/* Crash exit indicator (vertical line going down with X) */}
-  <g stroke="#ef4444" strokeWidth="1.5" fill="none" opacity="0.7">
-    <line x1="370" y1="148" x2="370" y2="200" strokeDasharray="3 3" />
-    <path d="M 363 192 L 377 206 M 377 192 L 363 206" />
-  </g>
-  <text x="370" y="225" fontSize="10" textAnchor="middle" fill="#ef4444" fontWeight="500">process exits</text>
-
-  {/* Restart transition arrow (dashed, going right) */}
-  <line x1="386" y1="130" x2="486" y2="130" stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.5" markerEnd="url(#replayArrow)" />
-
-  {/* Replay arrow (solid, going right) */}
-  <line x1="514" y1="130" x2="608" y2="130" stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.5" markerEnd="url(#replayArrow)" />
-</svg>
+<DChart label="Crash recovery" title="A restart re-enqueues active runs: terminal steps are memoized, mid-body steps are retried">
+  <DGroup label="Process running" row>
+    <DBox kind="accent" title="trigger" sub={["run started", "events written"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="success" title="step A" sub={["terminal", "committed to log"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="error" title="crash" sub={["mid step B", "process exits"]} />
+  </DGroup>
+  <DArrow dir="down" kind="warn" dashed label="restart · reopen same dataDir" />
+  <DGroup label="Process restarted — recovery" row>
+    <DBox kind="warn" title="restart" sub={["reenqueue_active_runs", "reopen same dataDir"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="accent" title="replay" sub={["A memoized (skipped)", "B retried"]} />
+  </DGroup>
+  <DNote center>A retry re-executes step B with the same arguments and an incremented attempt; the durable log is the source of truth.</DNote>
+</DChart>
 
 A retry re-executes the step function with the same arguments, but with `getStepMetadata().attempt` incremented. The step can branch on `attempt` to throw `RetryableError` on the first try and succeed on the second.
 
@@ -346,103 +170,39 @@ worldant start -- node dist/main.js
 
 What happens:
 
-1. The CLI starts the child process with `WORLDANT_CONTROL_FD=3` set, pointing at an announce pipe.
+1. The CLI starts the child process with `WORLDANT_CONTROL_FD` set, pointing at an announce pipe.
 2. The child process imports `@midwess/worldant`. The `connectSupervisor()` call sees the FD and patches `http.Server.prototype.listen`.
 3. When the app calls `server.listen(3000)`, the patched `listen` actually binds a **private Unix socket** (at `$XDG_RUNTIME_DIR/worldant-<hash>.<port>.app.sock`), and reports the original (host, port, privateSock) tuple up the announce pipe.
-4. The CLI binds the public port, accepts incoming connections, and forwards bytes to the private socket.
+4. The library then opens a control Unix socket and streams `Register` / `Listen` / `State` / `Wake` frames. The CLI records the listen into its `SharedState`, binds the public TCP port (host taken from the reported listen, falling back to `0.0.0.0`), accepts incoming connections, and forwards every byte to the private socket with `copy_bidirectional`.
 
-<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" style={{maxWidth:"100%",height:"auto",fontFamily:"ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="proxyCard" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f8fafc)" />
-    </linearGradient>
-    <linearGradient id="appCard" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f8fafc)" />
-    </linearGradient>
-    <linearGradient id="clientGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-primary, #3b82f6)" />
-      <stop offset="100%" stopColor="#06b6d4" />
-    </linearGradient>
-    <filter id="proxyShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="proxyArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--fd-primary, #3b82f6)" />
-    </marker>
-  </defs>
+<DChart label="Supervisor" title="The CLI owns the public port and byte-forwards to the app's private socket; a side control socket carries lifecycle frames">
+  <DRow gap={10} align="center" wrap>
+    <DBox kind="info" title="client" sub="HTTP / WS request" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="accent" badge={1} title="public port" sub={["CLI owns", "host from listen / 0.0.0.0", "copy_bidirectional"]} />
+    <DArrow dir="right" kind="accent" label="bytes" />
+    <DBox kind="warn" badge={2} title="private socket" sub={["app listens", "worldant-…app.sock", "unix domain"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="success" badge={3} title="Node.js" sub={["your app", "workflow runtime", "+ world"]} />
+  </DRow>
+  <DGroup kind="warn" label="Control socket">
+    <DArrow dir="up" kind="warn" dashed label="Register / Listen / State / Wake" />
+    <DNote center kind="warn">side channel between the CLI and the app — lifecycle frames, not request bytes</DNote>
+  </DGroup>
+  <DNote center>idle past graceMs (after minAliveMs warmup, no active dispatch, open_conns == 0)</DNote>
+  <DNote center>the CLI SIGTERMs the app · the public TCP listener stays bound · next request wakes it</DNote>
+</DChart>
 
-  {/* Arrows (drawn first, behind cards) */}
-  <g stroke="var(--fd-primary, #3b82f6)" strokeWidth="1.8" fill="none">
-    <line x1="100" y1="150" x2="146" y2="150" markerEnd="url(#proxyArrow)" />
-    <line x1="306" y1="150" x2="386" y2="150" markerEnd="url(#proxyArrow)" />
-    <line x1="546" y1="150" x2="600" y2="150" markerEnd="url(#proxyArrow)" />
-  </g>
+5. When the CLI sees no `State(active)` work and no open connections for `graceMs` (after at least `minAliveMs` of warmup), it `SIGTERM`s the child and clears the app sockets — but **keeps the public TCP listener bound**. The app also reports a `Wake(at)` frame carrying its next durable timer (`next_wake`), so the supervisor knows when to wake it even with no inbound traffic.
+6. The next inbound connection — or the `Wake` timer firing — respawns the child. It reopens the same `dataDir`, reenqueues active runs, and resumes from the log. Connections held during the wake (up to `wakeHoldMs`) are pushed to the woken app.
 
-  {/* Client (circle with gradient) */}
-  <g filter="url(#proxyShadow)">
-    <circle cx="70" cy="150" r="32" fill="url(#clientGrad)" />
-  </g>
-  <text x="70" y="158" fontSize="20" fontWeight="700" textAnchor="middle" fill="#ffffff">●</text>
-  <text x="70" y="200" fontSize="12" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">client</text>
-  <text x="70" y="216" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">HTTP request</text>
-
-  {/* Public port (CLI owns) */}
-  <g filter="url(#proxyShadow)">
-    <rect x="150" y="100" width="160" height="100" rx="12" fill="url(#proxyCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="150" y="100" width="160" height="20" rx="12" fill="var(--fd-primary, #3b82f6)" opacity="0.1" />
-  <text x="230" y="114" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="var(--fd-primary, #3b82f6)">CLI OWNS</text>
-  <text x="230" y="145" fontSize="14" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">public port</text>
-  <text x="230" y="166" fontSize="12" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">0.0.0.0:3000</text>
-  <text x="230" y="184" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">byte-forwarder</text>
-
-  {/* Private socket */}
-  <g filter="url(#proxyShadow)">
-    <rect x="390" y="100" width="160" height="100" rx="12" fill="url(#proxyCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="390" y="100" width="160" height="20" rx="12" fill="#f59e0b" opacity="0.1" />
-  <text x="470" y="114" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="#d97706">APP LISTENS</text>
-  <text x="470" y="145" fontSize="14" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">private socket</text>
-  <text x="470" y="164" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">$XDG_RUNTIME_DIR/</text>
-  <text x="470" y="178" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">worldant-…app.sock</text>
-  <text x="470" y="194" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">unix domain</text>
-
-  {/* App process */}
-  <g filter="url(#proxyShadow)">
-    <rect x="604" y="100" width="100" height="100" rx="12" fill="url(#appCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="604" y="100" width="100" height="20" rx="12" fill="#10b981" opacity="0.1" />
-  <text x="654" y="114" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="#059669">YOUR APP</text>
-  <text x="654" y="145" fontSize="14" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">Node.js</text>
-  <text x="654" y="166" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">workflow</text>
-  <text x="654" y="180" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">runtime</text>
-  <text x="654" y="194" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">+ world</text>
-
-  {/* Arrow labels between cards */}
-  <text x="123" y="142" fontSize="9" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">connect</text>
-  <text x="346" y="142" fontSize="9" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">forward</text>
-  <text x="573" y="142" fontSize="9" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">receive</text>
-
-  {/* Idle detection annotation below */}
-  <g>
-    <line x1="160" y1="240" x2="680" y2="240" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" strokeDasharray="2 3" />
-    <text x="420" y="265" fontSize="11" fontWeight="600" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">when idle for graceMs (and minAliveMs has passed)</text>
-    <text x="420" y="282" fontSize="11" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">the CLI stops the app process · the next request restarts it</text>
-  </g>
-</svg>
-
-5. When the CLI sees no traffic for `graceMs` (and at least `minAliveMs` has passed since the last request), it kills the child. The private socket goes with it.
-6. The next request to the public port restarts the child from scratch. SQLite replays the log. The workflow resumes.
-
-This is what makes the system cheap to leave running. An idle workflow app can sit at zero CPU between requests and pick up exactly where it left off.
+This is what makes the system cheap to leave running. An idle workflow app can sit at zero CPU between requests and pick up exactly where it left off. The supervisor never opens the World or the database — durability lives entirely in the app library.
 
 ## Storage
 
-A single SQLite database per app, configured by `dataDir`. WAL mode, `busy_timeout` set, single writer with a `r2d2` reader pool. `rusqlite` is pinned to `0.37` with the `bundled` feature — the binary ships with SQLite statically linked and matches `deno_runtime`'s transitive `libsqlite3-sys` so there is exactly one `sqlite3` in the process.
+A single SQLite database per app, configured by `dataDir`. WAL mode, `busy_timeout` set to 5000ms, a single writer with an `r2d2` reader pool (`max_size` 8). `rusqlite` is pinned to `0.37` with the `bundled` feature, so SQLite is statically linked into the native addon that loads inside the Node process — there is no external SQLite dependency and no compiler invocation at install time.
 
-The data dir is opened once on boot. **Two processes must not open the same dir concurrently** — the supervisor uses a dedup lock to prevent that. If you want multiple replicas, give each a different `id` so the lock and socket don't collide.
+The data dir is opened once on boot. **Two processes must not open the same dir concurrently.** The code-first `id` (derived from the package name plus a `sha256` of `name:root`) keys both the library's dedup lock and the supervisor's `flock`-based `IdLock`, so exactly one opener wins per `id`. If you want multiple replicas, give each a different `id` so the lock and socket don't collide.
 
 ## Where to go next
 

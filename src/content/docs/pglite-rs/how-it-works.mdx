@@ -11,291 +11,107 @@ pglite-rs is one API surface over three operating modes (in-process, multi-proce
 
 Three things compile into your binary: the safe Rust API, a hand-written FFI, and a prebuilt native static library of patched Postgres 17.
 
-<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" style={{maxWidth: "100%", height: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="rustLayer" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #fafaf9)" />
-    </linearGradient>
-    <linearGradient id="ffiLayer" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#fef3c7" stopOpacity="0.6" />
-      <stop offset="100%" stopColor="#fde68a" stopOpacity="0.4" />
-    </linearGradient>
-    <linearGradient id="engineLayer" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#dcfce7" stopOpacity="0.6" />
-      <stop offset="100%" stopColor="#bbf7d0" stopOpacity="0.4" />
-    </linearGradient>
-    <linearGradient id="rustAccent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#f97316" />
-      <stop offset="100%" stopColor="#ea580c" />
-    </linearGradient>
-    <linearGradient id="ffiAccent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#f59e0b" />
-      <stop offset="100%" stopColor="#d97706" />
-    </linearGradient>
-    <linearGradient id="engineAccent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#22c55e" />
-      <stop offset="100%" stopColor="#16a34a" />
-    </linearGradient>
-    <filter id="layerShadow" x="-2%" y="-10%" width="104%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.05" />
-    </filter>
-  </defs>
-
-  {/* Layer 1: pglite (safe async API) */}
-  <g filter="url(#layerShadow)">
-    <rect x="40" y="30" width="640" height="80" rx="12" fill="url(#rustLayer)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="40" y="30" width="6" height="80" rx="3" fill="url(#rustAccent)" />
-
-  <text x="200" y="22" fontSize="10" fontWeight="700" letterSpacing="1" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)">YOUR CODE</text>
-  <text x="65" y="58" fontSize="16" fontWeight="700" fill="var(--fd-foreground, #0f172a)">pglite</text>
-  <text x="65" y="80" fontSize="12" fill="var(--fd-muted-foreground, #475569)">safe async API · PGlite · Transaction · Row · LiveQuery · Replica</text>
-  <text x="65" y="98" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">LISTEN / NOTIFY · live queries · COPY · pool · tar dump / restore</text>
-
-  {/* FFI waist badge in the gap */}
-  <rect x="280" y="118" width="160" height="20" rx="10" fill="var(--fd-card, #ffffff)" stroke="#f59e0b" strokeWidth="1.2" />
-  <text x="360" y="132" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="#b45309">FFI WAIST · ~25 SYMBOLS</text>
-
-  {/* Layer 2: pglite-sys (FFI) */}
-  <g filter="url(#layerShadow)">
-    <rect x="40" y="146" width="640" height="80" rx="12" fill="url(#ffiLayer)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.6" />
-  </g>
-  <rect x="40" y="146" width="6" height="80" rx="3" fill="url(#ffiAccent)" />
-
-  <text x="200" y="138" fontSize="10" fontWeight="700" letterSpacing="1" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)"></text>
-  <text x="65" y="174" fontSize="16" fontWeight="700" fill="var(--fd-foreground, #0f172a)">pglite-sys</text>
-  <text x="65" y="196" fontSize="12" fill="var(--fd-muted-foreground, #475569)">pgl_startPGlite · PostgresMainLoopOnce · pgl_set_rw_cbs</text>
-  <text x="65" y="214" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">the only crossing point · data crosses as wire-protocol bytes</text>
-
-  {/* Layer 3: libpglite.a (native static library) */}
-  <g filter="url(#layerShadow)">
-    <rect x="40" y="234" width="640" height="72" rx="12" fill="url(#engineLayer)" stroke="#22c55e" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="40" y="234" width="6" height="72" rx="3" fill="url(#engineAccent)" />
-
-  <text x="200" y="226" fontSize="10" fontWeight="700" letterSpacing="1" textAnchor="middle" fill="var(--fd-muted-foreground, #94a3b8)"></text>
-  <text x="65" y="262" fontSize="16" fontWeight="700" fill="var(--fd-foreground, #0f172a)">libpglite.a</text>
-  <text x="65" y="284" fontSize="12" fill="var(--fd-muted-foreground, #475569)">patched Postgres 17 · unrolled main loop · callback-based IO</text>
-  <text x="65" y="300" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">no postmaster · no background workers · per-target prebuilt static library</text>
-</svg>
+<DChart label="Architecture" title="The three layers that compile into your binary">
+  <DBox kind="accent" title="pglite" sub={["safe async API · PGlite · Transaction · Row · LiveQuery · Replica", "LISTEN / NOTIFY · live queries · COPY · pool · tar dump / restore"]} />
+  <DArrow dir="down" kind="warn" dashed label="FFI waist · 25 symbols" />
+  <DBox kind="warn" mono title="pglite-sys" sub={["pgl_native_call · pgl_native_pump · pgl_set_rw_cbs · pgl_startPGlite", "hand-written extern \"C\" · no bindgen · only wire-protocol bytes cross"]} />
+  <DArrow dir="down" kind="warn" />
+  <DBox kind="error" mono title="libpglite.a" sub="patched Postgres 17 · no postmaster · no background workers · per-target prebuilt" />
+</DChart>
 
 - **`pglite`** is the public surface: `PGlite::open`, `exec`, `query`, `transaction`, `listen`, `live_query`, `unix_uri`, `dump_data_dir`, `close`, plus the `Replica::start` API. It also owns the engine-thread plumbing (`mpsc::Sender<EngineCommand>` in, `futures::channel::oneshot` reply out), the live-query fan-out, the socket gateway, and the multi-process connection pool when that feature is on.
-- **`pglite-sys`** is the FFI waist. ~25 functions declared by hand in `crates/pglite-sys` against `native/pglite_native.h` (no `bindgen`). The host calls into it; the engine calls back through registered function-pointer callbacks.
+- **`pglite-sys`** is the FFI waist. 25 `extern "C"` functions declared by hand in `crates/pglite-sys` against `native/pglite_native.h` (no `bindgen`). The host calls into it; the engine calls back through registered function-pointer callbacks.
 - **`libpglite.a`** is the prebuilt static library. CI compiles the `postgres-pglite` fork (a patched Postgres 17) for each target triple and uploads a tarball of `libpglite.a` + headers + the `share/postgresql` runtime. `pglite-sys/build.rs` downloads it, sha256-verifies it, and tells the linker to link it in. `PGLITE_LIB_DIR=/path/to/dir` overrides resolution if you build the artifact yourself.
 
 ## The FFI waist and engine thread
 
-The in-process engine is real Postgres, and Postgres' main loop has a contract: it can `longjmp`, fake-`exit()`, and call back into C. None of that is safe to expose to Rust frames. The fix is to **confine every engine call to one dedicated OS thread** and put the longjmp containment in a C trampoline.
+The in-process engine is real Postgres, and Postgres' main loop has a contract: it can `longjmp`, fake-`exit()`, and call back into C. None of that is safe to expose to Rust frames. The fix is to **confine every engine call to one dedicated OS thread** and put the longjmp containment in a C trampoline established once at boot.
 
-<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg" style={{maxWidth: "100%", height: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="rustSide" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #fafaf9)" />
-    </linearGradient>
-    <linearGradient id="engineSide" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#fef3c7" stopOpacity="0.5" />
-      <stop offset="100%" stopColor="#fde68a" stopOpacity="0.3" />
-    </linearGradient>
-    <linearGradient id="trampoline" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#fed7aa" />
-      <stop offset="100%" stopColor="#fdba74" />
-    </linearGradient>
-    <linearGradient id="engineBox" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#dcfce7" stopOpacity="0.7" />
-      <stop offset="100%" stopColor="#bbf7d0" stopOpacity="0.5" />
-    </linearGradient>
-    <filter id="engineShadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="engineArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316" />
-    </marker>
-  </defs>
-
-  {/* Left side: Rust caller */}
-  <rect x="20" y="20" width="320" height="360" rx="16" fill="url(#rustSide)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  <rect x="20" y="20" width="6" height="360" rx="3" fill="#f97316" />
-
-  <text x="40" y="46" fontSize="14" fontWeight="700" fill="var(--fd-foreground, #0f172a)">Rust caller</text>
-  <text x="40" y="63" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">any async runtime · tokio / smol / async-std</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="40" y="84" width="280" height="48" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="56" y="105" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">PGlite::query(sql, params)</text>
-  <text x="56" y="121" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">serialize to wire bytes</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="40" y="148" width="280" height="48" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="56" y="169" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">mpsc::Sender&lt;EngineCommand&gt;</text>
-  <text x="56" y="185" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">request goes down the channel</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="40" y="212" width="280" height="48" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="56" y="233" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">futures::channel::oneshot</text>
-  <text x="56" y="249" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">reply arrives with wire bytes</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="40" y="276" width="280" height="48" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="56" y="297" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">postgres-protocol deserialise</text>
-  <text x="56" y="313" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">bytes → Vec&lt;Row&gt;</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="40" y="332" width="280" height="36" rx="10" fill="#f97316" fillOpacity="0.08" stroke="#f97316" strokeWidth="1.2" />
-  </g>
-  <text x="56" y="354" fontSize="12" fontWeight="600" fill="#9a3412">Vec&lt;Row&gt; returned to caller</text>
-
-  {/* Right side: Engine thread */}
-  <rect x="420" y="20" width="320" height="360" rx="16" fill="url(#engineSide)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.5" />
-  <rect x="420" y="20" width="6" height="360" rx="3" fill="#f59e0b" />
-
-  <text x="440" y="46" fontSize="14" fontWeight="700" fill="var(--fd-foreground, #0f172a)">Engine thread</text>
-  <text x="440" y="63" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">1 dedicated OS thread · state is thread-confined</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="440" y="84" width="280" height="48" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="456" y="105" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">pgl_startPGlite / Loop</text>
-  <text x="456" y="121" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">pumps the main loop, calls callbacks</text>
-
-  {/* Trampoline — the load-bearing safety boundary */}
-  <g filter="url(#engineShadow)">
-    <rect x="440" y="148" width="280" height="56" rx="10" fill="url(#trampoline)" stroke="#ea580c" strokeWidth="1.5" />
-  </g>
-  <text x="456" y="171" fontSize="13" fontWeight="700" fill="#7c2d12">exit trampoline (sigsetjmp)</text>
-  <text x="456" y="189" fontSize="11" fill="#9a3412">contains every longjmp / exit</text>
-
-  {/* libpglite.a box */}
-  <g filter="url(#engineShadow)">
-    <rect x="440" y="220" width="280" height="92" rx="10" fill="url(#engineBox)" stroke="#16a34a" strokeWidth="1.2" />
-  </g>
-  <text x="456" y="244" fontSize="14" fontWeight="700" fill="#14532d">libpglite.a</text>
-  <text x="456" y="263" fontSize="11" fill="#166534">patched Postgres 17</text>
-  <text x="456" y="279" fontSize="11" fill="#166534">unrolled main loop</text>
-  <text x="456" y="295" fontSize="11" fill="#166534">callback-based IO</text>
-  <text x="456" y="310" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">no postmaster, no bg workers</text>
-
-  <g filter="url(#engineShadow)">
-    <rect x="440" y="328" width="280" height="40" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <text x="456" y="352" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">wire-protocol bytes back</text>
-
-  {/* FFI waist label and crossing arrows */}
-  <text x="380" y="200" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="#b45309">FFI WAIST</text>
-  <line x1="350" y1="190" x2="410" y2="190" stroke="#f59e0b" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
-
-  {/* Down arrow (Rust → engine) */}
-  <g>
-    <line x1="340" y1="120" x2="420" y2="120" stroke="#f97316" strokeWidth="2" markerEnd="url(#engineArrow)" />
-    <text x="380" y="113" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">wire bytes</text>
-  </g>
-
-  {/* Up arrow (engine → Rust) */}
-  <g>
-    <line x1="420" y1="350" x2="340" y2="350" stroke="#f97316" strokeWidth="2" markerEnd="url(#engineArrow)" />
-    <text x="380" y="343" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">wire bytes</text>
-  </g>
-</svg>
+<DChart title="The FFI waist: only wire bytes cross between the caller and the engine thread">
+  <DRow gap={18} align="start">
+    <DGroup label="Caller · any async runtime">
+      <DBox kind="accent" mono title="PGlite::query(sql, params)" sub="postgres-protocol → wire bytes in a BytesMut" />
+      <DArrow dir="down" />
+      <DBox mono title={"mpsc::Sender<EngineCommand>"} sub={"EngineCommand::Exec { wire, reply } down the channel"} />
+      <DArrow dir="down" />
+      <DBox mono title="futures::channel::oneshot" sub="reply arrives with wire bytes" />
+      <DArrow dir="down" />
+      <DBox mono title="postgres-protocol deserialise" sub={"DataRow → Vec<Row> · ErrorResponse → Err"} />
+      <DArrow dir="down" />
+      <DBox kind="accent" mono title={"Vec<Row> returned to caller"} />
+    </DGroup>
+    <DCol align="center">
+      <DNote center kind="warn">FFI waist</DNote>
+      <DArrow dir="right" kind="accent" label="wire bytes" />
+      <DArrow dir="left" kind="accent" label="wire bytes" />
+    </DCol>
+    <DGroup kind="warn" label={"One dedicated OS thread · pglite-engine"}>
+      <DBox mono title="thread_local EngineIo" sub={"input/output Vec<u8> · via read_cb / write_cb"} />
+      <DArrow dir="down" />
+      <DBox kind="warn" mono title="pump loop · pgl_native_pump()" sub={["until input drained & buffer_remaining ≤ 0", "rc == 100 → PostgresMainLongJmp()"]} />
+      <DArrow dir="down" />
+      <DBox kind="error" mono title="pgl_native_call · sigsetjmp at boot" sub="pgl_native_exit → siglongjmp lands here" />
+      <DArrow dir="down" />
+      <DBox kind="error" title="libpglite.a" sub={["patched Postgres 17 · --single mode", "callback-based IO · longjmp / fake-exit", "no postmaster · no background workers"]} />
+    </DGroup>
+  </DRow>
+</DChart>
 
 What this guarantees:
 
-- **No longjmp ever unwinds a Rust frame.** `pgl_native_pump` is the C trampoline that wraps the engine in `sigsetjmp`; every Postgres `longjmp` and fake-`exit` lands inside the trampoline and returns an ordinary status to Rust. This replaces the JS-exception containment that Emscripten gives the wasm build.
-- **The engine never blocks on Rust.** IO is fed in via a function-pointer callback registered with `pgl_set_rw_cbs`; the engine calls the callback when it wants more bytes, and the host reads from a `BytesMut` shared with the calling task.
+- **No longjmp ever unwinds a Rust frame.** The `sigsetjmp` trampoline is `pgl_native_call`: it is entered once at boot, pushing a `sigjmp_buf` and calling the engine entry (`pgl_backend_main`). Every Postgres `longjmp` and fake-`exit` is caught by `pgl_native_exit`, which `siglongjmp`s back into that trampoline and returns an ordinary status to Rust. (`postgres-pglite` is an Emscripten fork upstream; this trampoline is the native-build analogue of the JS-exception containment the wasm build gets for free.) During a query, the per-statement hot loop calls `pgl_native_pump` repeatedly and, when it returns `rc == 100`, calls `PostgresMainLongJmp` — `pgl_native_pump` is the pump, not the trampoline.
+- **The engine never blocks on Rust.** IO crosses through function-pointer callbacks registered with `pgl_set_rw_cbs`. On the engine thread the buffers are a `thread_local` `EngineIo { input: Vec<u8>, output: Vec<u8> }`: `read_cb` copies from `input`, `write_cb` appends to `output`. The caller serialises wire frames in its own `BytesMut`, but that buffer is never shared into the engine thread — only the `Vec<u8>` wire bytes cross via the `mpsc` command.
 - **State is thread-confined.** No `Arc<Mutex<…>>` over engine state. Engine globals are written and read only on the engine thread. Cross-thread handoff is just channel send + wire bytes.
 - **`BOOTED` and `OPEN` are `AtomicBool`s.** One engine boot per process lifetime, and at most one open `PGlite` at a time. Reopening a data dir after close in the same process returns `Error::ReopenUnsupported` — but cross-process reopen is fully supported, which is the right model for tests, serverless, and child-process supervisors.
+
+### Cold-start boot order
+
+The first `open()` boots the engine thread once. Everything below happens on `"pglite-engine"`, in order, before the first query can run.
+
+<DChart label="Cold-start boot order on the engine thread" title="Each step runs once, in order, before the first query">
+  <DBox kind="error" title="CAS guard · OPEN & BOOTED AtomicBool" sub="one instance + one boot per process — else Error::AlreadyOpen / Error::ReopenUnsupported" />
+  <DRow gap={14}>
+    <DBox badge={1} title="extract_runtime" sub="unpack RUNTIME_TAR (include_bytes!) → temp dir" />
+    <DBox badge={2} title="run_initdb" sub="runtime bin/initdb if PG_VERSION absent" />
+  </DRow>
+  <DRow gap={14}>
+    <DBox badge={3} title="pgl_native_setup → pgl_set_rw_cbs" sub="freopen(/dev/null) · register read_cb / write_cb" />
+    <DBox badge={4} kind="error" title="pgl_native_call(pgl_backend_main)" sub="--single -O -j · workers=0 · returns rc 99" />
+  </DRow>
+  <DRow gap={14}>
+    <DBox badge={5} title="pgl_startPGlite" sub="activate the in-process backend" />
+    <DBox badge={6} title="synthetic startup packet" sub="ProcessStartupPacket → pgl_sendConnData" />
+  </DRow>
+  <DBox kind="success" badge={7} title="ready" sub="boot result over oneshot · sweep_live_views drops orphaned views · engine sleeps on its channel" />
+  <DNote center>workers disabled at boot: max_worker_processes=0, max_parallel_*=0 — the source of the small memory footprint</DNote>
+</DChart>
+
+Workers are disabled deliberately. The boot args pass `max_worker_processes=0`, `max_parallel_workers=0`, `max_parallel_workers_per_gather=0`, and `max_parallel_maintenance_workers=0`, so there is no parallel-query or background-worker machinery to allocate — that, plus running a single backend in `--single` mode, is what keeps a single in-process engine to a small footprint.
 
 ## The unix socket gateway (in-process mode)
 
 When you call `db.unix_uri()` on an in-process `PGlite`, the host lazily starts a small std-thread gateway embedded inside the `PGlite`. It accepts exactly one client session and pumps the wire protocol between the client and the engine thread.
 
-<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style={{maxWidth: "100%", height: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="gwCard" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #fafaf9)" />
-    </linearGradient>
-    <linearGradient id="ormCard" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.4" />
-    </linearGradient>
-    <linearGradient id="socketGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #f1f5f9)" />
-    </linearGradient>
-    <filter id="gwShadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="gwArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316" />
-    </marker>
-  </defs>
-
-  {/* ORM client */}
-  <g filter="url(#gwShadow)">
-    <rect x="20" y="80" width="200" height="100" rx="12" fill="url(#ormCard)" stroke="#3b82f6" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="20" y="80" width="6" height="100" rx="3" fill="#3b82f6" />
-  <text x="40" y="106" fontSize="14" fontWeight="700" fill="var(--fd-foreground, #0f172a)">ORM client</text>
-  <text x="40" y="126" fontSize="11" fontWeight="600" fill="var(--fd-muted-foreground, #475569)">SQLx · SeaORM · Diesel</text>
-  <text x="40" y="142" fontSize="11" fontWeight="600" fill="var(--fd-muted-foreground, #475569)">tokio-postgres · postgres</text>
-  <text x="40" y="164" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">one driver, one pool,</text>
-  <text x="40" y="176" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">speaks normal Postgres</text>
-
-  {/* Pipe (the unix socket) */}
-  <g transform="translate(220, 130)">
-    <rect x="0" y="-6" width="120" height="12" rx="6" fill="url(#socketGrad)" stroke="var(--fd-border, #cbd5e1)" strokeWidth="1" />
-    <rect x="0" y="-6" width="120" height="12" rx="6" fill="none" stroke="#f97316" strokeWidth="0.5" strokeDasharray="3 2" />
-  </g>
-  <text x="280" y="108" fontSize="10" fontWeight="700" letterSpacing="0.5" textAnchor="middle" fill="#b45309">UNIX SOCKET</text>
-  <text x="280" y="156" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">RAM-backed 0700 dir</text>
-  <text x="280" y="170" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">no TCP, no networking</text>
-
-  {/* Big SocketGateway container */}
-  <rect x="380" y="20" width="320" height="320" rx="16" fill="url(#gwCard)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  <rect x="380" y="20" width="6" height="320" rx="3" fill="#f97316" />
-
-  <text x="400" y="46" fontSize="14" fontWeight="700" fill="var(--fd-foreground, #0f172a)">SocketGateway</text>
-  <text x="400" y="63" fontSize="11" fill="var(--fd-muted-foreground, #64748b)">embedded in PGlite · started lazily on first unix_uri()</text>
-
-  {/* Step cards inside the gateway */}
-  <g filter="url(#gwShadow)">
-    <rect x="400" y="84" width="280" height="44" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="418" cy="106" r="9" fill="#f97316" />
-  <text x="418" y="110" fontSize="10" fontWeight="700" textAnchor="middle" fill="#ffffff">1</text>
-  <text x="438" y="103" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">UnixListener + accept loop</text>
-  <text x="438" y="119" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">waits for the first (and only) client</text>
-
-  <g filter="url(#gwShadow)">
-    <rect x="400" y="142" width="280" height="44" rx="10" fill="#f97316" fillOpacity="0.06" stroke="#f97316" strokeWidth="1.2" />
-  </g>
-  <circle cx="418" cy="164" r="9" fill="#f97316" />
-  <text x="418" y="168" fontSize="10" fontWeight="700" textAnchor="middle" fill="#ffffff">2</text>
-  <text x="438" y="161" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">doorman (std thread)</text>
-  <text x="438" y="177" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">synthesises the v3 startup handshake</text>
-
-  <g filter="url(#gwShadow)">
-    <rect x="400" y="200" width="280" height="44" rx="10" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <circle cx="418" cy="222" r="9" fill="#f97316" />
-  <text x="418" y="226" fontSize="10" fontWeight="700" textAnchor="middle" fill="#ffffff">3</text>
-  <text x="438" y="219" fontSize="12" fontWeight="600" fill="var(--fd-foreground, #0f172a)">wire-protocol pump</text>
-  <text x="438" y="235" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">Q / F / Sync / CopyDone / CopyFail</text>
-
-  <g filter="url(#gwShadow)">
-    <rect x="400" y="258" width="280" height="60" rx="10" fill="#dcfce7" fillOpacity="0.4" stroke="#16a34a" strokeWidth="1.2" />
-  </g>
-  <circle cx="418" cy="282" r="9" fill="#16a34a" />
-  <text x="418" y="286" fontSize="10" fontWeight="700" textAnchor="middle" fill="#ffffff">4</text>
-  <text x="438" y="278" fontSize="12" fontWeight="600" fill="#14532d">engine (one session, tx_lock)</text>
-  <text x="438" y="294" fontSize="10" fill="#166534">NotificationResponse side-channels</text>
-  <text x="438" y="308" fontSize="10" fill="#166534">to Rust listeners</text>
-</svg>
+<DChart title="The unix socket gateway bridges an ORM driver to the single engine session">
+  <DRow gap={18} align="center">
+    <DBox kind="info" title="ORM client" sub={["SQLx · SeaORM · Diesel", "tokio-postgres · postgres", "pool size MUST be 1 · speaks Postgres"]} />
+    <DCol align="center">
+      <DNote center kind="warn">Unix socket</DNote>
+      <DArrow dir="right" kind="warn" />
+      <DArrow dir="left" kind="warn" />
+      <DNote center>RAM-backed 0700 dir · no TCP</DNote>
+    </DCol>
+    <DGroup label="SocketGateway · embedded in PGlite, lazy on first unix_uri()">
+      <DBox badge={1} title="UnixListener + accept loop" sub="waits for the first (and only) client" />
+      <DArrow dir="down" />
+      <DBox badge={2} kind="accent" title="doorman (std thread)" sub="synthesises the v3 startup handshake" />
+      <DArrow dir="down" />
+      <DBox badge={3} title="batch at Q / F / S / c / f boundary" sub="one batch → Backend::roundtrip under tx_lock" />
+      <DArrow dir="down" />
+      <DBox badge={4} kind="error" title="engine · one session, tx_lock" sub={["reply strips duplicate ReadyForQuery;", "NotificationResponse side-channelled to listeners"]} />
+    </DGroup>
+  </DRow>
+</DChart>
 
 Key constraints:
 
@@ -308,107 +124,34 @@ Key constraints:
 
 When you turn on the `multiple-process` cargo feature, `PGlite::open_multi_process` spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools N connections behind the same `PGlite` API. There is no in-process engine boot — that mode is exempt from the one-boot constraint.
 
-<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style={{maxWidth: "100%", height: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="mpApp" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="var(--fd-muted, #fafaf9)" />
-    </linearGradient>
-    <linearGradient id="mpPool" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="#fef3c7" stopOpacity="0.4" />
-    </linearGradient>
-    <linearGradient id="mpPost" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#dcfce7" stopOpacity="0.7" />
-      <stop offset="100%" stopColor="#bbf7d0" stopOpacity="0.5" />
-    </linearGradient>
-    <filter id="mpShadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="mpArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316" />
-    </marker>
-  </defs>
-
-  {/* Your app */}
-  <g filter="url(#mpShadow)">
-    <rect x="20" y="20" width="240" height="80" rx="12" fill="url(#mpApp)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-  </g>
-  <rect x="20" y="20" width="6" height="80" rx="3" fill="#f97316" />
-  <text x="40" y="46" fontSize="14" fontWeight="700" fill="var(--fd-foreground, #0f172a)">Your app</text>
-  <text x="40" y="66" fontSize="11" fontWeight="600" fill="var(--fd-muted-foreground, #475569)">PGlite::open_multi_process</text>
-  <text x="40" y="82" fontSize="11" fontWeight="600" fill="var(--fd-muted-foreground, #475569)">(dir, MultiProcessOptions)</text>
-  <text x="40" y="96" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">same API · same types</text>
-
-  {/* Pool */}
-  <g filter="url(#mpShadow)">
-    <rect x="20" y="120" width="240" height="220" rx="12" fill="url(#mpPool)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="20" y="120" width="6" height="220" rx="3" fill="#f59e0b" />
-
-  <text x="40" y="144" fontSize="13" fontWeight="700" fill="var(--fd-foreground, #0f172a)">Connection pool</text>
-  <text x="40" y="160" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">in-process · PinnedConn · NotifyConn</text>
-
-  <g>
-    <rect x="40" y="174" width="200" height="32" rx="8" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-    <text x="56" y="194" fontSize="11" fontWeight="600" fill="var(--fd-foreground, #0f172a)">backend 1</text>
-    <text x="220" y="194" fontSize="10" textAnchor="end" fill="var(--fd-muted-foreground, #64748b)">free</text>
-
-    <rect x="40" y="212" width="200" height="32" rx="8" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-    <text x="56" y="232" fontSize="11" fontWeight="600" fill="var(--fd-foreground, #0f172a)">backend 2</text>
-    <text x="220" y="232" fontSize="10" textAnchor="end" fill="var(--fd-muted-foreground, #64748b)">free</text>
-
-    <rect x="40" y="250" width="200" height="32" rx="8" fill="var(--fd-card, #ffffff)" stroke="var(--fd-border, #e2e8f0)" strokeWidth="1" />
-    <text x="56" y="270" fontSize="11" fontWeight="600" fill="var(--fd-foreground, #0f172a)">backend 3</text>
-    <text x="220" y="270" fontSize="10" textAnchor="end" fill="var(--fd-muted-foreground, #64748b)">free</text>
-
-    <rect x="40" y="288" width="200" height="32" rx="8" fill="#f97316" fillOpacity="0.08" stroke="#f97316" strokeWidth="1.2" />
-    <text x="56" y="308" fontSize="11" fontWeight="600" fill="#9a3412">backend 4 · NotifyConn</text>
-  </g>
-
-  {/* Child postmaster */}
-  <g filter="url(#mpShadow)">
-    <rect x="320" y="20" width="380" height="320" rx="16" fill="url(#mpPost)" stroke="#16a34a" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="320" y="20" width="6" height="320" rx="3" fill="#16a34a" />
-
-  <text x="340" y="46" fontSize="14" fontWeight="700" fill="#14532d">Child postmaster (bin/postgres)</text>
-  <text x="340" y="64" fontSize="11" fill="#166534">spawned with -k &lt;ram_dir&gt; -c listen_addresses=''</text>
-
-  {/* Internal layout of postmaster */}
-  <g filter="url(#mpShadow)">
-    <rect x="340" y="80" width="340" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-  </g>
-  <text x="356" y="103" fontSize="12" fontWeight="700" fill="#14532d">Private unix socket</text>
-  <text x="356" y="122" fontSize="10" fill="#166534">.s.PGSQL.5432 · 0700 RAM dir · max 96 chars</text>
-
-  <g filter="url(#mpShadow)">
-    <rect x="340" y="152" width="340" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-  </g>
-  <text x="356" y="175" fontSize="12" fontWeight="700" fill="#14532d">Real Postgres backends</text>
-  <text x="356" y="194" fontSize="10" fill="#166534">parallel workers · shm lock table · MVCC</text>
-
-  <g filter="url(#mpShadow)">
-    <rect x="340" y="224" width="340" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-  </g>
-  <text x="356" y="247" fontSize="12" fontWeight="700" fill="#14532d">Connection pinning</text>
-  <text x="356" y="266" fontSize="10" fill="#166534">Transaction holds one backend to commit</text>
-
-  <g filter="url(#mpShadow)">
-    <rect x="340" y="296" width="340" height="36" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-  </g>
-  <text x="356" y="318" fontSize="11" fontWeight="600" fill="#14532d">max_connections = pool + 2 + extra</text>
-
-  {/* Arrow: pool → postmaster */}
-  <line x1="260" y1="190" x2="340" y2="105" stroke="#f97316" strokeWidth="2" markerEnd="url(#mpArrow)" />
-  <text x="290" y="142" fontSize="10" fill="var(--fd-muted-foreground, #64748b)">unix socket</text>
-</svg>
+<DChart title="Multi-process mode: a pooled child postmaster gives true concurrency">
+  <DRow gap={18} align="start">
+    <DCol>
+      <DBox kind="accent" mono title="Your app" sub={["PGlite::open_multi_process(dir, opts)", "same API · same types · true concurrency"]} />
+      <DGroup kind="warn" label="Connection pool · worker + UnixStream each">
+        <DBox title="backend 1 · free" />
+        <DBox kind="warn" title="backend 2 · pinned (txn)" />
+        <DBox title="backend 3 · free" />
+        <DNote>reaper evicts idle &gt; min · 30s acquire → PoolExhausted</DNote>
+      </DGroup>
+      <DBox kind="info" title="NotifyConn · outside the pool" sub={["dedicated conn · lazy on first listen()", "reader thread → shared listener map"]} />
+    </DCol>
+    <DArrow dir="right" kind="accent" label="unix socket" />
+    <DGroup kind="error" label="Child postmaster · bin/postgres">
+      <DNote kind="error">spawned with -k &lt;ram_dir&gt; -c listen_addresses=&apos;&apos;</DNote>
+      <DBox kind="error" title="Private unix socket" sub=".s.PGSQL.5432 · 0700 RAM dir · no networking" />
+      <DBox kind="error" title="Real Postgres backends" sub="parallel workers · shared lock table · MVCC" />
+      <DBox kind="error" title="Connection pinning" sub="Transaction holds one backend through commit" />
+      <DBox kind="error" mono title="max_connections = pool + 2 + extra" sub="extra slots reserved for external ORM clients" />
+    </DGroup>
+  </DRow>
+</DChart>
 
 Properties:
 
 - **True concurrent sessions.** A pool of N real Postgres backends, each with its own state, sharing the standard Postgres shared lock table and MVCC.
 - **Connection pinning.** A `Transaction` borrows one backend exclusively until `commit` / `rollback` / drop. `BEGIN` and `COMMIT` hit the same backend — required for Postgres' session state.
-- **A dedicated `NotifyConn`** outside the pool holds all `LISTEN` subscriptions; a blocking reader thread streams `NotificationResponse` into the shared listener map. Live queries and `listen()` ride it in multi-process mode.
+- **A dedicated `NotifyConn`** *outside* the pool holds all `LISTEN` subscriptions; it is created lazily on first `listen()` in this mode and is never part of the acquire/release rotation. A blocking reader thread streams `NotificationResponse` into the shared listener map. Live queries and `listen()` ride it in multi-process mode.
 - **`unix_uri()` returns the child postmaster's native socket URI** in this mode — the same `postgresql://user@localhost/db?host=…` DSN every Postgres driver accepts, so the ORM code is identical to the in-process case.
 - **Self-healing pool.** A worker that hits an IO error reconnects; if the server is gone, the connection leaves the rotation. Acquire waits are bounded by a 30s timeout that surfaces as `Error::PoolExhausted`.
 
@@ -416,168 +159,57 @@ Properties:
 
 The `replica` cargo feature makes the local `PGlite` a read-only logical replica of a real upstream Postgres. The application never writes locally — writes go to upstream through your existing path — and the host streams committed changes into the local copy.
 
-<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" style={{maxWidth: "100%", height: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif"}}>
-  <defs>
-    <linearGradient id="repUp" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#dcfce7" stopOpacity="0.7" />
-      <stop offset="100%" stopColor="#bbf7d0" stopOpacity="0.5" />
-    </linearGradient>
-    <linearGradient id="repClient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="#fef3c7" stopOpacity="0.4" />
-    </linearGradient>
-    <linearGradient id="repLocal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="var(--fd-card, #ffffff)" />
-      <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.4" />
-    </linearGradient>
-    <filter id="repShadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.06" />
-    </filter>
-    <marker id="repArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316" />
-    </marker>
-  </defs>
-
-  {/* Upstream Postgres */}
-  <g filter="url(#repShadow)">
-    <rect x="20" y="20" width="220" height="320" rx="16" fill="url(#repUp)" stroke="#16a34a" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="20" y="20" width="6" height="320" rx="3" fill="#16a34a" />
-
-  <text x="40" y="46" fontSize="14" fontWeight="700" fill="#14532d">Upstream Postgres</text>
-  <text x="40" y="62" fontSize="10" fill="#166534">real server · source of truth</text>
-
-  <g>
-    <rect x="40" y="80" width="180" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="56" y="102" fontSize="11" fontWeight="700" fill="#14532d">publication + slot</text>
-    <text x="56" y="120" fontSize="10" fill="#166534">START_REPLICATION</text>
-    <text x="56" y="132" fontSize="10" fill="#166534">pgoutput</text>
-  </g>
-
-  <g>
-    <rect x="40" y="152" width="180" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="56" y="174" fontSize="11" fontWeight="700" fill="#14532d">standby feedback</text>
-    <text x="56" y="192" fontSize="10" fill="#166534">ack position</text>
-    <text x="56" y="204" fontSize="10" fill="#166534">watermark LSN</text>
-  </g>
-
-  <g>
-    <rect x="40" y="224" width="180" height="58" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="56" y="246" fontSize="11" fontWeight="700" fill="#14532d">pglite_emit_ddl</text>
-    <text x="56" y="264" fontSize="10" fill="#166534">event trigger on</text>
-    <text x="56" y="276" fontSize="10" fill="#166534">ddl_command_end</text>
-  </g>
-
-  <g>
-    <rect x="40" y="296" width="180" height="32" rx="10" fill="var(--fd-card, #ffffff)" stroke="#16a34a" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="56" y="316" fontSize="10" fontWeight="600" fill="#14532d">app writes go here</text>
-  </g>
-
-  {/* Replication client */}
-  <g filter="url(#repShadow)">
-    <rect x="320" y="20" width="200" height="320" rx="16" fill="url(#repClient)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="320" y="20" width="6" height="320" rx="3" fill="#f59e0b" />
-
-  <text x="340" y="46" fontSize="14" fontWeight="700" fill="#78350f">Replication client</text>
-  <text x="340" y="62" fontSize="10" fill="#92400e">hand-rolled · 1 OS thread · no tokio</text>
-
-  <g>
-    <rect x="340" y="80" width="160" height="46" rx="10" fill="var(--fd-card, #ffffff)" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="354" y="100" fontSize="11" fontWeight="700" fill="#78350f">SCRAM auth</text>
-    <text x="354" y="116" fontSize="10" fill="#92400e">connects with creds</text>
-  </g>
-
-  <g>
-    <rect x="340" y="138" width="160" height="46" rx="10" fill="var(--fd-card, #ffffff)" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="354" y="158" fontSize="11" fontWeight="700" fill="#78350f">pgoutput decode</text>
-    <text x="354" y="174" fontSize="10" fill="#92400e">Begin..Commit frames</text>
-  </g>
-
-  <g>
-    <rect x="340" y="196" width="160" height="46" rx="10" fill="var(--fd-card, #ffffff)" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="354" y="216" fontSize="11" fontWeight="700" fill="#78350f">backfill</text>
-    <text x="354" y="232" fontSize="10" fill="#92400e">slot's exported snapshot</text>
-  </g>
-
-  <g>
-    <rect x="340" y="254" width="160" height="46" rx="10" fill="var(--fd-card, #ffffff)" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="354" y="274" fontSize="11" fontWeight="700" fill="#78350f">tx buffer</text>
-    <text x="354" y="290" fontSize="10" fill="#92400e">one upstream tx at a time</text>
-  </g>
-
-  <g>
-    <rect x="340" y="312" width="160" height="20" rx="10" fill="#16a34a" fillOpacity="0.1" />
-    <text x="420" y="326" fontSize="10" fontWeight="700" textAnchor="middle" fill="#14532d">CHANGE BROADCAST</text>
-  </g>
-
-  {/* Local PGlite (applier + DB) */}
-  <g filter="url(#repShadow)">
-    <rect x="600" y="20" width="100" height="320" rx="16" fill="url(#repLocal)" stroke="#3b82f6" strokeWidth="1.2" strokeOpacity="0.5" />
-  </g>
-  <rect x="600" y="20" width="6" height="320" rx="3" fill="#3b82f6" />
-
-  <text x="650" y="46" fontSize="13" fontWeight="700" textAnchor="middle" fill="var(--fd-foreground, #0f172a)">Local PGlite</text>
-  <text x="650" y="62" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">read-only</text>
-
-  <g>
-    <rect x="614" y="80" width="72" height="42" rx="10" fill="var(--fd-card, #ffffff)" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="650" y="100" fontSize="11" fontWeight="700" textAnchor="middle" fill="#1e3a8a">Applier</text>
-    <text x="650" y="114" fontSize="9" textAnchor="middle" fill="#1e40af">1 writer</text>
-  </g>
-
-  <g>
-    <rect x="614" y="132" width="72" height="42" rx="10" fill="var(--fd-card, #ffffff)" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="650" y="152" fontSize="11" fontWeight="700" textAnchor="middle" fill="#1e3a8a">apply tx</text>
-    <text x="650" y="166" fontSize="9" textAnchor="middle" fill="#1e40af">PGlite txn</text>
-  </g>
-
-  <g>
-    <rect x="614" y="184" width="72" height="42" rx="10" fill="var(--fd-card, #ffffff)" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="650" y="204" fontSize="11" fontWeight="700" textAnchor="middle" fill="#1e3a8a">bump</text>
-    <text x="650" y="218" fontSize="9" textAnchor="middle" fill="#1e40af">watermark</text>
-  </g>
-
-  <g>
-    <rect x="614" y="236" width="72" height="100" rx="10" fill="var(--fd-card, #ffffff)" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.4" />
-    <text x="650" y="258" fontSize="11" fontWeight="700" textAnchor="middle" fill="#1e3a8a">data</text>
-    <text x="650" y="276" fontSize="9" textAnchor="middle" fill="#1e40af">replicated</text>
-    <text x="650" y="290" fontSize="9" textAnchor="middle" fill="#1e40af">tables</text>
-    <text x="650" y="316" fontSize="9" textAnchor="middle" fill="#64748b">_pglite_replica</text>
-    <text x="650" y="328" fontSize="9" textAnchor="middle" fill="#64748b">meta table</text>
-  </g>
-
-  {/* Arrows */}
-  <line x1="240" y1="110" x2="320" y2="110" stroke="#f97316" strokeWidth="2" markerEnd="url(#repArrow)" />
-  <text x="280" y="103" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">pgoutput</text>
-
-  <line x1="240" y1="180" x2="320" y2="180" stroke="#16a34a" strokeWidth="1.5" strokeDasharray="3 2" markerEnd="url(#repArrow)" />
-  <text x="280" y="173" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">ack</text>
-
-  <line x1="520" y1="270" x2="600" y2="150" stroke="#f97316" strokeWidth="2" markerEnd="url(#repArrow)" />
-  <text x="565" y="200" fontSize="10" textAnchor="middle" fill="var(--fd-muted-foreground, #64748b)">apply</text>
-</svg>
+<DChart title="Replica mode: one upstream stream, one applier, a read-only local copy">
+  <DRow gap={14} align="start">
+    <DGroup kind="error" label="Upstream Postgres · source of truth">
+      <DBox kind="error" title="publication + slot" sub="START_REPLICATION · pgoutput" />
+      <DBox kind="error" title="standby feedback sink" sub="advances replay_location" />
+      <DBox kind="muted" title="event trigger (operator)" sub={["emits pg_logical_emit_message", "('pglite_ddl') — NOT shipped"]} />
+      <DBox kind="error" title="app writes go here" />
+    </DGroup>
+    <DCol align="center">
+      <DArrow dir="right" kind="error" label="pgoutput" />
+      <DArrow dir="left" kind="success" dashed label="standby ack" />
+    </DCol>
+    <DGroup kind="warn" label="Replica client · one OS thread, no tokio">
+      <DBox kind="warn" title="connect + auth" sub="cleartext / MD5 / SCRAM · TLS" />
+      <DBox kind="accent" title="backfill (first_run)" sub="CREATE_REPLICATION_SLOT snapshot" />
+      <DBox kind="warn" title="pgoutput decode" sub="Begin..Commit · Message" />
+      <DBox kind="warn" title="TxnBuf" sub="one upstream txn at a time" />
+      <DBox kind="warn" title="reconcile_security" sub="backfill · pglite_ddl · role poll" />
+    </DGroup>
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" label="apply" />
+    </DCol>
+    <DGroup kind="info" label="Local PGlite · read-only">
+      <DBox kind="info" title="applier" sub="sole writer" />
+      <DBox kind="info" title="apply txn" sub="DML + watermark" />
+      <DBox kind="info" title="data" sub={["replicated tables", "_pglite_replica meta"]} />
+      <DBox kind="success" title="subscribe()" />
+    </DGroup>
+  </DRow>
+</DChart>
 
 Properties:
 
-- **One stream, one writer.** The applier is the only writer to local PGlite. The replication client buffers one upstream transaction and applies it as one PGlite transaction, bumping the watermark in the same commit.
-- **Backfill under the slot's exported snapshot.** The initial table copy and the stream start share one consistent LSN boundary by construction — no separate coordination step.
+- **One stream, one writer.** The applier is the only writer to local PGlite. The replica client buffers one upstream transaction in a `TxnBuf` and applies it as one PGlite transaction, bumping the watermark in the same commit.
+- **Backfill under the slot's exported snapshot.** On `first_run` the client opens the slot with `CREATE_REPLICATION_SLOT … EXPORT_SNAPSHOT`, copies tables under `SET TRANSACTION SNAPSHOT`, then begins `START_REPLICATION … LOGICAL pgoutput`. The initial table copy and the stream start share one consistent LSN boundary by construction — no separate coordination step.
 - **Idempotent resume.** The watermark drives skip-already-applied and resume-after-restart. Standby feedback advances the upstream's `replay_location` as transactions apply; the ack position is allowed to run past the watermark across data-free spans, and resets to it on reconnect.
-- **Schema tracking via `pglite_ddl`.** A `cache-server init` installs an upstream event trigger that calls `pg_logical_emit_message(true, 'pglite_ddl', '')` on every DDL — a content-less signal riding the slot (pgoutput `messages 'true'`). On receipt, the replica re-introspects the published schema and applies a structured delta. Additive changes (new column, new table) auto-apply; incompatible ones halt with a precise reason.
-- **Security catalog mirrored by introspect-and-rebuild.** Roles, role memberships, `SELECT` grants, RLS enable/force flags, and policies are NOT carried by any logical-replication stream. They are pulled in by a separate idempotent reconcile that fires on backfill, on the `pglite_ddl` signal, and on a periodic role poll. Roles are rebuilt as `NOLOGIN NOBYPASSRLS` shells; the application-side `query_as(role, claims, sql, params)` seam uses `SET LOCAL ROLE` inside a pinned transaction so the load-bearing RLS guarantee holds even if the pool's `RESET ALL` is incomplete.
+- **Schema tracking via the `pglite_ddl` signal.** The shipping replica only *consumes* the pgoutput logical-message stream: it requests `messages 'true'` in `START_REPLICATION` and, when it receives a `Message` whose prefix equals `DDL_SIGNAL_PREFIX` (`"pglite_ddl"`), it re-introspects the published schema and applies a structured delta. Additive changes (new column, new table) auto-apply; incompatible ones halt the replica with a precise reason (`Error::ReplicaHalted`). **Emitting that signal upstream is an external prerequisite** — you install an event trigger on `ddl_command_end` that calls `pg_logical_emit_message(true, 'pglite_ddl', …)`; no crate in this workspace installs it for you.
+- **Security catalog mirrored by introspect-and-rebuild.** Roles, role memberships, `SELECT` grants, RLS enable/force flags, and policies are NOT carried by any logical-replication stream. They are pulled in by `backfill::reconcile_security`, a separate idempotent reconcile that fires on backfill, on the `pglite_ddl` signal, and on a periodic role poll (`role_poll_interval`, default 60s). Roles are rebuilt as `CREATE ROLE … NOLOGIN NOBYPASSRLS` shells; the application-side `query_as(role, claims, sql, params)` seam uses `SET LOCAL ROLE` (and `SET LOCAL request.jwt.claims`) inside a pinned, rolled-back transaction so the load-bearing RLS guarantee holds.
 
 ## Why the FFI waist matters for safety
 
 Postgres predates Rust by decades. Its main loop, error paths, and signal handling were not designed to be called from safe languages. Three design choices in pglite-rs keep the boundary safe:
 
 1. **No `Arc<Mutex<EngineState>>`.** Engine globals are touched only on the engine thread. Cross-thread handoff is `mpsc::Sender<EngineCommand>` plus a `futures::channel::oneshot` reply, with the reply carrying wire bytes — the same bytes an external client would see.
-2. **No Rust frame inside a `longjmp` region.** The trampoline `pgl_native_pump` contains every Postgres jump; the C ABI presents an ordinary status code outward. A `longjmp` that landed in Rust frames would leave `RefCell` borrows, locks, and destructors in undefined states.
+2. **No Rust frame inside a `longjmp` region.** The `sigsetjmp` trampoline `pgl_native_call`, entered once at boot, contains every Postgres jump and fake-exit; the C ABI presents an ordinary status code outward. A `longjmp` that landed in Rust frames would leave `RefCell` borrows, locks, and destructors in undefined states.
 3. **The exit-on-error path is plumbed, not implicit.** Errors come back as parsed `Message::ErrorResponse` frames carrying SQLSTATE; they are decoded into `Error::Database { sqlstate, … }`. There is no "engine panicked" path that can silently leave a transaction open — the trampoline unwinds the engine, and Rust sees a normal `Err`.
 
 ## What it costs
 
 - **One OS thread, dedicated to the engine.** Negligible. It sleeps on a channel between queries.
 - **A precompiled static library per target triple.** `pglite-sys/build.rs` downloads it on first build and caches it under `~/.cache/pglite-rs/`; subsequent builds skip the download.
-- **A small constant overhead per query** for the channel hop and the `Wire`-format roundtrip — not a real Postgres driver cost, but not free either. For batch work, prefer `COPY` or a single multi-statement `exec`.
+- **A small constant overhead per query** for the channel hop and the wire-format roundtrip — not a real Postgres driver cost, but not free either. For batch work, prefer `COPY` or a single multi-statement `exec`.
 
 For typical interactive use (open, query, transaction, close), the overhead is dominated by Postgres itself, not the binding.

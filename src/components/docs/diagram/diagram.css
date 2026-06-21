@@ -1,0 +1,30 @@
+/*
+ * Midwess docs diagram tokens — Claude.ai-style warm dark palette.
+ * Docs render under fumadocs forcedTheme:"dark", so these are dark-only.
+ * Scoped to .mw-diagram so they never leak into the rest of the docs chrome.
+ * Every foreground token is >= 4.5:1 (WCAG AA) against --dg-card.
+ */
+.mw-diagram {
+  --dg-bg: #1f1d1b; /* diagram panel */
+  --dg-card: #2a2724; /* node fill (gradient top) */
+  --dg-card-2: #322e2a; /* node fill (gradient bottom) */
+  --dg-border: #3d3935;
+
+  --dg-text: #eceae3; /* warm off-white  ~12:1 on card */
+  --dg-muted: #a8a29a; /* warm caption    ~6:1 on card */
+
+  --dg-accent: #d97757; /* clay (primary)  ~4.7:1 */
+  --dg-success: #7ba87b; /* sage           ~5.7:1 */
+  --dg-warn: #d9a24e; /* amber          ~6.9:1 */
+  --dg-error: #c77b6b; /* clay-red       ~4.6:1 */
+  --dg-info: #8aa6c9; /* muted blue     ~6.2:1 */
+
+  margin: 1.75rem 0;
+}
+
+.mw-diagram svg {
+  display: block;
+  margin-inline: auto;
+  max-width: 100%;
+  height: auto;
+}

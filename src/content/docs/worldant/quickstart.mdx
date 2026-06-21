@@ -7,6 +7,39 @@ description: End-to-end — install, wire up the world, run a workflow, read the
 
 The smallest end-to-end path: install the package, boot the world, run a workflow, read the result. If you have done this once, the rest of the guides pick up a single concept at a time.
 
+## Boot order at a glance
+
+Everything in this quickstart hangs off one ordered sequence. Importing the package runs `connectSupervisor()`; whether it does anything depends on a single environment variable the supervisor sets. The two paths — bare and supervised — diverge there and rejoin at `app.listen()`.
+
+<DChart label="Process start" title="Boot order from process start to serving durable workflows, bare versus supervised">
+  <DRow gap={18} align="start">
+    <DCol gap={10}>
+      <DRow gap={14} align="start">
+        <DBox kind="info" badge={1} title="import package" sub={["runs connectSupervisor()", "listen-hijack only if control fd set"]} />
+        <DArrow dir="right" kind="info" />
+        <DBox kind="info" badge={2} title="install() / createWorld" sub={["open SQLite at dataDir", "in-memory if dataDir omitted"]} />
+      </DRow>
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="accent" badge={3} title="setWorld()" sub={["into @workflow/core registry", "getWorld() now resolves it"]} />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="accent" badge={4} title="register queue handlers" sub={["createQueueHandler prefixes", "must complete before step 5"]} />
+      <DArrow dir="down" kind="warn" />
+      <DBox kind="warn" badge={5} title="world.start()" sub={["reenqueue active runs", "start native QueueWorker"]} />
+      <DArrow dir="down" kind="success" />
+      <DBox kind="success" title="app.listen()" sub={["bare: binds the port normally", "supervised: relocated to unix sock"]} />
+    </DCol>
+    <DGroup kind="info" label="WORLDANT_CONTROL_FD ?">
+      <DArrow dir="left" kind="info" label="supervised" />
+      <DArrow dir="left" kind="muted" dashed label="bare: skip" />
+      <DBox kind="info" title="startSupervision announce" sub={["SUPERVISED ONLY", "control pipe · derive code-first id"]} />
+      <DArrow dir="down" kind="info" dashed />
+      <DNote kind="muted">rejoins at setWorld()</DNote>
+    </DGroup>
+  </DRow>
+</DChart>
+
+<p style={{fontSize:'13px',color:'var(--fd-muted-foreground,#94a3b8)',marginTop:'8px'}}>The bare and supervised paths share every step except the announce; under the supervisor, <code>app.listen()</code> is hijacked onto a private unix socket.</p>
+
 ## 1. Install the package
 
 ```bash
@@ -23,39 +56,42 @@ Create a file that boots once, at the top of your app's entry point:
 ```ts title="src/world.ts"
 import { install } from '@midwess/worldant';
 
-export const world = await install({ dataDir: './.world' });
+export const world = await install({ dataDir: './.worldant-data' });
 ```
 
-`install()` does three things:
+`install()` does three things ([`src/index.ts`](https://github.com/) — `createWorld` → `setWorld` → `world.start()`):
 
-1. Creates and opens the `World` (NAPI handle to the Rust storage engine) at `dataDir`. Creates `./.world` if it doesn't exist.
+1. Creates and opens the `World` (NAPI handle to the Rust storage engine). `dataDir` is the path of the **durable SQLite database file**, passed straight to `World::open`. If you **omit** `dataDir`, the World is in-memory and ephemeral (`open_temp`) — fine for tests, but nothing survives a restart.
 2. Calls `setWorld()` from `@workflow/core/runtime` so any code that calls `getWorld()` finds it.
-3. Starts the queue dispatcher. The world is now processing work.
+3. Calls `world.start()` — reenqueues any active runs and starts the in-process queue worker. The world is now processing work.
 
 Import this file at the top of your entry point — before any handler that starts a workflow:
 
 ```ts title="src/main.ts"
 import './world.js'; // boots the world first
+import http from 'node:http';
 import { start } from 'workflow/api';
-import { serve } from '@hono/node-server';
 import { checkout } from './workflows/checkout.js';
 
-serve(async (req) => {
-  const url = new URL(req.url);
-  if (url.pathname === '/checkout' && req.method === 'POST') {
-    const order = await req.json();
+const server = http.createServer(async (req, res) => {
+  if (req.url === '/checkout' && req.method === 'POST') {
+    const order = await readJson(req);
     const run = await start(checkout, [order]);
-    return Response.json({ runId: run.runId });
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ runId: run.runId }));
+    return;
   }
-  return new Response('not found', { status: 404 });
+  res.writeHead(404).end('not found');
 });
+
+server.listen(3000);
 ```
 
-(Any HTTP framework works. The point is `import './world.js'` runs before you start handling requests.)
+(Any HTTP framework works — the shipped example wires the same world into a NestJS app. The only load-bearing rule is that `import './world.js'` runs **before** you start handling requests.)
 
 ## 3. Write a workflow
 
-Workflows use the `"use workflow"` directive inside the exported function. Steps use `"use step"` at the top of a step function.
+Workflows use the `"use workflow"` directive as the first statement inside the exported function. Steps use `"use step"` at the top of a step function.
 
 ```ts title="src/workflows/checkout.ts"
 import { start } from 'workflow/api';
@@ -66,24 +102,46 @@ export async function checkout(order: { id: string }): Promise<{ runId: string }
 }
 ```
 
-The compiler (`swc` from `@workflow/core`) extracts these at build time. Run the build transform as part of your build script:
+The build-time transform extracts these directives. It ships in the **`workflow` CLI** (the `workflow` / `wf` meta-package, a.k.a. `@workflow/cli`) — not in `@workflow/core` — and is also available as a framework swc plugin (for example `@workflow/nest`). Run the transform as part of your build:
 
 ```json title="package.json"
 {
   "scripts": {
-    "build": "tsc -p tsconfig.json && workflow build src/workflows"
+    "build": "tsc -p tsconfig.json && workflow build"
   }
 }
 ```
 
+`workflow build` takes no source-directory argument. If you use a framework bundler, prefer its plugin path instead — the NestJS example, for instance, initializes the swc config (`@workflow/nest` `init`) and then runs `nest build`.
+
 The full primitive set — `'use step'`, retries, hooks, streams, child workflows — is on the [Workflows](/worldant/workflows) page. The Vercel Workflow docs cover the underlying model.
 
+### Register handlers before `world.start()`
+
+> **Gotcha.** worldant dispatches queued jobs in-process via a native callback, keyed by **queue-name prefix** (`__wkf_workflow_` / `__wkf_step_`). `@workflow/core` only registers its `createQueueHandler('__wkf_workflow_', …)` handler **lazily**, on the first request to the generated workflow entrypoint. If the native worker (started by `world.start()`) runs before that registration, the first dispatched job hits an unregistered prefix and retries.
+>
+> If your framework registers handlers on import (the plain `node:http` path above), `install()` is enough. If registration is lazy — as with NestJS, where compiling the bundles happens in `app.init()` — force the registration first, then start the worker. The shipped example does exactly this: it fires one no-op POST through the generated `workflows.mjs` entrypoint, then calls `world.start()` (see `registerHandlersAndStart` in `examples/nestjs-checkout-saga/src/world.bootstrap.ts`).
+
 ## 4. Run it
+
+The library is **inert** when run bare — with no `WORLDANT_CONTROL_FD` in its environment it never relocates its socket or reports state, so a plain process works fine and is fully supported:
 
 ```bash
 pnpm build
 node dist/main.js
 ```
+
+To get scale-to-zero and zero-downtime redeploy, run the same app under the [supervisor](/worldant/supervisor) instead. Two modes:
+
+```bash
+# join-or-become the per-user daemon (scale-to-zero, hot-swap on redeploy)
+worldant run -- npm start
+
+# single foreground app, no daemon
+worldant start -- npm start
+```
+
+Either way, the app code is identical — the supervisor passes the control pipe, and the library detects it and relocates its HTTP listener onto a private unix socket. Install the supervisor with `npm install -g @midwess/worldant-cli` (or `cargo install worldant-cli`).
 
 In another terminal:
 
@@ -97,18 +155,42 @@ curl -X POST http://localhost:3000/checkout \
 
 The server returns a `runId` immediately. The workflow itself runs in the background; the world writes events to SQLite as the steps complete.
 
+<DChart label="Start · returns immediately" title="A request starts a workflow that runs in the background and is read back from durable SQLite">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" mono title="HTTP handler" sub="start(checkout, [order])" />
+    <DArrow dir="right" kind="accent" />
+    <DBox mono title="@workflow/core" sub="enqueue job + return runId" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="info" mono title="embedded SQLite" sub="world_jobs · world_events · world_steps" />
+  </DRow>
+  <DArrow dir="down" kind="muted" dashed />
+  <DBox kind="muted" title={"response: { runId }"} sub="before the workflow finishes" />
+  <DGroup label="Background execution">
+    <DRow gap={14} align="start">
+      <DBox kind="info" mono title="read the result" sub={["getRun(runId).returnValue", "resolves when the run completes"]} />
+      <DCol align="center">
+        <DArrow dir="right" kind="info" label="claims job" />
+        <DArrow dir="left" kind="info" label="writes events / steps" />
+        <DArrow dir="left" kind="muted" dashed label="same durable store · events / steps read it too" />
+      </DCol>
+      <DBox mono title="in-process QueueWorker" sub={["claim_next → dispatch by prefix", "steps run, events written as CBOR"]} />
+    </DRow>
+  </DGroup>
+</DChart>
+
+<p style={{fontSize:'13px',color:'var(--fd-muted-foreground,#94a3b8)',marginTop:'8px'}}><code>start()</code> returns the <code>runId</code> before the workflow runs; the in-process worker drives it to completion against the same SQLite file you read back from.</p>
+
 ## 5. Read the result
 
 ```ts
 import { getRun } from 'workflow/api';
-import { checkout } from './workflows/checkout.js';
 
 const run = getRun<{ runId: string }>('wrun_...');
 const result = await run.returnValue; // resolves when the run finishes
 console.log(result);
 ```
 
-You can also read events, step results, and stream data through the `world` instance:
+`getRun` is synchronous and returns a handle; `run.returnValue` (and `run.status`) are promises. You can also read events, step results, and stream data through the `world` instance:
 
 ```ts
 import { world } from './world.js';

@@ -5,7 +5,7 @@ description: open_multi_process — real concurrent sessions, connection pool, N
 
 # Multi-process mode
 
-The in-process engine runs one session. If you need real concurrent sessions — parallel transactions, cross-session locks, an ORM pool with more than one connection — turn on the `multiple-process` cargo feature and call `PGlite::open_multi_process`. The host spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools N real backends behind the same `PGlite` API.
+The in-process engine runs one session, serialized by an internal lock. If you need real concurrent sessions — parallel transactions, cross-session locks, an ORM pool with more than one connection — turn on the `multiple-process` cargo feature and call `PGlite::open_multi_process`. The host spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools N real backends behind the same `PGlite` API. Multi-process mode does **not** serialize: it bypasses the in-process lock entirely and gives true concurrency through the pool, which is the whole reason to use it.
 
 ## Cargo feature
 
@@ -31,11 +31,28 @@ let db = PGlite::open_multi_process("./mydata", opts).await?;
 What happens:
 
 1. The host extracts `share/postgresql` to a runtime dir (cached; reuses a previous extract).
-2. `initdb` runs at `./mydata` on first open. Same `initdb` output as in-process mode.
+2. `initdb` runs at `./mydata` on first open, synchronously, before the postmaster is spawned. Same `initdb` output as in-process mode — so the first `open_multi_process` is slow and subsequent opens against an initialized dir are fast.
 3. The child postmaster is spawned with `-k <ram_dir> -c listen_addresses=''` — no networking, only the private unix socket.
-4. `max_connections` is set on the postmaster to `pool_size + 2 + extra_connections`. The +2 is for the superuser-reserved and replication slots; the `extra_connections` are for direct `psql` / out-of-pool clients.
-5. The host waits up to 15 seconds for the postmaster to be ready, then connects the pool.
-6. `initdb` happens synchronously before the postmaster is spawned — the first `open_multi_process` is slow; subsequent opens against an initialized dir are fast.
+4. `max_connections` is set on the postmaster to `pool_size + 2 + extra_connections`, where `pool_size = max_connections.max(1)`. The `+2` is a fixed headroom margin; the `extra_connections` are for direct `psql` / out-of-pool clients.
+5. The host waits up to 15 seconds for the postmaster to be ready, then starts the pool (pre-warming `min_connections` backends).
+
+<DChart label="Cold-start sequence · open_multi_process" title="open_multi_process boot order: runtime extract, initdb, postmaster spawn, readiness wait, pool start">
+  <DRow gap={14}>
+    <DBox badge={1} mono kind="accent" title="extract_runtime" sub={["unpack share/postgresql", "into runtime dir · cached"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={2} mono kind="accent" title="run_initdb" sub={["synchronous · first open", "before postmaster spawn"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={3} mono kind="accent" title={"Server::spawn → bin/postgres"} sub={["-k <ram_dir> -c listen_addresses=''", "-c max_connections=pool+2+extra"]} />
+  </DRow>
+  <DArrow dir="down" kind="accent" dashed />
+  <DRow gap={14}>
+    <DBox badge={4} title="readiness wait" sub={["retry connect_and_handshake", "up to 15s · 50ms backoff"]} />
+    <DArrow dir="right" kind="success" />
+    <DBox badge={5} mono kind="success" title="Pool::start" sub={["pre-warm min_connections backends,", "then sweep_live_views · PGlite ready"]} />
+  </DRow>
+  <DNote>The 15s readiness loop lives inside Server::spawn; if the postmaster exits during startup the open fails with Error::PostmasterStart.</DNote>
+</DChart>
+<figcaption>Boot order: runtime extract → synchronous initdb → child postmaster spawn → readiness wait → pool start.</figcaption>
 
 ## `MultiProcessOptions` in full
 
@@ -53,6 +70,38 @@ What happens:
 
 See [Configuration](/pglite-rs/configuration#multiprocessoptions) for the rest.
 
+## Concurrent sessions
+
+`PGlite::query` / `PGlite::exec` route through `Pool::roundtrip`: acquire a backend, write the wire bytes, read until `ReadyForQuery`, release the backend. There is no global serialization in this mode — many tasks can be in flight at once, each on its own backend, all sharing one postmaster's lock table and MVCC snapshots.
+
+<DChart label="Concurrent sessions · Pool::roundtrip" title="Concurrent sessions served by the connection pool, mapping 1:1 to postmaster backends">
+  <DRow gap={18} align="center">
+    <DBox kind="accent" mono title="PGlite" sub={["cloneable handle", "N async tasks", "query / exec"]} />
+    <DArrow dir="right" kind="accent" label="acquire" />
+    <DGroup kind="accent" label="Pool · acquire / release · min..max · idle_ttl">
+      <DBox kind="warn" mono title="Conn · UnixStream + thread" />
+      <DBox kind="warn" mono title="Conn · UnixStream + thread" />
+      <DBox kind="warn" mono title="Conn · UnixStream + thread" />
+      <DNote>reaper thread evicts idle conns down to min</DNote>
+    </DGroup>
+    <DCol align="center">
+      <DArrow dir="right" kind="warn" />
+      <DArrow dir="right" kind="warn" />
+      <DArrow dir="right" kind="warn" />
+    </DCol>
+    <DGroup kind="error" label="Child postmaster · bin/postgres · private unix socket">
+      <DBox kind="error" title="backend" />
+      <DBox kind="error" title="backend" />
+      <DBox kind="error" title="backend" />
+      <DNote kind="error">one per Conn</DNote>
+    </DGroup>
+  </DRow>
+  <DArrow dir="up" kind="info" dashed />
+  <DBox kind="info" mono title="NotifyConn" sub="out-of-pool · holds LISTEN · own reader thread" />
+  <DNote>Each pool Conn owns a UnixStream and a worker thread mapping 1:1 to a postmaster backend. The NotifyConn lives outside the rotation.</DNote>
+</DChart>
+<figcaption>Pool workers map 1:1 to postmaster backends; the reaper trims idle conns; the NotifyConn sits outside the pool.</figcaption>
+
 ## Connection pinning
 
 A `Transaction` borrows one backend exclusively until `commit` / `rollback` / drop. `BEGIN` and `COMMIT` hit the same backend, which is required for Postgres' session state:
@@ -61,9 +110,25 @@ A `Transaction` borrows one backend exclusively until `commit` / `rollback` / dr
 - `SET LOCAL` (used by the RLS seam — see [Replication](/pglite-rs/replication))
 - temp tables (`CREATE TEMP TABLE …`)
 - prepared statements (`PREPARE … AS …`)
-- `LISTEN` (the NotifyConn owns this — see below)
 
 While a `Transaction` is alive, the borrowed backend is not returned to the pool. Calls to `db.exec` / `db.query` from other tasks will wait for the backend to free up. Pool acquire waits are bounded by 30 seconds and surface as `Error::PoolExhausted`.
+
+<DChart label="Connection pinning · PinnedConn" title="A Transaction pins one pooled backend until commit, rollback, or drop releases it">
+  <DRow gap={14} align="center">
+    <DBox mono title="db.transaction()" sub={["pool.checkout()", "acquire · 30s → PoolExhausted"]} />
+    <DArrow dir="right" kind="warn" />
+    <DBox kind="warn" mono title="PinnedConn" sub={["routes BEGIN · exec · query · COMMIT to SAME backend", "advisory locks · SET LOCAL · temp · prepared stmts"]} />
+    <DArrow dir="right" kind="warn" />
+    <DBox kind="error" title="one backend" sub={["pinned · unavailable", "to other tasks"]} />
+  </DRow>
+  <DNote>on commit / rollback / drop → release Conn back to pool</DNote>
+  <DRow gap={14}>
+    <DBox kind="success" mono title="commit" sub="COMMIT sent · conn returns to pool" />
+    <DBox kind="warn" mono title="rollback" sub="ROLLBACK sent · conn returns to pool" />
+    <DBox kind="error" mono title="drop (uncommitted)" sub="fire-and-forget ROLLBACK · conn released" />
+  </DRow>
+</DChart>
+<figcaption>A transaction pins one pooled backend; commit, rollback, and drop all release it back to the pool.</figcaption>
 
 ## The NotifyConn
 
@@ -75,6 +140,18 @@ While a `Transaction` is alive, the borrowed backend is not returned to the pool
 - `live_query` and `listen()` both read from the same map, so subscribers do not consume pool slots.
 
 You do not interact with the NotifyConn directly. It is owned by the `PGlite` and is closed on `close()` / last drop.
+
+<DChart label="LISTEN / NOTIFY · out-of-pool NotifyConn" title="LISTEN/NOTIFY in multi-process mode flows through the out-of-pool NotifyConn into the shared listener map">
+  <DRow gap={14} align="center">
+    <DBox kind="error" mono title="postmaster" sub={["any backend runs NOTIFY", "NotificationResponse"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="info" mono title="NotifyConn" sub={["lazy on first listen() / live_query", "outside the pool rotation", "reader thread · parse frames"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox mono title="shared listener map" sub={["channel → callbacks (lowercased)", "read by listen() and live_query"]} />
+  </DRow>
+  <DNote>One NotifyConn keeps LISTEN state on a single backend so registrations survive across pool churn. It is owned by the PGlite and shut down on close() / drop.</DNote>
+</DChart>
+<figcaption>A single out-of-pool NotifyConn streams notifications into the shared listener map that both listen() and live_query read.</figcaption>
 
 ## Self-healing pool
 
@@ -101,12 +178,12 @@ See [ORM integration](/pglite-rs/orm) for the full set of driver examples and th
 ## When NOT to use multi-process mode
 
 - **Single-session workloads.** A test harness, a CLI that runs one query at a time, a serverless handler. The in-process engine is faster (no postmaster hop) and uses ~23 MB versus ~84 MB across 12 processes.
-- **No concurrent sessions required.** If the only thing parallel is "many concurrent HTTP requests, each running one query," the in-process engine with a `serial_guard` style API is fine.
+- **No concurrent sessions required.** If the only thing parallel is "many concurrent HTTP requests, each running one query," the in-process engine — which serializes those queries on one backend — is fine.
 - **Strict process count budgets.** Multi-process mode forks a child postmaster, then forks backends as connections are made. The footprint is dominated by the shared-buffers segment, which the OS deduplicates.
 
 ## Orphan caveat
 
-If the host process is `SIGKILL`ed, the child postmaster's process group receives no signal — the child becomes orphaned until the OS reaps it. The next `open_multi_process` on the same data dir relies on Postgres' own stale `postmaster.pid` handling. Abandoned socket dirs under the OS temp dir persist until the OS cleans them. This is rare in practice but worth knowing for crash-recovery tests.
+If the host process is `SIGKILL`ed, the child postmaster's process group receives no signal — the child becomes orphaned until the OS reaps it. The next `open_multi_process` on the same data dir relies on Postgres' own stale `postmaster.pid` handling. The socket dir lives under the RAM-backed dir (`tmpfs`/`shm` on Linux, named `pgl-<pid>-<counter>`); abandoned socket dirs persist there until the OS cleans them. This is rare in practice but worth knowing for crash-recovery tests.
 
 ## What's next
 

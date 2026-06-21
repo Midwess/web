@@ -7,6 +7,41 @@ description: PGliteOptions, MultiProcessOptions, ReplicaConfig, cargo features, 
 
 pglite-rs has three public options structs (one per operating mode), one enum, the standard `ToSql` / `FromSql` re-exports from `postgres-types`, and a small set of env vars and on-disk paths you may need to know about. This page scans them all.
 
+Each options struct, cargo feature, and env var governs a specific subsystem. The map below is the orientation for everything that follows.
+
+<DChart title="Which config struct, cargo feature, and env var controls which subsystem of pglite-rs">
+  <DRow gap={14} align="start">
+    <DGroup label="CONTROLS">
+      <DBox kind="accent" mono title="PGliteOptions" sub="in-process config struct" />
+      <DBox kind="accent" mono title="MultiProcessOptions" sub="feature multiple-process" />
+      <DBox kind="accent" mono title="ReplicaConfig" sub="feature replica" />
+      <DBox kind="warn" title="feature socket" sub="default, unix-only" />
+      <DBox kind="warn" title="icu / pgvector / pgcrypto" sub="build-time runtime bundle" />
+      <DBox kind="muted" mono title="env PGLITE_LIB_DIR" />
+      <DBox kind="muted" mono title="env PGLITE_RUNTIME_DIR" />
+    </DGroup>
+    <DCol align="center">
+      <DArrow dir="right" kind="accent" />
+      <DArrow dir="right" kind="accent" />
+      <DArrow dir="right" kind="accent" />
+      <DArrow dir="right" kind="warn" />
+      <DArrow dir="right" kind="warn" />
+      <DArrow dir="right" kind="muted" />
+      <DArrow dir="right" kind="muted" />
+    </DCol>
+    <DGroup label="SUBSYSTEM">
+      <DBox kind="info" title="In-process engine" sub="single --single backend" />
+      <DBox kind="info" title="Postmaster + pool" sub="child bin/postgres + workers" />
+      <DBox kind="info" title="Replication applier" sub="pgoutput + rustls" />
+      <DBox kind="info" title="Socket gateway" sub="unix_uri() for ORMs" />
+      <DBox kind="info" title="Runtime tar (build)" sub="merged extension bundles" />
+      <DBox kind="info" title="build.rs artifact resolution" />
+      <DBox kind="info" title="runtime tar extraction dir" />
+    </DGroup>
+  </DRow>
+  <DNote center kind="info">replica adds rustls — the ReplicaConfig lane also feeds the socket gateway path</DNote>
+</DChart>
+
 ## `PGliteOptions` — in-process engine
 
 ```rust
@@ -26,7 +61,7 @@ let db = PGlite::open_with("./mydata", opts).await?;
 |---|---|---|---|
 | `username` | `String` | `"postgres"` | The Postgres role the engine is started as. `initdb` creates it on first open. |
 | `database` | `String` | `"postgres"` | The initial database the engine connects to. `initdb` creates it on first open. |
-| `relaxed_durability` | `bool` | `false` | If `true`, the engine is started with `fsync=off`. Faster writes, weaker crash safety. |
+| `relaxed_durability` | `bool` | `false` | If `true`, the in-process backend is started with the `-F` flag (fsync off). Faster writes, weaker crash safety. |
 | `start_params` | `Vec<String>` | `[]` | Extra `-c key=value` arguments passed to the in-process engine on every boot. Each entry is one `key=value` string. |
 | `locale_provider` | `LocaleProvider` | `Libc` | Locale provider. `Libc` is the default; `Icu` is selected via the `icu` cargo feature and is the only choice for ICU builds. |
 
@@ -42,6 +77,26 @@ pub enum LocaleProvider {
 ```
 
 The `Icu` variant requires the `icu` cargo feature at build time. A data dir created with `Libc` cannot be opened by an `Icu` build, and vice versa — the `initdb` format and the runtime data bundled into the artifact are not interchangeable.
+
+`relaxed_durability` and `locale_provider` are the two knobs whose effect differs between the in-process and multi-process boot paths. The diagram below traces both lanes from the option struct down to the actual flags fed to the backend.
+
+<DChart title="How relaxed_durability and locale_provider differ between the in-process and multi-process boot paths">
+  <DRow gap={18} align="start">
+    <DGroup label="IN-PROCESS LANE">
+      <DBox kind="accent" badge={1} mono title="PGliteOptions" sub="open_with / open_temp_with" />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="warn" badge={2} title="Single backend (--single)" sub={["relaxed → adds -F flag", "start_params → -c key=value", "workers disabled, one-boot atomics"]} />
+    </DGroup>
+    <DGroup label="MULTI-PROCESS LANE">
+      <DBox kind="accent" badge={1} mono title="MultiProcessOptions" sub="open_multi_process" />
+      <DArrow dir="down" kind="accent" />
+      <DBox kind="warn" badge={2} title="Child postmaster (bin/postgres)" sub={["relaxed → -c fsync=off", "-c listen_addresses= (no net)", "max_connections = max + 2 + extra"]} />
+    </DGroup>
+  </DRow>
+  <DArrow dir="down" kind="warn" label="both lanes converge" />
+  <DBox kind="info" badge={3} title="initdb — both lanes feed LocaleProvider" sub={["Libc (default) or Icu", "data dirs are not interchangeable"]} />
+  <DNote center>same two knobs, different flags — -F vs -c fsync=off, one shared locale provider</DNote>
+</DChart>
 
 ## `MultiProcessOptions` — child postmaster + pool
 
@@ -81,10 +136,10 @@ let db = PGlite::open_multi_process("./mydata", opts).await?;
 
 ## `ReplicaConfig` — logical-replication consumer
 
-Available when the `replica` cargo feature is on.
+Available when the `replica` cargo feature is on. `Replica::start` consumes an already-open `PGlite` handle and a `ReplicaConfig` — the local instance is opened first and handed to the replica, which applies upstream changes into it.
 
 ```rust
-use pglite::{Replica, ReplicaConfig, SslMode};
+use pglite::{PGlite, Replica, ReplicaConfig, SslMode};
 use std::time::Duration;
 
 let cfg = ReplicaConfig {
@@ -101,7 +156,9 @@ let cfg = ReplicaConfig {
     role_poll_interval: Duration::from_secs(60),
     sslmode: SslMode::Require,
 };
-let replica = Replica::start("./local", cfg).await?;
+
+let db = PGlite::open("./local").await?;
+let replica = Replica::start(db, cfg).await?;
 ```
 
 | Field | Type | Default | What it does |
@@ -109,7 +166,7 @@ let replica = Replica::start("./local", cfg).await?;
 | `host` | `String` | `"127.0.0.1"` | Upstream hostname or IP. |
 | `port` | `u16` | `5432` | Upstream port. |
 | `user` | `String` | `"postgres"` | Upstream role. Must have `REPLICATION` attribute (or be a superuser). |
-| `password` | `String` | `""` | Upstream password. SCRAM auth is performed by the replication client. |
+| `password` | `String` | `""` | Upstream password. The replication client negotiates whichever method the upstream offers — cleartext password, MD5, or SCRAM-SHA-256. |
 | `database` | `String` | `"postgres"` | Upstream database to connect to for the initial handshake. |
 | `publication` | `String` | `""` | The upstream publication to subscribe to. Must already exist. |
 | `slot_name` | `String` | `""` | The replication slot name. Created on first start if missing. |
@@ -119,7 +176,7 @@ let replica = Replica::start("./local", cfg).await?;
 | `role_poll_interval` | `Duration` | `60s` | How often the security reconcile re-reads upstream roles/memberships (event triggers don't fire on role DDL, so this is the only source of truth). |
 | `sslmode` | `SslMode` | `Disable` | TLS mode for the upstream connection. |
 
-`ReplicaConfig::default()` fills every field with the values above. **Empty `password`, `publication`, and `slot_name` are not usable** — fill them in.
+`ReplicaConfig::default()` fills every field with the values above. **Empty `password`, `publication`, and `slot_name` are not usable** — fill them in. (`host`, `user`, `database`, `publication`, and `slot_name` are checked for emptiness on `start` and surface as `Error::ReplicaConfig`.)
 
 ## `SslMode`
 
@@ -135,11 +192,11 @@ pub enum SslMode {
 | Variant | What it does |
 |---|---|
 | `Disable` | Plain TCP only. No TLS negotiation. |
-| `Prefer` | Try TLS, fall back to plain if the server refuses. |
+| `Prefer` | Try TLS, fall back to plain if the server refuses. No certificate verification. |
 | `Require` | Require TLS, but don't verify the server certificate. |
-| `VerifyFull` | Require TLS and verify the server certificate against the system trust store. |
+| `VerifyFull` | Require TLS and verify the server certificate against the bundled webpki (Mozilla) root store. |
 
-The replica feature ships its own minimal TLS stack (rustls + webpki roots) so the upstream connection can do `VerifyFull` without linking OpenSSL.
+The replica feature ships its own minimal TLS stack (rustls + `webpki-roots`) so the upstream connection can do `VerifyFull` without linking OpenSSL. `VerifyFull` builds its root store from the bundled `webpki_roots::TLS_SERVER_ROOTS` Mozilla CA bundle, not the OS trust store; `Require` and `Prefer` use a custom no-verify certificate verifier — they encrypt the connection but do not authenticate the server.
 
 ## Cargo features
 
@@ -156,8 +213,10 @@ The full matrix is on the [Installation](/pglite-rs/installation#features) page.
 | Variable | Scope | Effect |
 |---|---|---|
 | `PGLITE_LIB_DIR` | Build time | Overrides the prebuilt-artifact resolution. The directory must contain `libpglite.a` and `pglite-runtime.tar`. Used when you build the engine yourself (`./native/build-libpglite.sh`) and want your binary to link that copy instead of the cached prebuilt. |
+| `PGLITE_RUNTIME_DIR` | Runtime | Overrides where the embedded runtime tar is extracted on first open. The whole runtime bundle is unpacked here. Default is `std::env::temp_dir()` joined with `pglite-rs-runtime-<crate-version>-<fingerprint>`. |
 | `TMPDIR` (and platform equivalents) | Runtime | Where `PGlite::open_temp` creates its `pglite-temp-<pid>-<nanos>` data dir. The dir is removed on drop. |
-| `XDG_RUNTIME_DIR` / `TMPDIR` / `TEMP` | Runtime | Where the engine extracts `share/postgresql` on first use and where the multi-process child postmaster's private RAM-backed socket dir is created. |
+
+The multi-process child postmaster's private RAM-backed socket dir is **not** chosen by an env var. `Engine::ram_backed_dir()` uses `/dev/shm` on Linux when it exists and is writable, otherwise it falls back to `std::env::temp_dir()`.
 
 `PGlite` reads no other environment variables. The Postgres engine itself respects `PG*` env vars if you set them, but the host does not pass any through by default.
 
@@ -166,10 +225,11 @@ The full matrix is on the [Installation](/pglite-rs/installation#features) page.
 | Path | Lifetime | Contents |
 |---|---|---|
 | `~/.cache/pglite-rs/` | Build cache, persistent | Per-target prebuilt artifact tarballs. Survives across crates, deleted manually. |
-| `$OUT_DIR/pglite-runtime.tar` | Build, embedded in your binary | The `share/postgresql` runtime data, embedded via `include_bytes!` in the host crate. |
+| `$OUT_DIR/pglite-runtime.tar` | Build, embedded in your binary | The runtime data bundle, embedded via `include_bytes!` in the host crate. |
+| `$PGLITE_RUNTIME_DIR or $TMPDIR/pglite-rs-runtime-<version>-<fingerprint>` | Engine lifetime | Where the embedded runtime tar is unpacked on first open. |
 | `$TMPDIR/pglite-temp-<pid>-<nanos>` | `PGlite::open_temp` lifetime | Ephemeral data dir, removed on drop. |
 | `<your data dir>/` | Your code's lifetime | A regular `initdb` output. Open with any Postgres 17-compatible tool. |
-| `$TMPDIR/pgl-<pid>-<counter>/.s.PGSQL.5432` | Multi-process mode lifetime | Private socket dir for the child postmaster. Mode `0700`. Removed on shutdown. |
+| `/dev/shm or $TMPDIR/pgl-<pid>-<counter>/.s.PGSQL.5432` | Multi-process mode lifetime | Private RAM-backed socket dir for the child postmaster (`/dev/shm` on Linux, temp dir fallback). Mode `0700`. Removed on shutdown. |
 | `<your data dir>/postmaster.pid` | Multi-process mode lifetime | Standard Postgres lock file. Stale on SIGKILL — Postgres' own stale-pid handling covers the next `open_multi_process`. |
 
 The prebuilt artifact cache is the only thing you may need to manage by hand. To force a re-download, delete the directory:
@@ -180,7 +240,7 @@ rm -rf ~/.cache/pglite-rs/
 
 ## Error variants
 
-`pglite::Error` is a flat `thiserror` enum. The variants you will see in practice:
+`pglite::Error` is a flat `thiserror` enum. The variants you will see most often (the table is a non-exhaustive subset):
 
 | Variant | When |
 |---|---|
@@ -192,7 +252,10 @@ rm -rf ~/.cache/pglite-rs/
 | `Error::PostmasterStart(String)` | Multi-process mode only. The child postmaster failed to spawn or did not become ready within 15 seconds. |
 | `Error::PoolExhausted` | Multi-process mode only. A pool acquire waited 30 seconds without a free connection. |
 | `Error::Protocol(String)` | Wire-protocol parse or framing error. Almost always indicates a bug, not a user error. |
-| `Error::ReplicaHalted { … }` | Replica mode only. The applier halted (incompatible DDL, unrecoverable error, etc.). The variant carries the reason. |
+| `Error::ReplicaConfig(String)` | Replica mode only. Invalid or empty replica configuration (e.g. a required field left blank). |
+| `Error::ReplicaHalted(String)` | Replica mode only. The applier halted (incompatible DDL, unrecoverable error, etc.). The single `String` carries the reason. |
+| `Error::Upstream(String)` | Replica mode only. An upstream-side replication error. |
+| `Error::Lsn(String)` | Replica mode only. An invalid LSN string failed to parse. |
 | `Error::Io(io::Error)` | Filesystem, socket, or child-process IO error. |
 
 ## `ToSql` / `FromSql`

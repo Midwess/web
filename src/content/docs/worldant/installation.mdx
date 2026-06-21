@@ -17,7 +17,44 @@ npm install @midwess/worldant
 yarn add @midwess/worldant
 ```
 
-This pulls in `@workflow/core`, `@workflow/world`, and a prebuilt `world.<target>.node` binary that matches your OS and architecture.
+This pulls in `@workflow/core`, `@workflow/world`, and the prebuilt native addon. The library bundles **all** of its prebuilt binaries directly in the package — its `files` field is `["dist", "native"]`, so every supported `world.<target>.node` is shipped inside the single npm tarball and the loader picks the one matching your OS and architecture at runtime. (The matching-binary-via-optional-dependencies mechanism described below applies only to the CLI package, not the library.)
+
+## What installs where
+
+<DChart label="TWO ARTIFACTS · ONE OPTIONAL SERVICE" title="Which artifact installs where and what each provides">
+  <DRow gap={18} align="start">
+    <DGroup label="LIBRARY · IN-APP">
+      <DBox kind="accent" title="@midwess/worldant" sub={["LIBRARY · IN-APP", "pnpm / npm / yarn add — v0.1.1"]} />
+      <DArrow dir="down" />
+      <DBox title="TS shim (dist/)" sub={"@workflow/world World"} />
+      <DArrow dir="down" />
+      <DBox title="native/ bundled addon" sub={"world.<target>.node — picked at runtime"} />
+      <DArrow dir="down" />
+      <DBox kind="success" title="embedded SQLite" sub="owns durability" />
+      <DNote>deps: @workflow/core + @workflow/world</DNote>
+      <DNote>loaded into your host Node process</DNote>
+    </DGroup>
+    <DGroup kind="info" label="CLI · STANDALONE BINARY">
+      <DBox kind="info" title="@midwess/worldant-cli" sub={["CLI · STANDALONE BINARY", "npm install -g — v0.1.0 · binary: worldant"]} />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" title="binary via optionalDependencies" sub="platform-specific package" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" title="prebuilt targets" sub="darwin-arm64 · darwin-x64 · linux-x64-gnu" />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" mono title="cargo install worldant-cli" sub="or build from the published crate" />
+      <DNote kind="info">owns the public port · forwards bytes</DNote>
+      <DNote kind="error">never opens the DB — durability is in the library</DNote>
+    </DGroup>
+  </DRow>
+  <DGroup kind="warn" label="OPTIONAL · PER-USER OS SERVICE">
+    <DBox kind="warn" title="worldant install" sub={["registers a service that runs `worldant serve`", "uninstall with `worldant uninstall`"]} />
+    <DRow gap={14}>
+      <DBox title="Linux" sub="systemd --user" />
+      <DBox title="macOS" sub="launchd agent" />
+    </DRow>
+    <DNote>optional `--env-file` injects env (and PATH) · unsupported on other OSes (returns an error)</DNote>
+  </DGroup>
+</DChart>
 
 ## Supported platforms
 
@@ -33,7 +70,7 @@ Other platforms (Linux ARM, musl libc, Windows, Deno) are not yet published as p
 
 ## Requirements
 
-- **JavaScript.** Node.js 22+ and any package manager (`pnpm`, `npm`, or `yarn`).
+- **JavaScript.** Node.js 18+ and any package manager (`pnpm`, `npm`, or `yarn`). The CLI package declares `node >= 18`; the example app uses Node 20+.
 
 No C compiler. No Rust. No system SQLite. The native binary ships prebuilt inside the package.
 
@@ -43,7 +80,7 @@ No C compiler. No Rust. No system SQLite. The native binary ships prebuilt insid
 node -e "import('@midwess/worldant').then(m => m.install()).then(w => console.log('ok'))"
 ```
 
-You should see `ok`. This opens the default data dir (`./.world` relative to `process.cwd()`), starts the world, and registers it as the active `@workflow/core` runtime.
+You should see `ok`. Called with no config, `install()` opens an **in-memory (ephemeral) World** via `open_temp()` — no on-disk data dir is created — then starts the world and registers it as the active `@workflow/core` runtime. To get a durable on-disk database, pass `dataDir` to `install()`/`createWorld()`. (For reference, the example app resolves its own default path as `process.env.WORLDANT_DATA_DIR ?? join(process.cwd(), '.worldant-data')` — that is an app-level default, not a library default.)
 
 ## Optional: install the supervisor
 
@@ -53,9 +90,11 @@ The `worldant` CLI is a separate package. It is only needed if you want the scal
 pnpm add -g @midwess/worldant-cli
 # or
 npm install -g @midwess/worldant-cli
+# or, build from the published crate
+cargo install worldant-cli
 ```
 
-The npm package picks the right prebuilt binary for your OS via platform-specific optional dependencies — no separate install step.
+The npm package picks the right prebuilt binary for your OS via platform-specific optional dependencies (`@midwess/worldant-cli-darwin-arm64`, `-darwin-x64`, `-linux-x64-gnu`) — no separate install step. The published crate is `worldant-cli`; the installed binary is named `worldant`.
 
 ## Where to go next
 

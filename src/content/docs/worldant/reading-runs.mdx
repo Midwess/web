@@ -1,123 +1,298 @@
 ---
 title: Reading runs
-description: getRun, run.returnValue, world.events / steps / runs — query and audit
+description: world.runs / steps / events / hooks / streams — the @workflow/world read and query surface
 ---
 
 # Reading runs
 
-Once a workflow has started, three surfaces let you observe it: `getRun` for the handle you got back from `start()`, and the `world.events` / `world.steps` / `world.runs` query APIs for everything you did not start yourself.
+Worldant implements the low-level [`@workflow/world`](/worldant/how-it-works) `World` interface (spec version `3`). Reading and auditing runs is done on the `World` object itself — the one returned by `createWorld()` and registered with `setWorld()` — not through a high-level run handle.
 
-## The `Run` handle
+The read surface is grouped under `world.runs`, `world.steps`, `world.events`, `world.hooks`, and `world.streams`, plus the two top-level signals `world.nextDueMs()` and `world.getDeploymentId()`. These methods match the Workflow Development Kit's `World` contract; they are not a worldant-specific API.
 
-`start(workflow, args)` returns a `Run` object immediately. The workflow body runs in the background; the `Run` is the live handle to it.
+> **Not a `Run` handle.** The high-level `start(workflow, args)` / `getRun(runId)` / `run.returnValue` API belongs to `@workflow/api` and `@workflow/core` — the workflow runtime that sits *on top of* the World. Worldant does not export `start`, `getRun`, or a `Run` object. It exports `install`, `createWorld`, `setWorld`, and `getWorld` ([`src/index.ts`](/worldant/quickstart)). Everything below reads the durable store directly.
 
-```ts
-import { start } from 'workflow/api';
-import { checkout } from './workflows/checkout.js';
-
-const run = await start(checkout, [order]);
-// run.runId      — stable identifier, used everywhere
-// run.status     — 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-// run.returnValue — Promise<CheckoutResult>, resolves on completion
-// run.createdAt  — Date the run was started
-```
-
-The handle is cheap and serializable — store it in a database, return it to a client, log it. Re-resolve the handle later with `getRun(runId)`.
-
-## Awaiting the result
-
-`run.returnValue` is a Promise that resolves when the run finishes, with the value the workflow function returned. It rejects when the run fails with an unhandled `FatalError`.
+Get the active World from the registry, then query it:
 
 ```ts
-const run = getRun<CheckoutResult>(runId);
-try {
-  const result = await run.returnValue;
-  console.log(result.ok, result.chargeId, result.trackingId);
-} catch (e) {
-  console.error('workflow failed:', e);
-}
+import { getWorld } from '@midwess/worldant';
+
+const world = getWorld();
+const page = await world.runs.list({ status: 'failed' });
 ```
 
-If the process restarts before the run completes, the `returnValue` Promise resolves on the next process — the world replays the workflow body from the top, skipping recorded step results, until the workflow returns. `await run.returnValue` works across the restart transparently.
+## The read/query surface
 
-## Status
+Every list method returns a `PaginatedResponse<T>` of the shape `{ data, cursor, hasMore }`, and every list method takes `pagination?: { limit?, cursor? }`. The filters each list accepts differ.
 
-`run.status` is a snapshot of the current state. Read it when you want to show progress in a UI; do not poll it for completion — `await run.returnValue` is the right primitive.
+<DChart label="@workflow/world read surface · specVersion 3" title="The World read surface fans out from one hub into six query groups">
+  <DRow gap={18} align="center">
+    <DCol gap={14}>
+      <DBox kind="accent" title="world.runs" sub={["get · list · experimentalSetAttributes", "filter: workflowName, status"]} />
+      <DBox kind="accent" title="world.steps" sub={["get · list", "filter: runId"]} />
+      <DBox kind="accent" title="world.events" sub={["create · get · list · listByCorrelationId", "filter: runId / correlationId"]} />
+    </DCol>
+    <DCol align="center" gap={10}>
+      <DArrow dir="left" kind="accent" />
+      <DBox kind="accent" title="world" sub="getWorld() · setWorld()" />
+      <DArrow dir="right" kind="accent" />
+    </DCol>
+    <DCol gap={14}>
+      <DBox kind="info" title="world.hooks" sub={["get · getByToken · list", "filter: runId (optional)"]} />
+      <DBox kind="info" title="world.streams" sub={["get · getChunks · getInfo · list", "(+ write · writeMulti · close)"]} />
+      <DBox kind="info" title="top-level" sub={["nextDueMs() · getDeploymentId()", "durable-timer + deployment signals"]} />
+    </DCol>
+  </DRow>
+  <DNote center>every list returns Page = &#123; data, cursor, hasMore &#125; · NOT a getRun / start handle API</DNote>
+</DChart>
 
-| Status | Meaning |
-|---|---|
-| `pending` | The run has been created but no step has executed yet |
-| `running` | At least one step is executing or scheduled to execute |
-| `completed` | The workflow function returned. `returnValue` is now resolved |
-| `failed` | A step threw a `FatalError`, or the workflow body itself threw. `returnValue` is rejected |
-| `cancelled` | The run was cancelled by an explicit `cancel` call (rare; usually the world never sees this — the workflow's `AbortSignal` is the right place to handle cancellation) |
+## `world.runs` — runs and attributes
 
-## `world.events.list` — the audit log
-
-Every step start, step result, retry schedule, hook creation, hook resume, and stream write is recorded as an event. The events list is the audit trail.
+`world.runs.get(runId)` returns a single `WorkflowRun` record. `world.runs.list(params)` returns a `PaginatedResponse<WorkflowRun>`.
 
 ```ts
-const events = await world.events.list({ runId: 'wrun_...' });
-for (const event of events) {
-  console.log(event.createdAt, event.type, event.payload);
-}
+const run = await world.runs.get('wrun_...');
+run.runId;        // stable identifier
+run.workflowName; // which workflow this is a run of
+run.status;       // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+run.deploymentId; // deployment that created the run
+run.input;        // serialized input (stripped when resolveData: 'none')
+run.output;       // serialized output, once completed
+run.createdAt;    // number — ms since epoch
 ```
 
-`world.events.list` accepts:
+`world.runs.list` accepts only two real filters plus pagination:
 
-- `runId` — filter to one run
-- `deploymentId` — filter to one deployment (use the `deploymentId` from `WorldConfig`)
-- `type` — filter by event type (`step.started`, `step.completed`, `step.failed`, `hook.created`, `hook.resumed`, …)
-- `since` / `until` — time bounds
-- `limit` / `offset` — pagination
+- `workflowName` — runs of one workflow
+- `status` — `'pending' | 'running' | 'completed' | 'failed' | 'cancelled'`
+- `pagination` — `{ limit, cursor }` (default `limit` **20**, capped at **1000**)
+- `resolveData` — `'none'` strips `input`/`output` from each record
 
-The event log is append-only. It is the source of truth for what happened in a run, even after the run is long over.
-
-## `world.steps.list` — recorded step results
-
-The step list shows what each step returned (or threw) for a given run, in execution order:
-
-```ts
-const steps = await world.steps.list({ runId: 'wrun_...' });
-for (const step of steps) {
-  console.log(step.stepName, step.attempt, step.status, step.result);
-}
-```
-
-Useful for:
-
-- "What step is the run stuck on?" diagnostics
-- Reconstructing the input/output of a step from the audit log without re-running it
-- Building a debugging UI
-
-## `world.runs.list` — cross-run queries
-
-The runs list is for cross-cutting questions: "what runs are still pending?", "which runs failed in the last hour?", "show me everything from the canary deployment":
+There is no `since` filter and no `deploymentId` filter on `runs.list`. `deploymentId` exists as a field on each `WorkflowRun` and via `world.getDeploymentId()`, but it is not a query filter.
 
 ```ts
 const stuck = await world.runs.list({ status: 'running' });
-const failed = await world.runs.list({ status: 'failed', since: yesterday });
-const canary = await world.runs.list({ deploymentId: 'canary-2024-11-12' });
+const failed = await world.runs.list({ status: 'failed' });
+const onboarding = await world.runs.list({ workflowName: 'onboarding' });
+
+for (const run of failed.data) {
+  console.log(run.runId, run.workflowName, run.createdAt);
+}
+if (failed.hasMore) {
+  const next = await world.runs.list({ status: 'failed', pagination: { cursor: failed.cursor } });
+}
 ```
 
-`world.runs.list` accepts the same filter shape as `world.events.list`. Both methods return a paginated list.
+Runs are ordered by `id` descending (newest first); the `cursor` is the `runId` of the last returned row.
+
+### Run status
+
+`status` lives on the `WorkflowRun` record, and each value is the reduced result of the event log — not a polled snapshot of "scheduled" work. Each status is produced by the event that drove the transition:
+
+| Status | Driving event | Meaning |
+|---|---|---|
+| `pending` | `run_created` | The run record exists but has not started |
+| `running` | `run_started` | The run has started executing |
+| `completed` | `run_completed` | The workflow function returned; `output` is set |
+| `failed` | `run_failed` | The run failed; `error` / `errorCode` are set |
+| `cancelled` | `run_cancelled` | The run was cancelled |
+
+### Attributes
+
+`world.runs.experimentalSetAttributes(runId, changes, options?)` sets or removes string key/value attributes on a run. Each `change` is `{ key, value? }` — omit `value` to delete the key.
+
+```ts
+await world.runs.experimentalSetAttributes('wrun_...', [
+  { key: 'tenant', value: 'acme' },
+  { key: 'priority', value: 'high' },
+  { key: 'stale' }, // value omitted → removes the key
+]);
+```
+
+Limits are enforced in the core ([`reducer/mod.rs`](/worldant/how-it-works)): keys up to **256 characters**, values up to **256 bytes**, at most **64 attributes** per run, and keys beginning with `$` are reserved — pass `{ allowReservedAttributes: true }` to set them.
+
+## `world.steps` — recorded step results
+
+`world.steps.get(runId, stepId)` returns one `Step`; `world.steps.list({ runId })` returns a `PaginatedResponse<Step>`.
+
+```ts
+const steps = await world.steps.list({ runId: 'wrun_...' });
+for (const step of steps.data) {
+  console.log(step.stepName, step.attempt, step.status, step.output);
+}
+```
+
+A `Step` record carries:
+
+- `stepName` — the step's name
+- `status` — `'pending' | 'running' | 'completed' | 'failed' | 'cancelled'`
+- `attempt` — current attempt number (a retried step keeps the same `stepId`, increments `attempt`)
+- `input` / `output` — serialized; `output` is the recorded return value (stripped when `resolveData: 'none'`)
+- `error` — serialized failure, when `status` is `failed`
+- `retryAfter` — `number` (ms) the next attempt is gated until, when retrying
+- `createdAt` / `updatedAt` / `startedAt` / `completedAt` — `number`, ms since epoch
+
+> The field is `output`, not `result`. `result` is the name on the `step_completed` event's `eventData`, not on the persisted `Step` record.
+
+`world.steps.list` accepts `{ runId, pagination?, resolveData? }` only — `runId` is required. Steps are ordered by `stepId` descending; default `limit` is **20** (capped at **1000**); the `cursor` is the last `stepId`. This is the surface for "what step is the run stuck on?" diagnostics and for reconstructing a step's input/output without re-running it.
+
+## `world.events` — the audit log
+
+Every run/step/hook/wait transition is recorded as an append-only event. `world.events.list({ runId })` is the audit trail for a single run; it returns a `PaginatedResponse<Event>`.
+
+```ts
+const { data, cursor, hasMore } = await world.events.list({ runId: 'wrun_...' });
+for (const event of data) {
+  console.log(event.createdAt, event.eventType, event.eventData);
+}
+```
+
+`world.events.list` accepts **only**:
+
+- `runId` — required; the run to read
+- `pagination` — `{ limit, cursor }` (default `limit` **100**, capped at **1000**)
+- `resolveData` — `'none'` strips the event's data refs (via `stripEventDataRefs`)
+
+There is no `deploymentId`, `type`, `since`, `until`, or `offset` filter. Events are ordered by `seq` ascending; the `cursor` is the event `seq`. The return is a `Page` — iterate `data`, not the page object itself.
+
+An `Event` carries `eventType`, optional `correlationId`, optional `eventData` (the per-event payload — `input`, `output`, `result`, `error`, `metadata`, `payload`, depending on type), `runId`, `eventId`, and `createdAt` (a `number`, ms since epoch). There is no field literally named `payload` on the event; payload-style data lives inside `eventData`.
+
+### The 16 event types
+
+`eventType` is one of exactly 16 values, serialized as snake_case strings on the wire ([`protocol.rs`](/worldant/how-it-works) `EventType`):
+
+| Run | Step | Hook | Wait |
+|---|---|---|---|
+| `run_created` | `step_created` | `hook_created` | `wait_created` |
+| `run_started` | `step_started` | `hook_received` | `wait_completed` |
+| `run_completed` | `step_completed` | `hook_disposed` | |
+| `run_failed` | `step_failed` | `hook_conflict` | |
+| `run_cancelled` | `step_retrying` | | |
+
+There is no `hook.resumed`, and the dotted `step.started` form does not exist — values are single snake_case tokens like `step_started`.
+
+### Correlation queries
+
+`world.events.listByCorrelationId({ correlationId })` reads every event sharing a correlation id across runs — used for hooks and waits, which are keyed by correlation. Same envelope: `{ correlationId, pagination?, resolveData? }`, default `limit` **100** (cap **1000**), ordered by `seq` ascending, returning a `PaginatedResponse<Event>`.
+
+```ts
+const related = await world.events.listByCorrelationId({ correlationId: 'order-4711' });
+```
+
+## `world.hooks` — external resume points
+
+Hooks are the durable tokens a run waits on for external input.
+
+```ts
+const hook = await world.hooks.get('hook_...');           // by id
+const byToken = await world.hooks.getByToken('tok_...');  // by token
+const hooks = await world.hooks.list({ runId: 'wrun_...' });
+```
+
+- `world.hooks.get(hookId)` / `world.hooks.getByToken(token)` return a single `Hook` (`hookId`, `runId`, `token`, `metadata`, `createdAt`, …).
+- `world.hooks.list({ runId?, pagination? })` returns a `PaginatedResponse<Hook>`; `runId` is an optional filter, default `limit` **20** (cap **1000**), ordered by `hookId` descending.
+
+Creating a hook with a token that already exists produces a `hook_conflict` event — tokens are unique resume points.
+
+## `world.streams` — append-only chunk streams
+
+Streams are append-only byte streams attached to a run.
+
+```ts
+const info = await world.streams.getInfo(runId, name);     // { ...metadata, done }
+const page = await world.streams.getChunks(runId, name, { cursor });
+const names = await world.streams.list(runId);             // stream names on the run
+const readable = await world.streams.get(runId, name);     // ReadableStream<Uint8Array>
+```
+
+- `getInfo(runId, name)` — stream metadata, including whether it is closed (`done`).
+- `getChunks(runId, name, options?)` — a page of chunks with `{ cursor, limit }` pagination (default **100**, cap **1000**); each chunk is `{ index, data }`.
+- `list(runId)` — the stream names recorded for a run.
+- `get(runId, name, startIndex?)` — a Web `ReadableStream` that pages chunks from `startIndex`, polling for more until the stream is closed.
+
+The write side (`write`, `writeMulti`, `close`) is documented under [Workflows](/worldant/workflows).
+
+## How a list query pages through SQLite
+
+Every list call follows the same path: the TS shim encodes params, the native addon marshals them, and the core builds a single SQL query with a cursor predicate and `LIMIT n+1`. The extra row tells the core whether there is another page; it is trimmed before returning. On the way back out, the TS shim applies `resolveData: 'none'` stripping.
+
+<DChart label="List query · call path and cursor paging" title="A list call flows out to SQLite and pages back through cursor trimming">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" badge={1} mono title="world.runs.list(...)" sub={"{ status, pagination: { limit, cursor } }"} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={2} title="TS shim → native" sub={["encode params,", "marshal as JSON string"]} />
+    <DArrow dir="right" kind="accent" />
+    <DBox badge={3} title="reducer builds SQL" sub={["cursor predicate +", "LIMIT n + 1"]} />
+  </DRow>
+  <DArrow dir="down" kind="accent" />
+  <DBox kind="info" title="embedded SQLite" sub={"events: seq > cursor · runs/steps/hooks: id < cursor DESC"} />
+  <DArrow dir="down" kind="info" />
+  <DBox badge={4} title={"trim n+1 → Page { data, cursor, hasMore }"} sub={"hasMore = rows > n · cursor = last row's seq (events) or id (runs/steps/hooks)"} />
+  <DArrow dir="down" kind="info" />
+  <DBox kind="accent" badge={5} title="TS shim mapPage" sub={"resolveData:'none' → strip"} />
+  <DGroup kind="muted" label="Default limits">
+    <DNote>runs 20 · steps 20 · hooks 20 · events 100 · correlation 100 · streams 100 — all capped at 1000</DNote>
+  </DGroup>
+</DChart>
+
+`resolveData: 'none'` strips heavy data on the way out, in the TS shim: `runs.get/list` and `steps.get/list` drop `input`/`output` (via `stripRunStep`), and `events.get/list/listByCorrelationId` strip the event's data refs (via `stripEventDataRefs`).
+
+## The run/step lifecycle in the event log
+
+`world.runs.get` reflects the latest *reduced* status; `world.events.list` is the append-only trail of the transitions behind it. Reading both together reconstructs exactly what happened.
+
+<DChart title="The run and step state machines, each reduced from its event log">
+  <DGroup label="RUN · world.runs.get(...).status">
+    <DRow gap={14} align="center">
+      <DBox title="pending" sub="run_created" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="accent" title="running" sub="run_started" />
+      <DArrow dir="right" kind="accent" />
+      <DCol gap={10}>
+        <DBox kind="success" title="completed" sub="run_completed" />
+        <DBox kind="error" title="failed" sub="run_failed" />
+      </DCol>
+      <DArrow dir="right" kind="muted" dashed />
+      <DBox kind="muted" title="cancelled" sub="run_cancelled" />
+    </DRow>
+  </DGroup>
+  <DGroup label="STEP · world.steps.get(...).status">
+    <DRow gap={14} align="center">
+      <DBox title="pending" sub="step_created" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="accent" title="running" sub="step_started" />
+      <DArrow dir="right" kind="accent" />
+      <DCol gap={10}>
+        <DBox kind="success" title="completed" sub="step_completed (output)" />
+        <DBox kind="error" title="failed" sub="step_failed" />
+      </DCol>
+    </DRow>
+    <DArrow dir="up" kind="warn" dashed label="retryAfter gate → back to pending, attempt++" />
+    <DBox kind="warn" title="step_retrying" sub="failed → step_retrying → pending" />
+  </DGroup>
+</DChart>
+
+A completed step is terminal and never re-runs — that is the exactly-once guarantee. `step_retrying` returns a step to `pending` with an incremented `attempt`, gated by `retryAfter`, until it completes, fails permanently, or hits the dead-letter limit.
 
 ## `world.nextDueMs()`
 
-The world knows when the next queued step is scheduled to run. The supervisor uses this to decide when to stop the process — if `nextDueMs()` is `null` or far in the future, there is no work pending.
+`world.nextDueMs()` returns the timestamp (a `number`, ms since epoch) of the next due job in the queue — any kind, step or workflow — or `null` if nothing is pending.
 
 ```ts
 const next = world.nextDueMs();
 if (next === null || next > Date.now() + idleThreshold) {
-  // safe to stop the process
+  // nothing due soon
 }
 ```
 
-You usually do not call this directly — it is the supervisor's signal. But it is exposed for custom schedulers and tests.
+This is the durable-timer signal the supervisor reads (via the `Wake` control frame, derived from the core's `next_wake`) to decide when to scale the app to zero. You usually do not call it directly; it is exposed for custom schedulers and tests.
+
+## `world.getDeploymentId()`
+
+`world.getDeploymentId()` returns the current deployment id (the `deploymentId` from your [`WorldConfig`](/worldant/configuration), or a generated `dpl_<ULID>`). It is the value stamped onto each `WorkflowRun.deploymentId`.
 
 ## Where to go next
 
 - [**Workflows**](/worldant/workflows) — `'use workflow'`, `'use step'`, retries, hooks, streams
 - [**Supervisor**](/worldant/supervisor) — how the supervisor uses `nextDueMs()` to scale to zero
 - [**Configuration**](/worldant/configuration) — `WorldConfig`, `dataDir`, `deploymentId`
-- [**How it works**](/worldant/how-it-works) — what the world stores in SQLite
+- [**How it works**](/worldant/how-it-works) — the reduce-to-SQL event log and what the world stores in SQLite

@@ -7,6 +7,37 @@ description: db.unix_uri() for SQLx, SeaORM, Diesel, tokio-postgres — same DSN
 
 `PGlite::unix_uri()` returns a `postgresql://user@localhost/db?host=…` DSN pointed at a private unix socket — the same string every Postgres driver accepts. Pass it to SQLx, SeaORM, Diesel, or `tokio-postgres` exactly as you would for a remote Postgres. The mode (in-process or multi-process) determines what kind of connection the driver gets.
 
+<DChart label="Question" title="In-process ORM path through the doorman versus multi-process path straight to the postmaster">
+  <DNote>How does an unmodified ORM driver reach the engine in each mode?</DNote>
+  <DGroup kind="warn" label={"In-process · gateway"}>
+    <DRow gap={14} align="center" wrap>
+      <DBox kind="accent" title="ORM driver" sub={"SQLx · SeaORM · Diesel"} />
+      <DArrow dir="right" kind="warn" />
+      <DBox kind="warn" title="unix socket" sub={"?host=<ram dir>"} />
+      <DArrow dir="right" kind="warn" />
+      <DBox title="doorman thread" sub={["synth v3 startup reply", "batch frames at Q/F/S/c/f", "tx_lock taken per batch"]} />
+      <DArrow dir="right" kind="warn" />
+      <DBox kind="accent" title="engine" sub={"--single backend"} />
+    </DRow>
+    <DNote>Backend::roundtrip → reply; filter_response strips duplicate Z, side-channels A to listeners</DNote>
+    <DNote kind="warn">One client session at a time → ORM pool size = 1</DNote>
+  </DGroup>
+  <DGroup kind="info" label={"Multi-process · postmaster"}>
+    <DRow gap={14} align="center" wrap>
+      <DBox kind="accent" title="ORM driver" sub={"real pool, max ≤ N"} />
+      <DArrow dir="right" kind="warn" />
+      <DBox kind="info" title="postmaster socket" sub={"listen_addresses='' (no net)"} />
+      <DArrow dir="right" kind="warn" />
+      <DCol gap={8}>
+        <DBox title="backend #1" />
+        <DBox title="backend #2 … #N" />
+      </DCol>
+    </DRow>
+    <DNote>gateway + tx_lock bypassed entirely → true concurrency, distinct sessions</DNote>
+  </DGroup>
+  <DNote>In-process: every query funnels through the single engine thread under tx_lock. Multi-process: each connection lands on its own pooled backend.</DNote>
+</DChart>
+
 ## Get the DSN
 
 ```rust
@@ -14,12 +45,12 @@ use pglite::PGlite;
 
 let db = PGlite::open("./mydata").await?;
 let url = db.unix_uri().await?;
-// url is a postgresql://postgres@localhost/postgres?host=/tmp/pgl-…/.s.PGSQL.5432
+// url is postgresql://postgres@localhost/postgres?host=<ram-backed sockdir>
 ```
 
 In multi-process mode, `unix_uri()` returns the child postmaster's native socket URI — the *same* DSN shape, just backed by a real Postgres server running in a child process. The driver code does not change.
 
-In in-process mode, the first `unix_uri()` call lazily starts the embedded gateway. The gateway holds one session; ORM pool size must be 1. In multi-process mode, the gateway is bypassed and `unix_uri()` hands back the postmaster's URI; pool size is up to `MultiProcessOptions.max_connections`.
+In in-process mode, the first `unix_uri()` call lazily starts the embedded gateway. The gateway serves exactly one client session at a time; ORM pool size must be 1. In multi-process mode, the gateway is bypassed and `unix_uri()` hands back the postmaster's URI; pool size is up to `MultiProcessOptions.max_connections`.
 
 ## SQLx
 
@@ -90,13 +121,32 @@ let name: &str = row.get(1);
 
 The synchronous `postgres` crate (used by Diesel) follows the same shape: `postgres::Client::connect(&url, NoTls)?`.
 
+`tokio-postgres` and `postgres` are subject to the one-session in-process rule too: open a single client and avoid a `deadpool`/`bb8` pool larger than 1 while in in-process mode. The `row.get(1)` above is `tokio-postgres`'s own positional accessor — unrelated to the native pglite `Row::get::<T>(idx)` API.
+
 ## Notes that apply to every driver
 
 - **The driver and the Rust API share a session in in-process mode.** A `db.exec` issued while the driver holds an open transaction runs *inside* that transaction. Sequencing is the caller's problem. If you want clean separation, use multi-process mode.
 - **`COPY ... TO STDOUT` works** through the gateway. **`COPY ... FROM STDIN` does not** — the in-process engine cannot pause mid-COPY across roundtrips. For bulk loads, use multi-process mode or `db.copy_in` directly.
-- **Connection pool size = 1** in in-process mode. The gateway accepts one client at a time. The doorman holds the single `Backend` and the in-process `tx_lock`. Set the pool to 1 even if the driver accepts more — the second connection will hang until the first closes.
+- **Connection pool size = 1** in in-process mode. The gateway serves one client session at a time, so set the pool to 1 even if the driver accepts more. The doorman thread batches frontend frames and acquires `tx_lock` for each batch (at `Q`/`F`/`S`/`c`/`f` frame boundaries) before sending it to the engine via `Backend::roundtrip` — it does *not* hold the lock open for the connection's lifetime. The single-session rule comes from the gateway, not from a permanently held lock.
 - **Migrations.** All the standard Postgres migration tools (sqlx-cli, refinery, sea-orm-cli, diesel migrations) work because the engine is real Postgres. Just point the migration tool at the `unix_uri()` DSN.
-- **PostgreSQL extensions.** The cargo features `pgvector`, `pgcrypto`, and `icu` enable extensions at build time. To use them, run `CREATE EXTENSION <name>` in a migration before the ORM sees the schema. The build script also needs `export_dynamic` set; see [Installation](/pglite-rs/installation#build-script-note-for-extensions-and-plpgsql).
+- **PostgreSQL extensions.** The cargo features `pgvector` and `pgcrypto` merge their extension bundles into the runtime tar at build time; to use them, run `CREATE EXTENSION vector` / `CREATE EXTENSION pgcrypto` in a migration before the ORM sees the schema. The `icu` feature is *not* a `CREATE EXTENSION` bundle — it selects the ICU engine-variant artifact that enables `LocaleProvider::Icu` for real Unicode collation, and it makes data dirs incompatible with `libc` builds. The build script also needs `export_dynamic` set; see [Installation](/pglite-rs/installation#build-script-note-for-extensions-and-plpgsql).
+
+<DChart label="Question" title="Why the in-process ORM pool size must be 1 and what is shared with the native API">
+  <DNote>Why must the in-process ORM pool be 1, and what is shared with the native API?</DNote>
+  <DRow gap={18} align="center">
+    <DCol gap={8}>
+      <DBox kind="accent" title="ORM driver" sub="over the unix socket" />
+      <DBox kind="accent" title="native PGlite API" sub="db.exec / db.query" />
+    </DCol>
+    <DArrow dir="right" kind="warn" />
+    <DBox kind="warn" title="tx_lock" sub={["serial guard,", "one batch at a time"]} />
+    <DArrow dir="right" kind="warn" />
+    <DBox title="single session" sub={["one engine thread,", "--single backend"]} />
+  </DRow>
+  <DNote kind="warn">Consequence</DNote>
+  <DNote>A db.exec issued during an ORM-open transaction runs inside that transaction — same session.</DNote>
+  <DNote>A pool &gt; 1 has no second session to bind to. Multi-process gives each connection its own backend.</DNote>
+</DChart>
 
 ## Multi-process mode
 
@@ -105,9 +155,26 @@ In multi-process mode, the DSN points at a real postmaster. Every rule above cha
 - **Pool size up to `MultiProcessOptions.max_connections`.** Each connection is a real Postgres backend with its own session state.
 - **No shared-session surprises.** A `db.exec` does not collide with an open ORM transaction because they are different backends.
 - **`COPY ... FROM STDIN` works.** The postmaster is a real Postgres, so COPY roundtrips are normal.
-- **Latency.** Each query hops your process, the unix socket, the postmaster, and a backend. In-process mode is faster; multi-process is faster than the alternative (a real Postgres server on a different machine).
+- **Extra hops.** Each query crosses your process, the unix socket, the postmaster, and a backend — one more hop than an in-process direct engine call. In exchange, sessions run concurrently instead of being serialized.
 
 The driver code is the same. Just bump `max_connections` and turn on the `multiple-process` cargo feature.
+
+<DChart label="Question" title="Which COPY directions work over the in-process gateway versus multi-process, and the workaround">
+  <DNote>Which COPY directions work over the gateway, and what is the workaround?</DNote>
+  <DRow gap={18} align="stretch">
+    <DGroup kind="warn" label="In-process gateway">
+      <DBox kind="success" title="COPY … TO STDOUT" sub="works — full result in one roundtrip" />
+      <DBox kind="error" title="COPY … FROM STDIN" sub={["unsupported — engine can't pause", "mid-COPY across gateway roundtrips"]} />
+      <DNote kind="warn">Workaround: db.copy_in native API, or go multi-process</DNote>
+    </DGroup>
+    <DGroup kind="info" label="Multi-process postmaster">
+      <DBox kind="success" title="COPY … TO STDOUT" sub="works" />
+      <DBox kind="success" title="COPY … FROM STDIN" sub={["works — each backend is a real", "Postgres postmaster child"]} />
+      <DNote kind="info">Both COPY directions roundtrip normally</DNote>
+    </DGroup>
+  </DRow>
+  <DNote>Bulk loads in in-process mode go through db.copy_in (in-memory buffer) rather than the ORM's COPY FROM STDIN.</DNote>
+</DChart>
 
 ## What's next
 

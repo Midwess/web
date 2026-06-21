@@ -5,22 +5,80 @@ description: HTTP endpoints, error envelope, CORS, status codes
 
 # API
 
-Four endpoints. All bodies are JSON, all errors are JSON, all snapshot responses are CDN-cacheable.
+Four endpoints. All bodies are JSON, all errors are JSON. The `GET /q/{hash}/{version}` snapshot resource is CDN-cacheable for 72 hours; the `303` redirect that points at it is `Cache-Control: no-store`.
 
 | Endpoint | Mode | Purpose |
 |---|---|---|
 | [`POST /query`](/pgpaw/api/query) | snapshot | Run a read-only `SELECT`, return a `303` redirect to the snapshot URL |
 | [`POST /query?live=true`](/pgpaw/api/live) | SSE | Run, then open an SSE stream of row-level deltas |
-| [`GET /q/{hash}/{version}`](/pgpaw/api/snapshot) | fetch | Fetch an immutable, CDN-cacheable snapshot |
+| [`GET /q/{hash}/{version}`](/pgpaw/api/snapshot) | fetch | Fetch a CDN-cacheable snapshot (72h window) |
 | `GET /healthz` | health | Liveness + replica watermark (`ok` / `halted`) |
 
-`POST /query` is the entry point. It returns either a `303 See Other` to a snapshot URL (public queries) or the rows inline (access-controlled). The snapshot URL is content-addressed and immutable for a year.
+These are the only four routes — there is no `/metrics`, `/version`, or anything else.
+
+<DChart label="Route table — what each returns" title="The four PgPaw routes and the artifact each returns">
+  <DRow gap={18} align="center">
+    <DBox kind="accent" mono grow title="POST /query" sub="public → 303 redirect · private → inline JSON" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="success" grow title="303 See Other / 200 inline" sub="Location: /q/… · Cache-Control: no-store" />
+  </DRow>
+  <DRow gap={18} align="center">
+    <DBox kind="accent" mono grow title="POST /query?live=true" sub="same route, live param → SSE delta stream" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="info" grow title="200 text/event-stream" sub="snapshot → insert/update/delete → up-to-date" />
+  </DRow>
+  <DRow gap={18} align="center">
+    <DBox kind="accent" mono grow title={"GET /q/{hash}/{version}"} sub="cached body + ETag, or 404 NotFound" />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="success" grow title="200 + Cache-Control: public" sub={"max-age=259200 (72h) · ETag {hash}:{version}"} />
+  </DRow>
+</DChart>
+
+`POST /query` is the entry point. It returns either a `303 See Other` to a snapshot URL (public queries) or the rows inline (access-controlled). The snapshot URL is content + version-addressed: a data change yields a new version, so a new URL.
 
 `POST /query?live=true` is the same entry point with `live=true`. It opens an SSE stream after the initial snapshot, emitting row-level deltas on every relevant upstream commit.
 
-`GET /q/{hash}/{version}` is the immutable snapshot fetch. Same URL → same body, forever. No revalidation round-trip.
+`GET /q/{hash}/{version}` is the snapshot fetch. Because the version is part of the URL, the body for a given `{hash}/{version}` is stable, and the resource is cacheable for 72 hours (`Cache-Control: public, max-age=259200`). The response also carries an `ETag` (`{hash}:{version}`), so conditional `If-None-Match` revalidation is supported.
 
 `GET /healthz` is the liveness check. Returns `{ status, watermark }` while the replica is keeping up; `{ status: "halted", reason }` if the applier ran into an unrecoverable error.
+
+## Request lifecycle
+
+`POST /query` runs through a fixed sequence of gates — halt check, auth, classify, privacy — before branching into one of three response shapes. The order matters: a halted replica short-circuits before anything else.
+
+<DChart label="Query handler — order of checks" title="How a POST /query request routes through halt-check, auth, classify, and privacy into one of three responses">
+  <DBox kind="accent" mono title="POST /query" sub={"{ \"sql\": \"…\" }"} />
+  <DArrow dir="down" kind="accent" />
+  <DGroup label="Gates · in order">
+    <DRow gap={14} align="center">
+      <DBox grow badge={1} title="halt check" sub="replica.is_halted()" />
+      <DArrow dir="right" kind="error" dashed />
+      <DBox kind="error" grow title="503 HaltedError" />
+    </DRow>
+    <DArrow dir="down" kind="accent" />
+    <DRow gap={14} align="center">
+      <DBox grow badge={2} title="auth" sub="AuthOutcome extractor" />
+      <DArrow dir="right" kind="error" dashed />
+      <DBox kind="error" grow title="401 UnauthorizedError" />
+    </DRow>
+    <DArrow dir="down" kind="accent" />
+    <DRow gap={14} align="center">
+      <DBox grow badge={3} title="classify" sub="ReadClassifier" />
+      <DArrow dir="right" kind="error" dashed />
+      <DBox kind="error" grow title="400 Rejected / Parse" />
+    </DRow>
+    <DArrow dir="down" kind="accent" />
+    <DRow gap={14} align="center">
+      <DBox grow badge={4} title="is_private(tables)" sub="+ ?live branch" />
+    </DRow>
+  </DGroup>
+  <DArrow dir="down" kind="accent" />
+  <DGroup label="Three response shapes" row>
+    <DBox kind="success" grow title="public → 303 See Other" sub={["Location: /q/{hash}/{version}", "Cache-Control: no-store"]} />
+    <DBox kind="success" grow title="private → 200 inline" sub={["Cache-Control: private, no-store", "no token → 401 · DB denial → 403"]} />
+    <DBox kind="info" grow title="?live=true → 200 SSE" sub={["text/event-stream", "Cache-Control: no-store"]} />
+  </DGroup>
+</DChart>
 
 ## Error envelope
 
@@ -32,14 +90,54 @@ Every error response is JSON:
 
 | Status | `name` | When |
 |---|---|---|
-| `400` | `ParseError` | SQL does not parse, or the [classifier](/pgpaw/sql-classifier) rejects it (writes / DDL / volatile funcs / multi-statement / non-replicated table) |
-| `401` | `UnauthorizedError` | Query is access-controlled and the bearer token is missing, invalid, or expired |
-| `403` | `ForbiddenError` | The token's role is denied the table or columns |
-| `404` | `NotFoundError` | `/q/{hash}/{version}` does not match a known snapshot (the URL is the cache key, so this is rare) |
-| `503` | `ServiceUnavailableError` | Replica is halted; reads cannot be served |
-| `500` | `InternalError` | Unhandled — check the server log |
+| `400` | `RejectedError` | The [classifier](/pgpaw/sql-classifier) rejects the query (writes / DDL / volatile funcs / multi-statement / non-replicated table / locking reads / `SELECT INTO`) |
+| `400` | `ParseError` | SQL does not parse |
+| `401` | `UnauthorizedError` | Query is access-controlled and the bearer token is missing, invalid, or expired — **or** a bearer token is supplied but no JWT verifier is configured |
+| `403` | `ForbiddenError` | An upstream/RLS database denial during execution — mapped from sqlstates `42501` (insufficient privilege), `42704` (undefined object), `28000` (invalid authorization) |
+| `404` | `NotFound` | `/q/{hash}/{version}` does not match a known snapshot (literal hand-written body, not a `CacheError` variant) |
+| `503` | `HaltedError` | Replica is halted; reads cannot be served |
+| `500` | *unmapped* | Any error not mapped above — `PgliteError` / `UpstreamError` / `ConfigError` / `CacheError` / `IoError`, each carrying its own `name()` |
 
-The `name` is stable across releases and safe to switch on client-side. The `message` is for humans.
+The `name` is stable across releases and safe to switch on client-side. The `message` is for humans. With no `Authorization` header on a public query, the request is allowed and runs anonymously.
+
+<DChart label="error_response — CacheError → status → envelope" title="How a CacheError variant becomes an HTTP status and error envelope name">
+  <DGroup label="CacheError variant → HTTP status">
+    <DRow gap={14} align="center">
+      <DBox kind="error" mono grow title="Rejected / Parse" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="error" title="400" />
+    </DRow>
+    <DRow gap={14} align="center">
+      <DBox kind="error" mono grow title="Unauthorized" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="error" title="401" />
+    </DRow>
+    <DRow gap={14} align="center">
+      <DBox kind="error" mono grow title="Forbidden" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="error" title="403" />
+    </DRow>
+    <DRow gap={14} align="center">
+      <DBox kind="error" mono grow title="Halted" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="error" title="503" />
+    </DRow>
+    <DRow gap={14} align="center">
+      <DBox kind="error" mono grow title="Pglite/Upstream/Config/Cache/Io" />
+      <DArrow dir="right" kind="accent" />
+      <DBox kind="error" title="500" />
+    </DRow>
+    <DRow gap={14} align="center">
+      <DBox kind="muted" grow title="cursor() 404" sub="bypasses CacheError" />
+      <DArrow dir="right" kind="muted" dashed />
+      <DBox kind="muted" title="404" />
+    </DRow>
+  </DGroup>
+  <DArrow dir="down" kind="accent" label="CacheError::envelope()" />
+  <DBox kind="success" title="JSON envelope" sub={["CacheError::envelope()", "{ \"name\": name(), \"message\": … }"]} />
+  <DNote>404 body is a literal hand-written string:</DNote>
+  <DNote kind="success">{"{\"name\":\"NotFound\",\"message\":…}"}</DNote>
+</DChart>
 
 ## CORS
 
@@ -49,12 +147,12 @@ Browsers on a different origin than PgPaw need a `CORS_ORIGIN` (or `--cors-origi
 pgpaw serve --cors-origin "https://app.example.com,https://staging.example.com"
 ```
 
-The default is no `Access-Control-Allow-Origin` — browser calls fail until you set this.
+When `CORS_ORIGIN` is unset, PgPaw uses `Cors::default()`. Same-origin requests work as-is; only cross-origin browser calls are blocked until you set an origin, a comma list, or `*`.
 
 ## What's next
 
 - [**`POST /query`**](/pgpaw/api/query) — the entry point; request, public `303`, access-controlled inline, hash + version
-- [**`GET /q/{hash}/{version}`**](/pgpaw/api/snapshot) — immutable snapshot fetch
+- [**`GET /q/{hash}/{version}`**](/pgpaw/api/snapshot) — cacheable snapshot fetch
 - [**`POST /query?live=true`**](/pgpaw/api/live) — SSE event stream format
 - [**SQL classifier**](/pgpaw/sql-classifier) — what queries pass, what gets rejected
 - [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled

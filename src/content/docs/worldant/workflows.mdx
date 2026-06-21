@@ -72,50 +72,46 @@ Every run is an event log. worldant stores it across a small set of `world_*` SQ
 
 The world spec version is **3** (`SPEC_VERSION_CURRENT` in Rust, surfaced as `world.specVersion = 3`). An event whose `specVersion` is greater than 3 is rejected with a `RunNotSupported` error — keep your `@workflow/core` and worldant versions in step.
 
-<DChart label="Run + step lifecycle" title="State machine of a workflow run and its steps in the durable event log">
-  <DGroup label="Run lifecycle">
-    <DRow gap={14} align="center">
-      <DCol gap={14} align="center">
-        <DBox kind="accent" title="pending" sub="RunCreated" />
-        <DArrow dir="down" kind="accent" />
-        <DBox kind="accent" title="running" sub="RunStarted" />
-      </DCol>
-      <DCol align="center">
-        <DArrow dir="right" kind="success" />
-        <DArrow dir="right" kind="error" />
-        <DArrow dir="right" kind="muted" />
-      </DCol>
-      <DCol gap={10}>
-        <DBox kind="success" title="completed" sub="RunCompleted" />
-        <DBox kind="error" title="failed" sub="RunFailed" />
-        <DBox kind="muted" title="cancelled" sub="RunCancelled" />
-      </DCol>
-    </DRow>
-    <DNote>terminal · is_terminal() · absorbs · no re-transition</DNote>
-  </DGroup>
-  <DGroup label="Step lifecycle">
-    <DRow gap={14} align="center">
-      <DCol gap={14} align="center">
-        <DBox kind="info" title="pending" sub="StepCreated" />
-        <DArrow dir="down" kind="info" />
-        <DBox kind="info" title="running" sub="StepStarted" />
-      </DCol>
-      <DCol align="center">
-        <DArrow dir="right" kind="success" />
-        <DArrow dir="right" kind="error" />
-      </DCol>
-      <DCol gap={10}>
-        <DBox kind="success" title="completed" sub="StepCompleted · memoized" />
-        <DBox kind="error" title="failed" sub="StepFailed · FatalError" />
-        <DArrow dir="down" kind="warn" label="RetryableError" />
-        <DBox kind="warn" title="retrying" sub="StepRetrying · attempt++" />
-        <DArrow dir="up" kind="warn" dashed label="after retryAfter" />
-      </DCol>
-    </DRow>
-    <DNote>completed is terminal — the body never re-runs on replay</DNote>
-  </DGroup>
-  <DNote>Each transition appends one of the 16 EventTypes to world_events; *_created events dedup via a partial UNIQUE index (ON CONFLICT).</DNote>
-</DChart>
+<GraphDiagram
+  direction="RIGHT"
+  label="Run lifecycle"
+  title="A workflow run's state machine — terminal states absorb, no re-transition"
+  nodes={[
+    { id: "pending", kind: "accent", title: "pending", sub: "RunCreated" },
+    { id: "running", kind: "accent", title: "running", sub: "RunStarted" },
+    { id: "completed", kind: "success", title: "completed", sub: "RunCompleted" },
+    { id: "failed", kind: "error", title: "failed", sub: "RunFailed" },
+    { id: "cancelled", kind: "muted", title: "cancelled", sub: "RunCancelled" },
+  ]}
+  edges={[
+    { from: "pending", to: "running", kind: "accent" },
+    { from: "running", to: "completed", kind: "success" },
+    { from: "running", to: "failed", kind: "error" },
+    { from: "running", to: "cancelled", kind: "muted" },
+  ]}
+/>
+
+<GraphDiagram
+  direction="DOWN"
+  label="Step lifecycle"
+  title="A step's state machine — RetryableError loops back through retrying; completed is terminal"
+  nodes={[
+    { id: "pending", kind: "info", title: "pending", sub: "StepCreated" },
+    { id: "running", kind: "info", title: "running", sub: "StepStarted" },
+    { id: "completed", kind: "success", title: "completed", sub: "StepCompleted · memoized" },
+    { id: "failed", kind: "error", title: "failed", sub: "StepFailed · FatalError" },
+    { id: "retrying", kind: "warn", title: "retrying", sub: "StepRetrying · attempt++" },
+  ]}
+  edges={[
+    { from: "pending", to: "running", kind: "info" },
+    { from: "running", to: "completed", kind: "success" },
+    { from: "running", to: "failed", kind: "error" },
+    { from: "failed", to: "retrying", kind: "warn", dashed: true, label: "RetryableError" },
+    { from: "retrying", to: "running", kind: "warn", dashed: true, label: "after retryAfter" },
+  ]}
+/>
+
+<DNote>Each transition appends one of the 16 EventTypes to world_events; *_created events dedup via a partial UNIQUE index (ON CONFLICT).</DNote>
 
 ## `getStepMetadata` and `getWorkflowMetadata`
 

@@ -24,29 +24,26 @@ The body is a single object with a `sql` field. Anything else returns a `400` �
 
 A single `POST /query` resolves to one of three response shapes. The request first passes the halt check, then auth, then the classifier, then the public-vs-access-controlled verdict before branching.
 
-<DChart label="Routing" title="One POST /query resolves to a 303 redirect, an inline 200, or an SSE stream">
-  <DBox kind="accent" mono title="POST /query" sub={["{ \"sql\": … }", "?live param · Authorization header"]} />
-  <DArrow dir="down" kind="accent" />
-  <DGroup label="Gates">
-    <DBox title="Pipeline gates" sub={["1 · halt check → 503 if replica halted", "2 · auth (AuthOutcome) → 401 on error", "3 · ReadClassifier → 400 on reject"]} />
-  </DGroup>
-  <DArrow dir="down" kind="accent" />
-  <DBox title="is_private(tables)?" sub={["over replicated catalog", "public vs access-controlled"]} />
-  <DRow gap={14} align="start">
-    <DCol align="center">
-      <DArrow dir="down" kind="success" label="public" />
-      <DBox kind="success" title="303 See Other" sub={["public snapshot", "Location: /q/{hash}/{version}", "Cache-Control: no-store", "empty body"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="down" kind="accent" label="private" />
-      <DBox kind="accent" title="200 OK" sub={["inline JSON rows", "Cache-Control: private, no-store", "runs as token role · never cached", "401 if token missing"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="down" kind="info" label="?live=true" />
-      <DBox kind="info" title="200 OK · SSE" sub={["text/event-stream", "Cache-Control: no-store", "snapshot + deltas · public or private", "see api/live →"]} />
-    </DCol>
-  </DRow>
-</DChart>
+<GraphDiagram
+  direction="DOWN"
+  label="Routing"
+  title="One POST /query resolves to a 303 redirect, an inline 200, or an SSE stream"
+  nodes={[
+    { id: "post", kind: "accent", mono: true, title: "POST /query", sub: ["{ \"sql\": … }", "?live param · Authorization header"] },
+    { id: "gates", title: "Pipeline gates", sub: ["1 · halt check → 503 if halted", "2 · auth → 401 on error", "3 · ReadClassifier → 400 on reject"] },
+    { id: "decide", title: "is_private(tables)?", sub: ["over replicated catalog", "public vs access-controlled"] },
+    { id: "pub", kind: "success", title: "303 See Other", sub: ["public snapshot", "Location: /q/{hash}/{version}", "Cache-Control: no-store · empty body"] },
+    { id: "priv", kind: "accent", title: "200 OK", sub: ["inline JSON rows", "Cache-Control: private, no-store", "runs as token role · 401 if missing"] },
+    { id: "sse", kind: "info", title: "200 OK · SSE", sub: ["text/event-stream · no-store", "snapshot + deltas · public or private", "see api/live →"] },
+  ]}
+  edges={[
+    { from: "post", to: "gates", kind: "accent" },
+    { from: "gates", to: "decide", kind: "accent" },
+    { from: "decide", to: "pub", kind: "success", label: "public" },
+    { from: "decide", to: "priv", kind: "accent", label: "private" },
+    { from: "decide", to: "sse", kind: "info", label: "?live=true" },
+  ]}
+/>
 
 ## Public response — `303 See Other`
 

@@ -240,36 +240,44 @@ Every list call follows the same path: the TS shim encodes params, the native ad
 
 `world.runs.get` reflects the latest *reduced* status; `world.events.list` is the append-only trail of the transitions behind it. Reading both together reconstructs exactly what happened.
 
-<DChart title="The run and step state machines, each reduced from its event log">
-  <DGroup label="RUN · world.runs.get(...).status">
-    <DRow gap={14} align="center">
-      <DBox title="pending" sub="run_created" />
-      <DArrow dir="right" kind="accent" />
-      <DBox kind="accent" title="running" sub="run_started" />
-      <DArrow dir="right" kind="accent" />
-      <DCol gap={10}>
-        <DBox kind="success" title="completed" sub="run_completed" />
-        <DBox kind="error" title="failed" sub="run_failed" />
-      </DCol>
-      <DArrow dir="right" kind="muted" dashed />
-      <DBox kind="muted" title="cancelled" sub="run_cancelled" />
-    </DRow>
-  </DGroup>
-  <DGroup label="STEP · world.steps.get(...).status">
-    <DRow gap={14} align="center">
-      <DBox title="pending" sub="step_created" />
-      <DArrow dir="right" kind="accent" />
-      <DBox kind="accent" title="running" sub="step_started" />
-      <DArrow dir="right" kind="accent" />
-      <DCol gap={10}>
-        <DBox kind="success" title="completed" sub="step_completed (output)" />
-        <DBox kind="error" title="failed" sub="step_failed" />
-      </DCol>
-    </DRow>
-    <DArrow dir="up" kind="warn" dashed label="retryAfter gate → back to pending, attempt++" />
-    <DBox kind="warn" title="step_retrying" sub="failed → step_retrying → pending" />
-  </DGroup>
-</DChart>
+<GraphDiagram
+  direction="RIGHT"
+  label="RUN · world.runs.get(...).status"
+  title="The run state machine, reduced from its event log"
+  nodes={[
+    { id: "pending", title: "pending", sub: "run_created" },
+    { id: "running", kind: "accent", title: "running", sub: "run_started" },
+    { id: "completed", kind: "success", title: "completed", sub: "run_completed" },
+    { id: "failed", kind: "error", title: "failed", sub: "run_failed" },
+    { id: "cancelled", kind: "muted", title: "cancelled", sub: "run_cancelled" },
+  ]}
+  edges={[
+    { from: "pending", to: "running", kind: "accent" },
+    { from: "running", to: "completed", kind: "success" },
+    { from: "running", to: "failed", kind: "error" },
+    { from: "running", to: "cancelled", kind: "muted", dashed: true },
+  ]}
+/>
+
+<GraphDiagram
+  direction="DOWN"
+  label="STEP · world.steps.get(...).status"
+  title="The step state machine — failed steps loop back through step_retrying"
+  nodes={[
+    { id: "pending", title: "pending", sub: "step_created" },
+    { id: "running", kind: "accent", title: "running", sub: "step_started" },
+    { id: "completed", kind: "success", title: "completed", sub: "step_completed (output)" },
+    { id: "failed", kind: "error", title: "failed", sub: "step_failed" },
+    { id: "retrying", kind: "warn", title: "step_retrying", sub: "attempt++ · retryAfter gate" },
+  ]}
+  edges={[
+    { from: "pending", to: "running", kind: "accent" },
+    { from: "running", to: "completed", kind: "success" },
+    { from: "running", to: "failed", kind: "error" },
+    { from: "failed", to: "retrying", kind: "warn", dashed: true, label: "retryAfter" },
+    { from: "retrying", to: "pending", kind: "warn", dashed: true, label: "attempt++" },
+  ]}
+/>
 
 A completed step is terminal and never re-runs — that is the exactly-once guarantee. `step_retrying` returns a step to `pending` with an incremented `attempt`, gated by `retryAfter`, until it completes, fails permanently, or hits the dead-letter limit.
 

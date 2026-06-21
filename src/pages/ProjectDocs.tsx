@@ -28,6 +28,7 @@ import {
   DGroup,
   DNote,
 } from "@/components/docs/diagram/flow";
+import { GraphDiagram } from "@/components/docs/diagram/GraphDiagram";
 
 const KNOWN = slugs as readonly string[];
 
@@ -59,6 +60,8 @@ const mdxComponents = {
   DArrow,
   DGroup,
   DNote,
+  // ELK auto-layout graph diagrams (own renderer, no React Flow)
+  GraphDiagram,
 };
 
 const pageIcon = <FileText className="size-4" />;

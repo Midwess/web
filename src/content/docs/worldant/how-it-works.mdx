@@ -112,26 +112,29 @@ Every state change is an event, and every event reduces itself into SQL. There i
 
 The queue is not a broker or a second database — it is the `world_jobs` SQLite table, drained by an in-process worker.
 
-<DChart label="Queue" title="The in-process worker claims a job, dispatches it, and maps the reply to Done, Retry, or Failed">
-  <DRow gap={12} align="center" wrap>
-    <DBox title="QueueWorker" sub={["Semaphore · concurrency 128", "tokio (napi edge)"]} />
-    <DArrow dir="right" kind="info" />
-    <DBox title="claim_next" sub={["atomic UPDATE · attempts+1", "15s lease reclaims abandoned"]} />
-    <DArrow dir="right" kind="info" />
-    <DBox title="NapiDispatch → JS dispatcher" sub={["ThreadsafeFunction · prefix → handler", "__wkf_step_ = step · __wkf_workflow_ = flow", "ActivityGuard ++active (supervisor busy)"]} />
-  </DRow>
-  <DNote center>DispatchOutcome</DNote>
-  <DArrow dir="down" kind="info" />
-  <DRow gap={14} align="start">
-    <DBox grow={1} kind="success" title="Done" sub={["complete_job", "(delete the row)"]} />
-    <DBox grow={1} kind="warn" title={"Retry { delay }"} sub={["fail_job(delay) — handler", "asked to wait, then re-run"]} />
-    <DCol>
-      <DBox kind="error" title="Failed" sub={["exp-backoff fail_job", "base 1s → cap 300s"]} />
-      <DArrow dir="down" kind="error" dashed />
-      <DBox kind="error" title="dead-letter after 25 attempts" sub="attempts ≥ max_attempts → stop, log and drop" />
-    </DCol>
-  </DRow>
-</DChart>
+<GraphDiagram
+  direction="DOWN"
+  label="Queue"
+  title="The in-process worker claims a job, dispatches it, and maps the reply to Done, Retry, or Failed"
+  nodes={[
+    { id: "worker", title: "QueueWorker", sub: ["Semaphore · concurrency 128", "tokio (napi edge)"] },
+    { id: "claim", title: "claim_next", sub: ["atomic UPDATE · attempts+1", "15s lease reclaims abandoned"] },
+    { id: "dispatch", title: "NapiDispatch → JS dispatcher", sub: ["ThreadsafeFunction · prefix → handler", "__wkf_step_ · __wkf_workflow_", "ActivityGuard ++active"] },
+    { id: "done", kind: "success", title: "Done", sub: "complete_job (delete the row)" },
+    { id: "retry", kind: "warn", title: "Retry { delay }", sub: "fail_job(delay) · wait, then re-run" },
+    { id: "failed", kind: "error", title: "Failed", sub: "exp-backoff · base 1s → cap 300s" },
+    { id: "dead", kind: "error", title: "dead-letter", sub: "attempts ≥ 25 → stop, log and drop" },
+  ]}
+  edges={[
+    { from: "worker", to: "claim", kind: "info" },
+    { from: "claim", to: "dispatch", kind: "info" },
+    { from: "dispatch", to: "done", kind: "success", label: "Done" },
+    { from: "dispatch", to: "retry", kind: "warn", label: "Retry" },
+    { from: "dispatch", to: "failed", kind: "error", label: "Failed" },
+    { from: "retry", to: "claim", kind: "warn", dashed: true, label: "re-enqueue" },
+    { from: "failed", to: "dead", kind: "error", dashed: true, label: "25 attempts" },
+  ]}
+/>
 
 A workflow or step enqueues via `world.queue(name, msg, opts)`, which inserts into `world_jobs` with `kind` derived from the queue-name prefix (`__wkf_step_` = step, `__wkf_workflow_` = flow). The worker loops: it takes a `Semaphore` permit, calls `claim_next` (an atomic `UPDATE ... RETURNING` that bumps `attempts` and reclaims any job whose 15-second lease has expired), then dispatches through `NapiDispatch` to the JS dispatcher `ThreadsafeFunction`. The dispatcher matches the prefix to a registered handler, runs it, and the reply maps to a `DispatchOutcome`: `Done` deletes the job (`complete_job`), `Retry { delay }` reschedules it, and `Failed` applies exponential backoff (base 1s, capped at 300s) or dead-letters after 25 attempts. While a handler runs, an `ActivityGuard` increments the control server's active counter so the supervisor sees the app as busy.
 

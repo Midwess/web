@@ -77,6 +77,161 @@ const Code = ({ children, lang = "typescript" }: { children: string; lang?: Bund
 
 export const posts: BlogPost[] = [
   {
+    slug: "vercel-workflow-to-server-function",
+    title: "From Durability to RPC: Turning Vercel Workflows into Typed Server Functions",
+    description: "Durable execution keeps your backend processes alive. Worldant takes it a step further by compiling Vercel Workflow contracts into fully-typed remote function wrappers, eliminating API routing boilerplate and network serialization worries.",
+    date: "2026-06-22",
+    readTime: "7 min read",
+    author: "James Dang",
+    cover: dunes,
+    body: (
+      <>
+        <p>
+          Durable execution engines like <Link href="https://vercel.com/docs/workflow">Vercel Workflow</Link> are a game changer for backend developers. By splitting long-running computations into step-wise replays, we get built-in retries, failure resilience, and exact state persistence. But once a workflow is safely running on the server, we face a familiar frontend integration bottleneck: <strong>how does the client call it?</strong>
+        </p>
+        <p>
+          Typically, exposing a workflow requires a stack of manual boilerplate. You write a custom API route handler, parse incoming request bodies, construct type schemas, map errors, serialize custom types like <code>Date</code> or binary blobs, and implement Server-Sent Events (SSE) connections if the workflow streams logs. Any change to a workflow requires manually updating types across the frontend boundaries.
+        </p>
+        <p>
+          We built <strong>Worldant</strong> to make workflows feel like local code. Worldant analyzes your workflow source files at build time, extracts their parameter and return type signatures, and compiles them directly into fully-typed <strong>server functions</strong>.
+        </p>
+        <p>
+          Whether you want same-origin type safety or cross-origin dynamic NPM distribution, Worldant converts your business logic into a type-safe RPC layer with zero manual setup.
+        </p>
+
+        <h2>How it works under the hood</h2>
+        <p>
+          At compile time, Worldant parses TypeScript files marked with the <code>"use workflow"</code> and <code>"use step"</code> directives. In the backend, we use the TypeScript compiler API to extract the program's Abstract Syntax Tree (AST), collecting the parameters, return shapes, and exported names.
+        </p>
+        <p>
+          This is implemented in Worldant's contract extractor (<code>src/codegen/extract.ts</code>). It traverses the exported functions:
+        </p>
+        <Code lang="typescript">{`ts.forEachChild(source, (node) => {
+  if (!ts.isFunctionDeclaration(node) || !node.body || !node.name) return;
+  if (!node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) return;
+  const directive = bodyDirective(node.body);
+  if (directive !== 'use workflow' && directive !== 'use step') return;
+  const doc = describe(node, checker, types);
+  // ... maps the function signature and exports it into the contract
+});`}</Code>
+        <p>
+          From this AST extraction, Worldant compiles a <code>worldant.catalog.json</code> describing every workflow's types and capabilities. This catalog then powers our two main execution patterns: same-origin Next.js client generation, and dynamic NPM registries.
+        </p>
+
+        <h2>Pattern 1: Same-Origin RPC in Next.js</h2>
+        <p>
+          If your frontend lives in the same repository as your workflows, setup takes just three steps. First, wrap your configuration in <code>next.config.ts</code> using <code>withWorldant</code>:
+        </p>
+        <Code lang="typescript">{`// next.config.ts
+import { withWorkflow } from 'workflow/next';
+import { withWorldant } from '@midwess/worldant/next';
+
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/__worldant/v1/:path*',
+        destination: \\\`http://127.0.0.1:\\\${process.env.WORLDANT_NET_PORT ?? 4001}/__worldant/v1/:path*\\\`,
+      },
+    ];
+  },
+};
+
+export default withWorkflow(withWorldant(nextConfig, { client: true }));`}</Code>
+        <p>
+          The <code>withWorldant(..., {"{ client: true }"})</code> wrapper instructs the build tool to automatically scan for workflows and write a typed helper client to <code>worldant/client.ts</code>.
+        </p>
+        <p>
+          Second, register the world in Next.js's <code>instrumentation.ts</code> so the server starts listening on a dedicated port when the Node process boots:
+        </p>
+        <Code lang="typescript">{`// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === 'edge') return;
+  const { createWorld } = await import('@midwess/worldant');
+  const port = Number(process.env.WORLDANT_NET_PORT ?? 4001);
+  const world = await createWorld({ id: 'orders', net: { port } });
+  await world.start?.();
+}`}</Code>
+        <p>
+          Finally, call the workflow directly from any React client component. Since the Next.js rewrite maps <code>/__worldant/v1/*</code> to the Worldant port, the client calls are same-origin and bypass CORS. You simply import the generated functions:
+        </p>
+        <Code lang="typescript">{`import { placeOrder } from '../worldant/client';
+
+async function handleCheckout(cart) {
+  const receipt = await placeOrder(cart);
+  console.log('Placed order:', receipt.orderId);
+}`}</Code>
+        <p>
+          Under the hood, Worldant handles serialization and deserialization, converting complex types like <code>Date</code> objects or binary <code>Uint8Array</code> buffers to and from the server automatically.
+        </p>
+
+        <h2>Pattern 2: Cross-Origin RPC via Dynamic NPM registries</h2>
+        <p>
+          If your workflows are hosted on a standalone microservice (such as a NestJS server) and a separate Vite app needs to call them, same-origin client generation won't work. For this, Worldant hosts its own dynamic NPM registry right from the running backend.
+        </p>
+        <p>
+          On the NestJS backend, we boot the World and specify the CORS origins:
+        </p>
+        <Code lang="typescript">{`const world = await createWorld({
+  id: '@fxdesk/quotes',
+  net: { useOnPremisePort: true, cors: ['http://localhost:5173'] },
+});`}</Code>
+        <p>
+          Because the World ID is scoped (<code>@fxdesk/quotes</code>), we can configure the client app's local <code>.npmrc</code> to resolve scoped packages from our microservice instead of the public NPM registry:
+        </p>
+        <Code lang="bash">{`@fxdesk:registry=http://localhost:3000/__worldant/v1/npm`}</Code>
+        <p>
+          When you run <code>npm install @fxdesk/quotes</code> in your client project, your package manager requests the package from the microservice. The Worldant server dynamically bundles a tarball containing the compiled TypeScript types and client RPC code matching your workflows.
+        </p>
+        <p>
+          In your Vite app, you can import and call functions from the package just like any standard third-party library:
+        </p>
+        <Code lang="typescript">{`import { quote } from '@fxdesk/quotes';
+
+const receipt = await quote({ amountUsd: 100 });`}</Code>
+
+        <h2>Handling Streams over Server-Sent Events</h2>
+        <p>
+          Many workflows are long-running and require streaming intermediate progress back to the user. Rather than forcing you to write event emitters, Worldant supports streaming return values natively.
+        </p>
+        <p>
+          On the server, you declare a workflow returning a <code>Stream</code>, and write values to an <code>outputStream()</code> inside a step:
+        </p>
+        <Code lang="typescript">{`import { outputStream, type Stream } from '@midwess/worldant';
+
+async function track(orderId: string) {
+  'use step';
+  const out = outputStream<string>();
+  await out.write('Order packed');
+  await out.write('Order shipped');
+  await out.close();
+}
+
+export async function trackOrder(orderId: string): Promise<Stream<string>> {
+  'use workflow';
+  await track(orderId);
+  return undefined as any;
+}`}</Code>
+        <p>
+          On the client, the generated RPC wrappers automatically detect the stream type, invoke the HTTP streaming endpoint, and decode the Server-Sent Events stream into a standard JavaScript <code>AsyncIterable</code>:
+        </p>
+        <Code lang="typescript">{`import { trackOrder } from '../worldant/client';
+
+for await (const status of trackOrder('ord-1042')) {
+  console.log('Current status:', status);
+}`}</Code>
+        <p>
+          The consumer gets a clean async generator loops structure, while Worldant handles the low-level HTTP chunking and connection management.
+        </p>
+
+        <h2>Conclusion</h2>
+        <p>
+          Durable workflows shouldn't be isolated to manual HTTP orchestration. By compiling TypeScript ASTs, Worldant elevates Vercel Workflow's programming model to a full-fledged client-server RPC framework. Developers write durable logic on the server and consume it as simple, typed async functions on the client—bringing complete type safety and fluid execution to the agentic stack.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "one-time-use-apps-by-ai",
     title: "One-Time-Use Apps: The Future of AI Agents and Dynamic Execution",
     description: "In the future, apps won't be static, siloed installations. AI agents will store data in a single personal database, dynamically assembling floating backend logic and one-time UI on the fly to meet your immediate needs. Here is how we are building that stack, starting with Worldant.",

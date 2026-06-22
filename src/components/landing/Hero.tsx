@@ -26,9 +26,11 @@ export const Hero = () => (
         transition={{ duration: 0.6, delay: 0.1 }}
       >
         <Heading className="mt-6 text-olive-50 [text-shadow:0_2px_24px_rgba(0,0,0,0.45)]">
-          Durable infrastructure for
+          Agents that are efficient, smart,
           <br />
-          <span className="text-olive-200">agentic systems, built in Rust</span>
+          <span className="text-olive-200">
+            and understand exactly what you want
+          </span>
         </Heading>
       </motion.div>
 
@@ -39,12 +41,9 @@ export const Hero = () => (
       >
         <SubHeading
           as="p"
-          className="mx-auto mt-6 max-w-2xl font-medium text-olive-100/80 [text-shadow:0_1px_12px_rgba(0,0,0,0.5)]"
+          className="mx-auto mt-6 max-w-xl font-medium text-olive-100/80 [text-shadow:0_1px_12px_rgba(0,0,0,0.5)]"
         >
-          Midwess builds the embedded data and execution layer that agentic
-          systems run on — Postgres in your binary, durable workflows in-process,
-          realtime over plain SQL. No servers to babysit, no external services to
-          wire up.
+          That's what we're building — the infrastructure that makes it real.
         </SubHeading>
       </motion.div>
 

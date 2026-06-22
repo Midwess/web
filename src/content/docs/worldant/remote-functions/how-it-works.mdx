@@ -1,0 +1,95 @@
+---
+title: How it works
+description: How worldant turns a workflow into a typed remote function — contract extraction, codec, and the call path
+---
+
+# How remote functions work
+
+When `net` is enabled on a world, worldant exposes two HTTP surfaces. The npm registry side answers `npm install`; the runs side answers every call the generated client makes.
+
+## Contract extraction
+
+At build time (`withWorldant` in Next.js, or `gen-contract` for standalone setups), worldant parses your TypeScript source files using the TypeScript compiler API. It finds every exported function annotated with `"use workflow"` or `"use step"` and reads its parameter and return types directly from the AST — no runtime reflection, no decorators.
+
+```ts
+export async function placeOrder(order: Order): Promise<OrderReceipt> {
+  'use workflow';
+  // ...
+}
+```
+
+The extracted signatures are written to `worldant.catalog.json`. The catalog feeds both the code-generated client and the npm package the world serves at `/__worldant/v1/npm`.
+
+<DChart label="Contract extraction" title="How workflow signatures become a typed client package">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" badge={1} title="Source file" sub={['"use workflow"', 'TypeScript signatures']} />
+    <DArrow dir="right" kind="accent" />
+    <DBox kind="info" badge={2} title="withWorldant / gen-contract" sub={['TypeScript compiler API', 'AST traversal']} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="warn" badge={3} title="worldant.catalog.json" sub={['world id', 'function names + types']} />
+  </DRow>
+  <DArrow dir="down" kind="warn" dashed />
+  <DRow gap={18} align="center">
+    <DBox kind="success" badge={4} title="worldant/client.ts" sub={['generated typed wrappers', 'same-origin Next.js']} />
+    <DBox kind="success" badge={4} title="npm package" sub={['served at /__worldant/v1/npm', 'cross-origin consumers']} />
+  </DRow>
+</DChart>
+<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>One catalog, two delivery paths — a local generated file for same-origin, or a live npm package for cross-origin.</figcaption>
+
+## The call path
+
+When a consumer calls a generated wrapper like `placeOrder(order)`, `worldant-client` drives a standard HTTP sequence:
+
+1. `POST /__worldant/v1/runs` — start the run, get a run id back.
+2. `GET /__worldant/v1/runs/:id/stream` — SSE stream of step events and the final `returnValue`.
+3. If SSE is unavailable (non-browser, firewall, etc.) — poll `GET /__worldant/v1/runs/:id` every `pollMs` milliseconds.
+
+<DChart label="Call path" title="From a typed function call to the completed workflow run">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" mono title="placeOrder(order)" sub="generated typed wrapper" />
+    <DArrow dir="right" kind="accent" />
+    <DBox mono title="worldant-client" sub={['POST /runs', 'GET /runs/:id/stream (SSE)', 'or poll /runs/:id']} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="info" mono title="world-net" sub={['HTTP · CORS · auth', 'codec decode/encode']} />
+    <DArrow dir="right" kind="success" />
+    <DBox kind="success" mono title="World" sub={['embedded SQLite', 'durable replay']} />
+  </DRow>
+</DChart>
+<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>The client prefers SSE for low latency; falls back to polling automatically. The durable World runs the workflow and streams back the result.</figcaption>
+
+## Codec — `Uint8Array` and `Date`
+
+Plain JSON cannot round-trip `Uint8Array` or `Date`. Worldant's codec handles both:
+
+| Type | Encoding |
+|---|---|
+| `Uint8Array` | Base64-encoded string, decoded back to `Uint8Array` on the client |
+| `Date` | ISO 8601 string, reconstructed as `Date` on the client |
+| Everything else | Standard JSON |
+
+Codec runs on both sides — no manual serialization in workflow code or consumer code.
+
+```ts
+export async function processFile(data: Uint8Array): Promise<{ processedAt: Date }> {
+  'use workflow';
+  // data arrives as Uint8Array in the workflow body
+  // processedAt arrives as Date in the caller
+  return { processedAt: new Date() };
+}
+```
+
+## Security
+
+`defaultConfiguration` (world id, base URL, poll interval) is embedded in the generated package and is safe to expose publicly — it never contains a token. Supply auth at runtime:
+
+```ts
+import { configure } from 'orders';
+configure({ token: process.env.NEXT_PUBLIC_WORLD_TOKEN });
+```
+
+The token is sent as `Authorization: Bearer <token>` on every request. See [Security](/worldant/remote-functions#security) in the overview for the full model.
+
+## What's next
+
+- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — wire `withWorldant` into your Next.js build
+- [**Cross-origin**](/worldant/remote-functions/cross-origin) — consume a world from a separate app

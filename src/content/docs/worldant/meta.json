@@ -10,7 +10,16 @@
         "installation",
         "quickstart",
         "workflows",
-        "remote-functions",
+        {
+          "name": "Remote functions",
+          "pages": [
+            "remote-functions/index",
+            "remote-functions/how-it-works",
+            "remote-functions/same-origin",
+            "remote-functions/cross-origin",
+            "remote-functions/react-hook"
+          ]
+        },
         "reading-runs",
         "supervisor",
         "configuration"

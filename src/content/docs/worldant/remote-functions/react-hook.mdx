@@ -1,0 +1,108 @@
+---
+title: React hook
+description: useWorldant — a memoized, SSR-safe React hook for calling worldant remote functions from components
+---
+
+# React hook (`worldant-react`)
+
+`worldant-react` provides `useWorldant(schema)` — a memoized, SSR-safe hook that binds `worldant-client` to a world's generated package. It handles connection config, re-renders, and auth injection without boilerplate.
+
+## Installation
+
+```sh
+npm install worldant-react worldant-client
+```
+
+## Basic usage
+
+Pass the imported world schema to `useWorldant`. It returns an object with one method per exported workflow, typed from the source:
+
+```tsx
+'use client';
+import * as orders from 'worldant/client';
+import { useWorldant } from 'worldant-react';
+
+export function CheckoutButton({ order }) {
+  const world = useWorldant(orders);
+
+  return (
+    <button onClick={() => world.placeOrder(order)}>
+      Place order
+    </button>
+  );
+}
+```
+
+`world.placeOrder` is typed as `(order: Order) => Promise<OrderReceipt>` — the exact signature from the workflow definition.
+
+## Override config at mount
+
+Pass a partial config as the second argument to override `baseUrl`, `token`, or `pollMs`:
+
+```tsx
+const world = useWorldant(orders, {
+  baseUrl: '',                               // force same-origin (default for Next.js)
+  token: process.env.NEXT_PUBLIC_WORLD_TOKEN, // inject auth
+  pollMs: 500,                               // check for result every 500ms (fallback)
+});
+```
+
+Config overrides are memoized — the hook does not reconnect on every render unless `token` or `baseUrl` actually changes.
+
+## SSE streams
+
+Streaming workflows return an `AsyncIterable`. Use it directly in an effect:
+
+```tsx
+'use client';
+import * as orders from 'worldant/client';
+import { useWorldant } from 'worldant-react';
+import { useEffect, useState } from 'react';
+
+export function OrderTracker({ orderId }) {
+  const world = useWorldant(orders);
+  const [stage, setStage] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for await (const status of world.trackOrder(orderId)) {
+        if (cancelled) break;
+        setStage(status.stage);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orderId]);
+
+  return <p>Status: {stage}</p>;
+}
+```
+
+## Cross-origin with auth
+
+For a cross-origin world, override `baseUrl` to point at the server and inject the token:
+
+```tsx
+const world = useWorldant(quotes, {
+  baseUrl: process.env.NEXT_PUBLIC_QUOTES_URL,
+  token: session?.accessToken,
+});
+
+const lines = await world.quote(100);
+```
+
+## What `useWorldant` returns
+
+| Property | Type | Description |
+|---|---|---|
+| `call(key, args)` | `Promise<R>` | Raw call — used by typed wrappers internally |
+| `stream(key, args)` | `AsyncIterable<T>` | Raw stream — used by typed wrappers internally |
+| `configure(partial)` | `void` | Override config after mount |
+| `world.placeOrder(…)` | `Promise<R>` | Typed workflow wrapper (one per workflow in the schema) |
+
+The typed wrappers are attached directly on the returned object — prefer them over `call`/`stream` directly.
+
+## What's next
+
+- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — `withWorldant` plugin, generated client, rewrite
+- [**Cross-origin**](/worldant/remote-functions/cross-origin) — scoped `.npmrc`, CORS, standalone consumer

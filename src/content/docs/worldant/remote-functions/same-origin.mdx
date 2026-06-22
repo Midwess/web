@@ -1,0 +1,112 @@
+---
+title: Same-origin (Next.js)
+description: Generate a typed client for your workflows inside a Next.js app — zero CORS, zero manual wiring
+---
+
+# Same-origin remote functions (Next.js)
+
+When your frontend lives in the same Next.js project as your workflows, `withWorldant` handles everything: it scans your source files at build time, generates a typed client, and a rewrite rule makes the browser call its own origin — no CORS required.
+
+## Installation
+
+```sh
+npm install @midwess/worldant worldant-client
+```
+
+## 1. Wrap `next.config.ts`
+
+```ts
+// next.config.ts
+import { withWorkflow } from 'workflow/next';
+import { withWorldant } from '@midwess/worldant/next';
+
+const WORLD_PORT = Number(process.env.WORLDANT_NET_PORT ?? 4001);
+
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/__worldant/v1/:path*',
+        destination: `http://127.0.0.1:${WORLD_PORT}/__worldant/v1/:path*`,
+      },
+    ];
+  },
+};
+
+export default withWorkflow(withWorldant(nextConfig, { client: true }));
+```
+
+`withWorldant(..., { client: true })` tells the build to scan `"use workflow"` files and write `worldant/client.ts` to your project root on every `next dev` / `next build`.
+
+## 2. Start the world in `instrumentation.ts`
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === 'edge') return;
+  const { createWorld } = await import('@midwess/worldant');
+  const port = Number(process.env.WORLDANT_NET_PORT ?? 4001);
+  await createWorld({ id: 'orders', net: { port } });
+}
+```
+
+This starts the world in the Node.js runtime when the Next.js server boots. The `net: { port }` option starts a dedicated HTTP server for the world on the given port.
+
+## 3. Add a path alias
+
+The generated client lives at `./worldant/client.ts` in your project root. Add a path alias so imports look like a package, not a relative path:
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "paths": {
+      "worldant/client": ["./worldant/client"]
+    }
+  }
+}
+```
+
+> Run `next dev` once first — `worldant/client.ts` must exist before TypeScript resolves the alias. After that, your editor and type checker see the generated types normally.
+
+## 4. Call from a component
+
+```tsx
+// app/checkout-button.tsx
+'use client';
+import { placeOrder, trackOrder } from 'worldant/client';
+
+export function CheckoutButton({ order }) {
+  async function handleClick() {
+    const receipt = await placeOrder(order);
+    console.log('Order placed:', receipt.orderId, receipt.totalCents);
+
+    for await (const status of trackOrder(order.id)) {
+      console.log('Status:', status.stage);
+    }
+  }
+  return <button onClick={handleClick}>Place order</button>;
+}
+```
+
+The browser fetches `/__worldant/v1/runs` — its own origin, proxied server-side by Next.js to the world port. No CORS headers needed.
+
+<DChart label="Same-origin path" title="Browser calls its own Next.js origin; a server-side rewrite forwards to the world port">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" title="Browser (:3000)" sub="fetch /__worldant/v1/runs (same origin)" />
+    <DArrow dir="right" kind="accent" label="rewrite (server-side)" />
+    <DBox kind="info" title="world-net (:4001)" sub="dedicated HTTP server" />
+    <DArrow dir="right" kind="success" />
+    <DBox kind="success" title="World" sub="SQLite · durable replay" />
+  </DRow>
+  <DNote>No CORS — the browser only talks to its own origin. Next.js forwards the request server-side.</DNote>
+</DChart>
+
+## Full example
+
+The [`examples/nextjs-remote-functions`](https://github.com/Midwess/worldant/tree/main/examples/nextjs-remote-functions) directory contains a complete runnable app with a `placeOrder` workflow (returns a typed receipt) and a `trackOrder` workflow (streams status updates over SSE).
+
+## What's next
+
+- [**Cross-origin**](/worldant/remote-functions/cross-origin) — consume a world from a separate Vite or React app
+- [**React hook**](/worldant/remote-functions/react-hook) — `useWorldant` for component-level auth and config

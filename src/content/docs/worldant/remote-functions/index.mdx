@@ -1,0 +1,46 @@
+---
+title: Remote functions
+description: Call workflows from any frontend as typed, browser-safe functions — no API routes to write
+---
+
+# Remote functions
+
+A deployed world serves itself as a **live npm registry**. Any consumer — a React app, a Node service, another world — installs the generated typed package and calls your workflows like local async functions.
+
+```ts
+import { placeOrder, trackOrder } from 'orders';
+
+const receipt = await placeOrder(order);
+for await (const status of trackOrder(order.id)) {
+  console.log(status.stage);
+}
+```
+
+No route handler. No `fetch` boilerplate. No JSON schema. The types come from your workflow's TypeScript signatures, and `Uint8Array` / `Date` round-trip cleanly through the codec.
+
+## What you get
+
+| What | Description |
+|---|---|
+| **Typed wrappers** | One function per exported workflow. Types derived from the source. |
+| **`worldant-client`** | The browser-safe transport. Handles `POST /runs`, polling, and SSE. |
+| **`worldant-react`** | Optional React hook (`useWorldant`) for component-level integration. |
+| **`configure(partial)`** | Override `baseUrl`, `token`, or `pollMs` at runtime — no rebuild. |
+
+## Two HTTP surfaces
+
+Once `net` is set on the world, two endpoints are active:
+
+| Endpoint | Purpose |
+|---|---|
+| `/__worldant/v1/npm` | Read-only npm registry. `npm install <id> --registry <host>/__worldant/v1/npm` fetches the contract. |
+| `/__worldant/v1/runs` | Call endpoint. `POST` to start, `GET /:id` to poll, `GET /:id/stream` for SSE. |
+
+The generated package carries a non-secret `defaultConfiguration` (world id, base URL, poll interval). Auth tokens are never baked in — supply them at runtime via `configure({ token })`.
+
+## Where to go next
+
+- [**How it works**](/worldant/remote-functions/how-it-works) — contract extraction, codec, SSE vs polling
+- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — `withWorldant`, generated client, zero CORS
+- [**Cross-origin**](/worldant/remote-functions/cross-origin) — scoped `.npmrc`, CORS, standalone consumer
+- [**React hook**](/worldant/remote-functions/react-hook) — `useWorldant`, auth, SSR safety

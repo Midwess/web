@@ -23,6 +23,138 @@ const Code = ({ children }: { children: string }) => (
 
 export const posts: BlogPost[] = [
   {
+    slug: "one-time-use-apps-by-ai",
+    title: "One-Time-Use Apps: The Future of AI Agents and Dynamic Execution",
+    description: "In the future, apps won't be static, siloed installations. AI agents will store data in a single personal database, dynamically assembling floating backend logic and one-time UI on the fly to meet your immediate needs. Here is how we are building that stack, starting with Worldant.",
+    date: "2026-06-22",
+    readTime: "8 min read",
+    author: "James Dang",
+    cover: night,
+    body: (
+      <>
+        <p>
+          Today, software is packaged as monolithic silos. Every application has its own database, its own schema, its own rigid API endpoints, and its own static frontend interface. If you want to use a service, you sign up, OAuth your identity, and click through their pre-designed buttons.
+        </p>
+        <p>
+          But as AI agents become the primary way we interact with computers, this architecture falls apart. If an agent needs to schedule a trip, coordinate a meeting, and file an expense report, it shouldn't have to log into three different SaaS tools, parse their custom HTML, and orchestrate APIs.
+        </p>
+        <p>
+          We believe the future of software belongs to <strong>one-time-use apps by AI</strong>.
+        </p>
+        <p>
+          In this model, you own your data in a single personal database. A set of modular backend capabilities—<strong>floating logics</strong>—are stored as durable workflows, waiting to be combined. When you tell your agent a goal, it understands your needs, forms the appropriate execution pipelines, and generates a tailored, ephemeral UI on the fly. Once you interact with the UI and the task finishes, the UI dissolves. The app is gone, but the state remains durably stored in your database.
+        </p>
+        <p>
+          This isn't science fiction. Step by step, we are building the infrastructure to make this real. And <strong>Worldant</strong> is the cornerstone of this execution layer, converting standard Vercel Workflow programming models into a dynamic runtime that is optimized for agents rather than static servers.
+        </p>
+
+        <h2>Moving Beyond \"Durable\" to Agent-Ready</h2>
+        <p>
+          Vercel Workflow solved durable execution: it ensures that long-running, multi-step tasks survive restarts and transient network failures. But in a world of one-time-use apps, durability is only the baseline. To make workflows truly agentic, we need to solve the networking, scaling, and discoverability challenges.
+        </p>
+        <p>
+          Worldant handles all of this automatically, exposing three key architectural pillars built directly into the core library and supervisor CLI.
+        </p>
+
+        <h2>1. Remote Functions with Dynamic NPM Distribution</h2>
+        <p>
+          An agent shouldn't have to figure out how to configure CORS, set up API gateways, or map routes to trigger a workflow. Under Worldant, every workflow is automatically exposed as a typed remote function with zero manual networking setup.
+        </p>
+        <p>
+          Whether you are running workflows in a same-origin environment like in the <Link href="https://github.com/Midwess/worldant/tree/main/examples/nextjs-remote-functions">nextjs-remote-functions</Link> example (using type-only client imports), or cross-origin like in the <Link href="https://github.com/Midwess/worldant/tree/main/examples/nestjs-vite-cross-origin">nestjs-vite-cross-origin</Link> example (using the dynamically-served NPM registry), Worldant completely abstracts the network setup away.
+        </p>
+        <p>
+          Looking at the backend of the cross-origin example, the Quotes server initializes its World:
+        </p>
+        <Code>{`// server/src/world.bootstrap.ts
+const world = await createWorld({
+  dataDir,
+  id: '@fxdesk/quotes',
+  net: { useOnPremisePort: true, cors: corsOrigins },
+});`}</Code>
+        <p>
+          Behind the scenes, the Worldant runtime compiles the workflow types and hosts its own dynamic NPM registry directly from the running app server. In the client's <code>.npmrc</code>, we route scoped packages directly to the server:
+        </p>
+        <Code>{`@fxdesk:registry=http://localhost:3000/__worldant/v1/npm`}</Code>
+        <p>
+          The client simply runs <code>npm install @fxdesk/quotes</code>. It can then import and call the workflows directly as fully-typed JavaScript functions:
+        </p>
+        <Code>{`import { quote, watchRate } from '@fxdesk/quotes';
+
+// oneshot value-to-value call
+const receipt = await quote({ amountUsd: 100 });
+
+// SSE-backed streaming call
+for await (const tick of watchRate('EUR')) {
+  console.log(tick);
+}`}</Code>
+        <p>
+          The agent can install and call any workflow dynamically on the fly, with full type safety and no codegen step.
+        </p>
+
+        <h2>2. Unified Projection as MCP Tools</h2>
+        <p>
+          Surfacing code to other services is one thing; surfacing it to an LLM agent is another. AI agents need structured schemas and descriptions to know what tools they can use.
+        </p>
+        <p>
+          Worldant projects workflows directly as <Link href="https://modelcontextprotocol.io">Model Context Protocol (MCP)</Link> tools. Your workflows' parameter types and docstrings are compiled into standard MCP tool schemas. When an agent connects, it gets a list of what it can run.
+        </p>
+        <p>
+          In the <code>worldant</code> HTTP handler (<code>src/net/handler.ts</code>), we can see the unified data plane. A client call to run a workflow is handled dynamically by looking up the workflow registry:
+        </p>
+        <Code>{`// src/net/handler.ts
+if (method === 'POST' && path === '/runs') {
+  const { workflowId: requested, args } = decode(await readBody(req));
+  const workflowId = await resolveWorkflowId(src.native, requested);
+  const run = await start({ workflowId }, args ?? [], { world: src.world });
+  send(res, 200, encode({ runId: run.runId }));
+}`}</Code>
+        <p>
+          And if the workflow returns a live output stream, Worldant pipes it over Server-Sent Events (SSE):
+        </p>
+        <Code>{`// src/net/handler.ts
+const reader = getRun(runId).readable.getReader();
+for (;;) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  res.write(encodeSseChunk(value));
+}`}</Code>
+        <p>
+          The same endpoint serves a React frontend and an MCP tool caller simultaneously.
+        </p>
+
+        <h2>3. Serverless Execution with Scale-to-Zero</h2>
+        <p>
+          Because one-time-use apps are ephemeral, keeping a dedicated process running 24/7 for each user's agent would exhaust server memory and budget. We need workflows to turn off completely when idle, and wake up instantly when a new connection or a scheduled step fires.
+        </p>
+        <p>
+          Worldant implements this using a native supervisor CLI that runs in front of the application. The supervisor binds the public TCP port, while the child Node/Deno app hijacks its own listen calls:
+        </p>
+        <Code>{`// src/supervisor.ts
+function installListenHijack() {
+  http.Server.prototype.listen = function (this: http.Server, ...args: unknown[]) {
+    const parsed = parseListenArgs(args);
+    const privateSock = privateSockPath(parsed.port);
+    
+    // Bind to a private Unix socket instead of public TCP
+    return ORIGINAL_LISTEN.call(this, privateSock, announce);
+  };
+}`}</Code>
+        <p>
+          When the app is idle, the supervisor shuts down the Node process. When a public TCP request arrives, the supervisor holds the socket open, wakes the process in milliseconds, and forwards the connection over the Unix socket.
+        </p>
+
+        <h2>The Road Ahead</h2>
+        <p>
+          Durable execution gives us the guarantee that our backend code will complete. By building remote function imports, MCP server projections, and scale-to-zero supervision, we are turning those guarantees into a dynamic, agentic substrate.
+        </p>
+        <p>
+          One-time-use apps by AI require a different kind of infrastructure—one where logic is fluid, data is consolidated, and networking is abstract. That is the infrastructure we are building at Midwess.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "introducing-worldant",
     title: "Worldant: Enhancing Vercel Workflow for the Agentic Era",
     description: "Vercel Workflow makes durable execution simple. Worldant enhances it by bringing workflows in-process on embedded SQLite and projecting them directly as MCP tools for AI agents.",

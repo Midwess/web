@@ -1,4 +1,4 @@
-var wo=Object.defineProperty;var bo=(o,e,r)=>e in o?wo(o,e,{enumerable:!0,configurable:!0,writable:!0,value:r}):o[e]=r;var S=(o,e,r)=>bo(o,typeof e!="symbol"?e+"":e,r);import{r as k,j as D}from"./index-C_v2EgKW.js";const Ao=`#version 300 es
+var wo=Object.defineProperty;var bo=(o,e,r)=>e in o?wo(o,e,{enumerable:!0,configurable:!0,writable:!0,value:r}):o[e]=r;var S=(o,e,r)=>bo(o,typeof e!="symbol"?e+"":e,r);import{r as k,j as D}from"./index-CVUgVb9j.js";const Ao=`#version 300 es
 precision mediump float;
 
 layout(location = 0) in vec4 a_position;

@@ -1,0 +1,237 @@
+---
+title: Remote functions
+description: Call your world's workflows as typed, browser-safe remote functions from any frontend
+---
+
+# Remote functions
+
+A deployed world serves itself as a **live npm registry**. Any consumer — a browser app, a Node service, or another world — installs the generated typed package and calls your workflows like local functions, with no key strings and no manual HTTP wiring.
+
+```ts
+import { placeOrder, trackOrder } from 'orders';
+
+const receipt = await placeOrder(order);              // typed OrderReceipt
+for await (const status of trackOrder(order.id)) {}   // typed OrderStatus, via SSE
+```
+
+worldant handles the codec (including `Uint8Array` and `Date` round-trips), SSE streaming, and polling. The generated package carries only a non-secret `defaultConfiguration`; auth is supplied at runtime via `configure({ token })`.
+
+## How it works
+
+The world exposes two HTTP surfaces once `net` is set:
+
+- **`/__worldant/v1/npm`** — a read-only npm registry that serves the typed contract for that world. `npm install <world-id> --registry <host>/__worldant/v1/npm` fetches it.
+- **`/__worldant/v1/runs`** — the call endpoint that `worldant-client` drives: `POST /runs` to start, `GET /runs/:id` to poll, `GET /runs/:id/stream` for SSE.
+
+<DChart label="Remote function path" title="From a typed call to the world and back">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" mono title="import { placeOrder } from 'orders'" sub="generated typed wrapper" />
+    <DArrow dir="right" kind="accent" />
+    <DBox mono title="worldant-client" sub={["POST /runs", "poll GET /runs/:id", "or SSE /runs/:id/stream"]} />
+    <DArrow dir="right" kind="info" />
+    <DBox kind="info" mono title="world-net" sub={["HTTP server", "CORS · auth · codec"]} />
+    <DArrow dir="right" kind="success" />
+    <DBox kind="success" mono title="in-process World" sub="embedded SQLite · workflows run here" />
+  </DRow>
+</DChart>
+<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>The world receives the call, runs the workflow in-process against SQLite, and streams or returns the typed result.</figcaption>
+
+## Enable `net` on the world
+
+By default, `createWorld` opens the durable World but does not expose an HTTP server. Pass `net` to enable the network surface:
+
+```ts
+// dedicated port (Next.js, plain Node — world gets its own HTTP server)
+await createWorld({ id: 'orders', net: { port: 4001 } });
+
+// ride the app's own port (NestJS, Express, Fastify — world registers its routes there)
+await createWorld({ id: '@fxdesk/quotes', net: { useOnPremisePort: true } });
+```
+
+| Option | Type | Notes |
+|---|---|---|
+| `port` | `number` | Spin up a dedicated HTTP server for the world on this port. |
+| `useOnPremisePort` | `boolean` | Register `/__worldant/v1/*` routes on the app's own HTTP server. No separate port. |
+| `cors` | `string[]` | Origins allowed to call the world from a browser (CORS preflight). Required for cross-origin browser calls. |
+| `token` | `string` | Bearer token the server requires on every request. Clients supply it via `configure({ token })`. |
+
+## Install the typed client
+
+Once the world is running, any consumer installs the generated contract package:
+
+```sh
+# world-id is the id you passed to createWorld — e.g. 'orders' or '@fxdesk/quotes'
+npm install <world-id> --registry https://<world-host>/__worldant/v1/npm
+```
+
+The installed package exports:
+
+- **Typed wrappers** (`placeOrder`, `watchRate`, …) — one function per workflow.
+- **`defaultConfiguration`** — `{ worldId, baseUrl, prefix, pollMs }`. Derived from the URL you installed from. Never contains a secret.
+- **`configure(partial)`** — override connection config at runtime (e.g. inject a token, point at a proxy).
+- **`worldName`, `workflows`** — the raw contract, for direct `worldant-client` use.
+
+`worldant-client` is the transport the generated package depends on — install it once per consumer:
+
+```sh
+npm install worldant-client
+```
+
+## Same-origin — Next.js
+
+`withWorldant` discovers your `'use workflow'` files at build time, extracts the contract, and generates `worldant/client.ts` — a typed client your frontend imports directly. No `gen-contract` step.
+
+```ts
+// next.config.ts
+import { withWorkflow } from 'workflow/next';
+import { withWorldant } from '@midwess/worldant/next';
+
+const WORLD_PORT = Number(process.env.WORLDANT_NET_PORT ?? 4001);
+
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/__worldant/v1/:path*',
+        destination: `http://127.0.0.1:${WORLD_PORT}/__worldant/v1/:path*`,
+      },
+    ];
+  },
+};
+
+export default withWorkflow(withWorldant(nextConfig, { client: true }));
+```
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === 'edge') return;
+  const { createWorld } = await import('@midwess/worldant');
+  const port = Number(process.env.WORLDANT_NET_PORT ?? 4001);
+  await createWorld({ id: 'orders', net: { port } });
+}
+```
+
+The rewrite proxies `/__worldant/v1/*` from the app's own origin to the world port. The generated `worldant/client.ts` uses `createClient()` with `baseUrl = ''` (relative), so the browser only talks to its own origin — no CORS needed.
+
+```ts
+// app/checkout-button.tsx
+'use client';
+import { placeOrder, trackOrder } from '../worldant/client';
+
+const receipt = await placeOrder(order);               // typed OrderReceipt
+for await (const s of trackOrder(order.id)) { … }      // typed, SSE stream
+```
+
+<DChart label="Same-origin path" title="Browser calls its own Next.js origin; a rewrite forwards to the dedicated world port">
+  <DRow gap={14} align="center">
+    <DBox kind="accent" title="Browser (:3000)" sub="fetch /__worldant/v1/runs (same origin)" />
+    <DArrow dir="right" kind="accent" label="rewrite" />
+    <DBox kind="info" title="world-net (:4001)" sub="dedicated HTTP server" />
+    <DArrow dir="right" kind="success" />
+    <DBox kind="success" title="in-process World" sub="SQLite · workflows" />
+  </DRow>
+  <DNote>No CORS — the browser only talks to localhost:3000; Next.js forwards server-side.</DNote>
+</DChart>
+
+> `worldant/client.ts` is generated on first `next dev` / `next build`. Your editor may flag the import until then — run dev once.
+
+See [`examples/nextjs-remote-functions`](https://github.com/Midwess/worldant/tree/main/examples/nextjs-remote-functions) for the complete runnable example (includes a value workflow `placeOrder` and an SSE stream `trackOrder`).
+
+## Cross-origin
+
+When the consumer runs on a different origin from the world (e.g. a Vite app on `:5173` calling a NestJS world on `:3000`), two things are required: CORS on the server, and package routing on the client.
+
+**1. Enable CORS and ride the app port:**
+
+```ts
+// NestJS world.bootstrap.ts
+await createWorld({
+  id: '@fxdesk/quotes',
+  net: { useOnPremisePort: true, cors: ['http://localhost:5173'] },
+});
+```
+
+**2. Route the npm scope in `.npmrc`:**
+
+Scope the world id (`@scope/name`) so the client's package manager routes only that scope to the world's registry. Everything else — `react`, `vite`, etc. — still comes from npm:
+
+```ini
+# client/.npmrc
+@fxdesk:registry=http://localhost:3000/__worldant/v1/npm
+```
+
+```sh
+pnpm install   # @fxdesk/quotes from the world, everything else from npm
+```
+
+**3. Call from the browser:**
+
+```ts
+import { quote, watchRate } from '@fxdesk/quotes';
+
+const lines = await quote(100);                         // typed quote lines + Date
+for await (const tick of watchRate('EUR')) { … }        // live rate ticks, SSE
+```
+
+`defaultConfiguration.baseUrl` is baked into the generated package from the URL you installed from — cross-origin fetch works once CORS is enabled on the server.
+
+<DChart label="Cross-origin path" title="Scoped .npmrc routes the install to the world; CORS allows the browser call">
+  <DRow gap={18} align="start">
+    <DGroup label="Build time (npm install)">
+      <DBox kind="info" title="pnpm install" sub={[".npmrc: @fxdesk:registry=...", "fetches @fxdesk/quotes from world"]} />
+      <DArrow dir="down" kind="info" />
+      <DBox kind="info" title="@fxdesk/quotes" sub={["typed wrappers", "defaultConfiguration (baseUrl=:3000)"]} />
+    </DGroup>
+    <DGroup label="Runtime (browser fetch)">
+      <DBox kind="accent" title="Browser (:5173)" sub="import { quote } from '@fxdesk/quotes'" />
+      <DArrow dir="right" kind="accent" label="cross-origin fetch (CORS)" />
+      <DBox kind="success" title="world-net (:3000)" sub="CORS allows :5173" />
+    </DGroup>
+  </DRow>
+  <DNote>Two kinds of cross-origin: the npm install (Node fetch, no CORS) and the browser call (CORS, opt-in).</DNote>
+</DChart>
+
+See [`examples/nestjs-vite-cross-origin`](https://github.com/Midwess/worldant/tree/main/examples/nestjs-vite-cross-origin) for the complete runnable example.
+
+## React hook (`worldant-react`)
+
+`worldant-react` provides `useWorldant(schema)` — a memoized, SSR-safe hook that binds a `worldant-client` to the schema's `defaultConfiguration`:
+
+```tsx
+'use client';
+import * as orders from 'orders';
+import { useWorldant } from 'worldant-react';
+
+export function BuyButton({ order }) {
+  const world = useWorldant(orders);           // same-origin by default
+  return <button onClick={() => world.checkout(order)}>Buy</button>;
+}
+```
+
+Override connection config at mount:
+
+```ts
+useWorldant(orders, { baseUrl: '' });          // force same-origin
+useWorldant(orders, { token });                // add auth at runtime
+```
+
+Returns `{ call, stream, configure }`. Use the typed wrappers from the schema package (`world.placeOrder`, `world.trackOrder`) or call `call`/`stream` directly.
+
+## Security
+
+`defaultConfiguration` is publicly downloadable inside the generated package — it never contains a token. Supply auth at runtime:
+
+```ts
+// server
+await createWorld({
+  id: 'orders',
+  net: { port: 4001, token: process.env.WORLD_TOKEN },
+});
+
+// client (generated package)
+import { configure } from 'orders';
+configure({ token: process.env.NEXT_PUBLIC_WORLD_TOKEN });
+```
+
+The token travels as `Authorization: Bearer <token>` on every request. `defaultConfiguration` never carries it — a consumer who downloads the schema package cannot call the world without the token.

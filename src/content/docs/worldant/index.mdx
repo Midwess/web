@@ -41,13 +41,13 @@ Worldant ships as two packages around one durable core. The library is the durab
 
 ## Three ways to call a workflow
 
-A durable workflow is only useful once something can reach it. Worldant's goal is to expose one workflow through every calling surface you need — the workflow underneath never changes, only how it is reached. Today only the **API** surface is implemented; the others are on the roadmap.
+A durable workflow is only useful once something can reach it. Worldant's goal is to expose one workflow through every calling surface you need — the workflow underneath never changes, only how it is reached.
 
 | Surface | What it means | Status |
 |---|---|---|
 | **API** | Your app's HTTP routes (NestJS / Express / Next) trigger workflows. The supervisor owns the public port and forwards every byte to your app. | **Shipped** |
-| **MCP** | The same workflows surfaced as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an agent can invoke them. | Roadmap (not yet implemented) |
-| **Remote function** | A generated, typed RPC client so other services call your workflows like local functions. | Roadmap (not yet implemented) |
+| **Remote function** | A deployed world serves itself as a live npm registry, so any consumer installs a generated, typed RPC client and calls your workflows like local functions ([same-origin](/worldant/remote-functions#same-origin-nextjs) / [cross-origin](/worldant/remote-functions#cross-origin)). | **Shipped** |
+| **MCP** | The same workflows surfaced as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an agent can invoke them. | Roadmap |
 
 ## Features
 
@@ -110,6 +110,7 @@ Under the supervisor, the app comes up in a fixed sequence. Importing the librar
 - [**How it works**](/worldant/how-it-works) — architecture, data flow, supervisor lifecycle
 - [**Installation**](/worldant/installation) — install the package in your app
 - [**Quickstart**](/worldant/quickstart) — install, wire up, run a workflow, read the result
-- [**Guides**](/worldant/workflows) — one page per feature: workflows, reading runs, supervisor, configuration
+- [**Guides**](/worldant/workflows) — one page per feature: workflows, remote functions, reading runs, supervisor, configuration
+- [**Remote functions**](/worldant/remote-functions) — typed RPC client, `withWorldant`, same-origin and cross-origin setup
 - [**Configuration**](/worldant/configuration) — `WorldConfig`, codec, paths
 - [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import { createHighlighter, type BundledLanguage } from "shiki";
 import { Link } from "@/components/landing/_link";
 import dunes from "@/assets/desert-dunes.jpg";
 import night from "@/assets/desert-night.jpg";
@@ -15,11 +16,64 @@ export type BlogPost = {
   body: ReactNode;
 };
 
-const Code = ({ children }: { children: string }) => (
-  <pre>
-    <code>{children}</code>
-  </pre>
-);
+const highlighterPromise = createHighlighter({
+  themes: ["github-dark"],
+  langs: ["typescript", "javascript", "rust", "bash", "yaml", "dockerfile", "nginx", "proto"],
+});
+
+type Token = { content: string; color?: string; bold?: boolean; italic?: boolean };
+
+const Code = ({ children, lang = "typescript" }: { children: string; lang?: BundledLanguage }) => {
+  const [lines, setLines] = useState<Token[][] | null>(null);
+
+  useEffect(() => {
+    highlighterPromise.then((hl) => {
+      const { tokens } = hl.codeToTokens(children.trimEnd(), { lang, theme: "github-dark" });
+      setLines(
+        tokens.map((line) =>
+          line.map((t) => ({
+            content: t.content,
+            color: t.color,
+            bold: !!(t.fontStyle && t.fontStyle & 2),
+            italic: !!(t.fontStyle && t.fontStyle & 1),
+          }))
+        )
+      );
+    });
+  }, [children, lang]);
+
+  if (!lines) {
+    return (
+      <pre>
+        <code>{children}</code>
+      </pre>
+    );
+  }
+
+  return (
+    <pre>
+      <code>
+        {lines.map((line, i) => (
+          <span key={i}>
+            {line.map((token, j) => (
+              <span
+                key={j}
+                style={{
+                  color: token.color,
+                  fontWeight: token.bold ? "bold" : undefined,
+                  fontStyle: token.italic ? "italic" : undefined,
+                }}
+              >
+                {token.content}
+              </span>
+            ))}
+            {"\n"}
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
+};
 
 export const posts: BlogPost[] = [
   {
@@ -66,7 +120,7 @@ export const posts: BlogPost[] = [
         <p>
           Looking at the backend of the cross-origin example, the Quotes server initializes its World:
         </p>
-        <Code>{`// server/src/world.bootstrap.ts
+        <Code lang="typescript">{`// server/src/world.bootstrap.ts
 const world = await createWorld({
   dataDir,
   id: '@fxdesk/quotes',
@@ -75,11 +129,11 @@ const world = await createWorld({
         <p>
           Behind the scenes, the Worldant runtime compiles the workflow types and hosts its own dynamic NPM registry directly from the running app server. In the client's <code>.npmrc</code>, we route scoped packages directly to the server:
         </p>
-        <Code>{`@fxdesk:registry=http://localhost:3000/__worldant/v1/npm`}</Code>
+        <Code lang="bash">{`@fxdesk:registry=http://localhost:3000/__worldant/v1/npm`}</Code>
         <p>
           The client simply runs <code>npm install @fxdesk/quotes</code>. It can then import and call the workflows directly as fully-typed JavaScript functions:
         </p>
-        <Code>{`import { quote, watchRate } from '@fxdesk/quotes';
+        <Code lang="typescript">{`import { quote, watchRate } from '@fxdesk/quotes';
 
 // oneshot value-to-value call
 const receipt = await quote({ amountUsd: 100 });
@@ -102,7 +156,7 @@ for await (const tick of watchRate('EUR')) {
         <p>
           In the <code>worldant</code> HTTP handler (<code>src/net/handler.ts</code>), we can see the unified data plane. A client call to run a workflow is handled dynamically by looking up the workflow registry:
         </p>
-        <Code>{`// src/net/handler.ts
+        <Code lang="typescript">{`// src/net/handler.ts
 if (method === 'POST' && path === '/runs') {
   const { workflowId: requested, args } = decode(await readBody(req));
   const workflowId = await resolveWorkflowId(src.native, requested);
@@ -112,7 +166,7 @@ if (method === 'POST' && path === '/runs') {
         <p>
           And if the workflow returns a live output stream, Worldant pipes it over Server-Sent Events (SSE):
         </p>
-        <Code>{`// src/net/handler.ts
+        <Code lang="typescript">{`// src/net/handler.ts
 const reader = getRun(runId).readable.getReader();
 for (;;) {
   const { done, value } = await reader.read();
@@ -130,7 +184,7 @@ for (;;) {
         <p>
           Worldant implements this using a native supervisor CLI that runs in front of the application. The supervisor binds the public TCP port, while the child Node/Deno app hijacks its own listen calls:
         </p>
-        <Code>{`// src/supervisor.ts
+        <Code lang="typescript">{`// src/supervisor.ts
 function installListenHijack() {
   http.Server.prototype.listen = function (this: http.Server, ...args: unknown[]) {
     const parsed = parseListenArgs(args);
@@ -183,7 +237,7 @@ function installListenHijack() {
         <p>
           Vercel Workflow splits into two halves: a <em>core</em> that owns the programming model (the replay runtime, retries, and steps) and a <em>world</em> that owns storage. Worldant is a drop-in replacement for that storage layer, backing it with a Rust-backed SQLite database running in-process:
         </p>
-        <Code>{`// at your app's entry, before it serves a single request
+        <Code lang="typescript">{`// at your app's entry, before it serves a single request
 import { install } from "@midwess/worldant";
 
 await install(); // durable World on embedded SQLite, wired into Vercel Workflow`}</Code>
@@ -198,7 +252,7 @@ await install(); // durable World on embedded SQLite, wired into Vercel Workflow
         <p>
           Consider this simple workflow:
         </p>
-        <Code>{`// workflows/research.ts
+        <Code lang="typescript">{`// workflows/research.ts
 export async function research(topic: string) {
   "use workflow";
 
@@ -244,7 +298,7 @@ export async function research(topic: string) {
         <p>
           Getting started is simple. Install the library in your app and the supervisor CLI globally:
         </p>
-        <Code>{`# 1. Install the durable World library
+        <Code lang="bash">{`# 1. Install the durable World library
 npm install @midwess/worldant
 
 # 2. Install the supervisor CLI
@@ -299,7 +353,7 @@ worldant run -- npm start`}</Code>
           final image ships the static site and nothing else — no Dart, no SDK,
           no build tools.
         </p>
-        <Code>{`# ---- build stage ----
+        <Code lang="dockerfile">{`# ---- build stage ----
 FROM ubuntu:22.04 AS builder
 RUN apt-get update && apt-get install -y \\
     git curl unzip xz-utils libglu1-mesa ca-certificates
@@ -318,7 +372,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf`}</Code>
           The Nginx config is tiny — point the root at the built site and let
           it serve <code>index.html</code> as the entry point.
         </p>
-        <Code>{`server {
+        <Code lang="nginx">{`server {
     listen 80;
     location / {
         root  /usr/share/nginx/html;
@@ -337,7 +391,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf`}</Code>
           Never let the CI runner be the first place your image runs. Build and
           run it on your machine, then open the port and click around.
         </p>
-        <Code>{`docker build -t simple_web .
+        <Code lang="bash">{`docker build -t simple_web .
 docker run -p 3000:80 --name simple_web simple_web:latest
 # visit http://localhost:3000`}</Code>
 
@@ -349,7 +403,7 @@ docker run -p 3000:80 --name simple_web simple_web:latest
           <strong>Settings → Secrets and variables</strong> — registry login,
           the server's host, and an SSH private key — never in the repo.
         </p>
-        <Code>{`on:
+        <Code lang="yaml">{`on:
   push:
     branches: [main]
 
@@ -445,7 +499,7 @@ jobs:
           IDE (no autocomplete) and the API is clumsy.{" "}
           <strong>ConnectRPC</strong> reads like normal modern JavaScript:
         </p>
-        <Code>{`// grpc-js — no constructor args, setter soup, callbacks
+        <Code lang="javascript">{`// grpc-js — no constructor args, setter soup, callbacks
 const msg = new ProtoMessage();
 msg.setPropA("something");
 service.create(msg, (err, data) => { /* ... */ });
@@ -461,7 +515,7 @@ const data = await service.create(msg);`}</Code>
           request and response keeps it loose and JavaScript-friendly: the
           response comes back looking like a plain object.
         </p>
-        <Code>{`syntax = "proto3";
+        <Code lang="proto">{`syntax = "proto3";
 package devlog;
 import "google/protobuf/struct.proto";
 
@@ -482,7 +536,7 @@ service Discussion {
           method, and an environment flag decides whether the call goes to the
           new Rust path or the original implementation:
         </p>
-        <Code>{`export function Migrated(fn: (...args: any[]) => any) {
+        <Code lang="typescript">{`export function Migrated(fn: (...args: any[]) => any) {
   return (_t: any, _k: string, descriptor: PropertyDescriptor) => {
     const original = descriptor.value;
     descriptor.value = function (...args: any[]) {
@@ -493,7 +547,7 @@ service Discussion {
   };
 }`}</Code>
         <p>And applying it leaves the old code completely untouched:</p>
-        <Code>{`class DiscussionService {
+        <Code lang="typescript">{`class DiscussionService {
   @Migrated(async function (discussion) {
     const res = await rustService.create(struct(discussion));
     return res.fields;
@@ -555,7 +609,7 @@ service Discussion {
           <code>&amp;dyn Trait</code> without knowing the concrete type. That's
           dynamic dispatch: the call is resolved at runtime through a vtable.
         </p>
-        <Code>{`trait Speak {
+        <Code lang="rust">{`trait Speak {
     fn say(&self);
 }
 
@@ -577,7 +631,7 @@ fn make_it_speak(a: &dyn Speak) {
           <code>match</code> forces you to handle every case — add a variant
           later and the compiler walks you to every place that needs updating.
         </p>
-        <Code>{`enum Animal {
+        <Code lang="rust">{`enum Animal {
     Dog,
     Cat,
 }
@@ -631,7 +685,7 @@ impl Animal {
           implements <code>Deref</code>/<code>DerefMut</code>, so you call
           straight through to the connection:
         </p>
-        <Code>{`async fn find_all(&self) -> Result<Vec<User>, Error> {
+        <Code lang="rust">{`async fn find_all(&self) -> Result<Vec<User>, Error> {
     let db = self.db_request.retrieve().await
         .ok_or(Error::DatabaseConnection)?;
 
@@ -685,7 +739,7 @@ impl Animal {
           one. A provider trait captures that, and a struct carries the
           construction parameters:
         </p>
-        <Code>{`pub trait PoolResourceProvider<T>: Send + Sync
+        <Code lang="rust">{`pub trait PoolResourceProvider<T>: Send + Sync
 where T: Send + Sync {
     async fn new(&self) -> T;
 }
@@ -710,7 +764,7 @@ impl PoolResourceProvider<PgConnection> for DbProvider {
           out resources; the <strong>Cleaner</strong> reclaims idle ones in the
           background.
         </p>
-        <Code>{`pub struct Pool<T> where T: Send + Sync + 'static {
+        <Code lang="rust">{`pub struct Pool<T> where T: Send + Sync + 'static {
     min_size: usize,
     max_size: usize,
     items: Mutex<VecDeque<PoolItem<T>>>,
@@ -731,7 +785,7 @@ impl PoolResourceProvider<PgConnection> for DbProvider {
           and they wait forever. The rule we enforce is simple — never hold more
           than one lock simultaneously.
         </p>
-        <Code>{`// never:
+        <Code lang="rust">{`// never:
 let a = mutex_a.lock().await;
 let b = mutex_b.lock().await; // both held — deadlock risk
 
@@ -755,7 +809,7 @@ let b = mutex_b.lock().await;`}</Code>
           <code>PoolResponse&lt;T&gt;</code>, and its <code>Drop</code>{" "}
           implementation returns it automatically:
         </p>
-        <Code>{`impl<T> Drop for PoolResponse<T>
+        <Code lang="rust">{`impl<T> Drop for PoolResponse<T>
 where T: Send + Sync + 'static {
     fn drop(&mut self) {
         let pool = self.pool.take();

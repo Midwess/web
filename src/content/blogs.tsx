@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "@/components/landing/_link";
 import dunes from "@/assets/desert-dunes.jpg";
 import night from "@/assets/desert-night.jpg";
 import mountain from "@/assets/mountain.jpg";
@@ -21,6 +22,113 @@ const Code = ({ children }: { children: string }) => (
 );
 
 export const posts: BlogPost[] = [
+  {
+    slug: "introducing-worldant",
+    title: "Worldant: Enhancing Vercel Workflow for the Agentic Era",
+    description: "Vercel Workflow makes durable execution simple. Worldant enhances it by bringing workflows in-process on embedded SQLite and projecting them directly as MCP tools for AI agents.",
+    date: "2026-06-22",
+    readTime: "6 min read",
+    author: "James Dang",
+    cover: mountain,
+    body: (
+      <>
+        <p>
+          <Link href="https://vercel.com/docs/workflow">Vercel Workflow</Link>{" "}
+          changed how we write resilient backend code. By writing simple TypeScript functions with <code>"use workflow"</code> and <code>"use step"</code> directives, developers get durable execution, automatic retries, and state persistence for free. It’s an incredibly elegant way to build checkout flows, data ingestion pipelines, and multi-step sagas.
+        </p>
+        <p>
+          But as developers start building agentic applications, a new challenge emerges: <strong>how do we expose these robust, durable workflows to AI agents?</strong>
+        </p>
+        <p>
+          Today, a workflow is usually written for your users to trigger via your app's HTTP API. If you want an AI agent to call that same workflow, you have to hand-maintain a separate{" "}
+          <Link href="https://modelcontextprotocol.io">Model Context Protocol (MCP)</Link> server. Suddenly, you have two integration paths for the same piece of business logic, slowly drifting apart.
+        </p>
+        <p>
+          We built <strong>Worldant</strong> to bridge this gap. Worldant is a self-hosted, in-process <em>World</em> implementation (implementing the <code>@workflow/world</code> interface) that runs directly inside your Node.js app and persists to embedded SQLite. It doesn't replace Vercel Workflow; it enhances it, allowing you to write a durable workflow once and expose it to both human users and AI agents with no rewrite and no Postgres to babysit.
+        </p>
+
+        <h2>How Worldant Works</h2>
+        <p>
+          Vercel Workflow splits into two halves: a <em>core</em> that owns the programming model (the replay runtime, retries, and steps) and a <em>world</em> that owns storage. Worldant is a drop-in replacement for that storage layer, backing it with a Rust-backed SQLite database running in-process:
+        </p>
+        <Code>{`// at your app's entry, before it serves a single request
+import { install } from "@midwess/worldant";
+
+await install(); // durable World on embedded SQLite, wired into Vercel Workflow`}</Code>
+        <p>
+          With that one call, every run, step, and event is persisted to a single SQLite file with cross-process exactly-once execution. If your process restarts, the log is resumed, and a step that already committed never runs twice.
+        </p>
+
+        <h2>Enhancing the Workflow for Agents</h2>
+        <p>
+          Because a durable Vercel Workflow is already structured, typed, and resilient, it has everything an AI agent needs to discover and invoke it. Worldant leverages this by making MCP tools a <em>projection</em> of your existing workflows, rather than a separate integration.
+        </p>
+        <p>
+          Consider this simple workflow:
+        </p>
+        <Code>{`// workflows/research.ts
+export async function research(topic: string) {
+  "use workflow";
+
+  const sources = await search(topic);              // step 1
+  const notes = await Promise.all(sources.map(read)); // step 2
+  return await summarize(notes);                     // step 3
+}`}</Code>
+        <p>
+          Under Worldant, this single workflow serves three calling surfaces simultaneously:
+        </p>
+        <ul>
+          <li>
+            <strong>API (Shipped today):</strong> Your users trigger the workflow over your app's standard HTTP routes.
+          </li>
+          <li>
+            <strong>MCP (On the roadmap):</strong> The same workflow is automatically surfaced as an MCP tool, allowing LLM agents to invoke it natively.
+          </li>
+          <li>
+            <strong>RPC (On the roadmap):</strong> A generated client lets other services call your workflows like local functions.
+          </li>
+        </ul>
+        <p>
+          Your core business logic remains identical. One implementation, two audiences: humans through your app's API, and agents through MCP. Both get exactly-once execution, retries, and durability for free.
+        </p>
+
+        <h2>Built for Scale-to-Zero and Zero-Downtime</h2>
+        <p>
+          Agent workloads are bursty—they trigger intensive runs and then sit idle. Traditional serverless pipelines or continuous VMs charge you while waiting. Worldant ships with a native supervisor CLI that runs in front of your app to solve this:
+        </p>
+        <ul>
+          <li>
+            <strong>Scale to Zero:</strong> When your app is idle, the supervisor shuts down your Node process, leaving only a thin Rust daemon. The supervisor holds the public TCP port open. When a new request (or a scheduled workflow step) arrives, it wakes the process in milliseconds.
+          </li>
+          <li>
+            <strong>Massive Density, Low Footprint:</strong> If your agents need to generate and run a massive number of micro-applications to serve your workloads, keeping them all running continuously would quickly exhaust your server's memory. With Worldant's automatic scale-to-zero, dozens or even hundreds of Node.js applications can co-exist on the same single machine, keeping the memory footprint exceptionally low while remaining instantly responsive to incoming tasks.
+          </li>
+          <li>
+            <strong>Zero-Downtime Redeploys:</strong> Running <code>worldant run -- npm start</code> hot-swaps your app. The supervisor drains the old version, buffers incoming connections, boots the new process, and hot-swaps them with zero dropped requests.
+          </li>
+        </ul>
+
+        <h2>Quickstart</h2>
+        <p>
+          Getting started is simple. Install the library in your app and the supervisor CLI globally:
+        </p>
+        <Code>{`# 1. Install the durable World library
+npm install @midwess/worldant
+
+# 2. Install the supervisor CLI
+npm install -g @midwess/worldant-cli
+
+# 3. Run your app under the supervisor
+worldant run -- npm start`}</Code>
+
+        <h2>Where to Go Next</h2>
+        <p>
+          If durable, in-process workflows that your users and agents can both reach sounds like the right architecture for your project, dive into the docs. Read{" "}
+          <Link href="/worldant">the Worldant documentation</Link> for detailed guides on the supervisor architecture, configuration options, and a quickstart to get your first workflow running.
+        </p>
+      </>
+    ),
+  },
   {
     slug: "deploy-flutter-web",
     title: "Deploying Flutter Web with GitHub Actions",

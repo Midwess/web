@@ -91,14 +91,39 @@ const world = useWorldant(quotes, {
 const lines = await world.quote(100);
 ```
 
+## Passing `runId` and `scopeKey`
+
+Every typed wrapper accepts an optional `opts?: CallOptions` as its last argument:
+
+```tsx
+import * as orders from 'worldant/client';
+import { useWorldant } from 'worldant-react';
+import type { CallOptions } from 'worldant-client';
+
+export function CheckoutButton({ cartId, order }) {
+  const world = useWorldant(orders);
+
+  async function handleClick() {
+    // Persist across a page reload while the order is in progress
+    const opts: CallOptions = { scopeKey: `order:${cartId}` };
+    const receipt = await world.placeOrder(order, opts);
+    console.log('Placed:', receipt.orderId);
+  }
+
+  return <button onClick={handleClick}>Place order</button>;
+}
+```
+
+See [Run IDs and idempotency](/worldant/remote-functions/same-origin#run-ids-and-idempotency-calloptions) for the full option reference.
+
 ## What `useWorldant` returns
 
 | Property | Type | Description |
 |---|---|---|
-| `call(key, args)` | `Promise<R>` | Raw call — used by typed wrappers internally |
+| `call(key, args, opts?)` | `Promise<R>` | Raw call — used by typed wrappers internally |
 | `stream(key, args)` | `AsyncIterable<T>` | Raw stream — used by typed wrappers internally |
 | `configure(partial)` | `void` | Override config after mount |
-| `world.placeOrder(…)` | `Promise<R>` | Typed workflow wrapper (one per workflow in the schema) |
+| `world.placeOrder(…, opts?)` | `Promise<R>` | Typed workflow wrapper (one per workflow in the schema) |
 
 The typed wrappers are attached directly on the returned object — prefer them over `call`/`stream` directly.
 

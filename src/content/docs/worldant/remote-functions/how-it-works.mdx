@@ -38,24 +38,63 @@ The extracted signatures are written to `worldant.catalog.json`. The catalog fee
 
 ## The call path
 
-When a consumer calls a generated wrapper like `placeOrder(order)`, `worldant-client` drives a standard HTTP sequence:
+When a consumer calls a generated wrapper like `placeOrder(order)`, `worldant-client` drives a three-stage sequence:
 
-1. `POST /__worldant/v1/runs` — start the run, get a run id back.
-2. `GET /__worldant/v1/runs/:id/stream` — SSE stream of step events and the final `returnValue`.
-3. If SSE is unavailable (non-browser, firewall, etc.) — poll `GET /__worldant/v1/runs/:id` every `pollMs` milliseconds.
+1. `POST /__worldant/v1/runs?wait=N` — submit the run with a `runId` (auto-generated or supplied) and wait up to `N` seconds for inline completion. If the workflow finishes within that window, the response carries the result and the call resolves immediately — no second request needed.
+2. `GET /__worldant/v1/runs/:id` — if the POST times out without a terminal result, the client polls this endpoint every `pollMs` milliseconds until the run completes.
+3. Network or `5xx` errors on either step are retried with exponential backoff against **the same `runId`** — the run is never submitted twice.
 
 <DChart label="Call path" title="From a typed function call to the completed workflow run">
   <DRow gap={14} align="center">
     <DBox kind="accent" mono title="placeOrder(order)" sub="generated typed wrapper" />
     <DArrow dir="right" kind="accent" />
-    <DBox mono title="worldant-client" sub={['POST /runs', 'GET /runs/:id/stream (SSE)', 'or poll /runs/:id']} />
+    <DBox mono title="worldant-client" sub={['POST /runs?wait=N (inline fast-path)', 'GET /runs/:id (poll fallback)', 'retry same runId on 5xx']} />
     <DArrow dir="right" kind="info" />
     <DBox kind="info" mono title="world-net" sub={['HTTP · CORS · auth', 'codec decode/encode']} />
     <DArrow dir="right" kind="success" />
     <DBox kind="success" mono title="World" sub={['embedded SQLite', 'durable replay']} />
   </DRow>
 </DChart>
-<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>The client prefers SSE for low latency; falls back to polling automatically. The durable World runs the workflow and streams back the result.</figcaption>
+<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>Fast workflows resolve on the POST response (the <code>?wait</code> fast path). Slow workflows fall through to polling. The run id stays stable across retries so no run is ever started twice.</figcaption>
+
+## Run IDs and idempotency
+
+Every call is idempotent by default. `worldant-client` auto-generates a conformant `wrun_<ULID>` for each call, in memory, scoped to that call. If the network drops or worldant restarts mid-flight, retrying resumes the **same run** — never a duplicate.
+
+```ts
+// Auto-idempotent — no setup required
+const receipt = await placeOrder(order);
+```
+
+The `runId` is valid for any world backend (SQLite, Postgres, or Vercel) because it is a real `wrun_<ULID>` — the same format those worlds expect.
+
+The client generates the id; the world deduplicates on its run primary key. There is no server-side idempotency table.
+
+### Explicit run ID
+
+Pass your own id to control dedup from outside the client:
+
+```ts
+import { generateRunId } from 'worldant-client';
+
+const runId = generateRunId(); // wrun_<ULID>
+const receipt = await placeOrder(order, { runId });
+// Any retry with the same runId resolves the same run
+```
+
+`generateRunId()` is exported from `worldant-client` and from the generated `worldant/client.ts` module.
+
+### `scopeKey` — survive a page reload (opt-in)
+
+The auto-id is in-memory. To survive a full page reload (the user navigates away and back during a long-running order), persist the id with a `scopeKey`:
+
+```ts
+const receipt = await placeOrder(order, { scopeKey: `order:${cartId}` });
+```
+
+The client mints a run id, stores it under `worldant:run:order:<cartId>` in `localStorage` (browser) or an in-memory map (SSR / Node), and on the next call with the same key it resumes the stored id. The key is cleared once the run is terminal.
+
+> **When to opt in.** Most calls do not need `scopeKey` — the auto-id handles connection drops and worldant restarts without any setup. Use `scopeKey` only when the user might leave and return to a page that should pick up a run that is still in progress.
 
 ## Codec — `Uint8Array` and `Date`
 

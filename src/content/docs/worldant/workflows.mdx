@@ -168,23 +168,38 @@ Sibling to hooks are **waits** — durable timer/correlation slots keyed `<runId
 
 ## Streams
 
-`getWritable` is a durable byte stream. Writes are persisted to the world's storage and survive process restarts; readers can resume from the last acknowledged offset.
+`outputStream<T>` from `@midwess/worldant` is the typed stream API. Writing happens inside a `'use step'` function; the workflow returns `outputStream<T>()` as the return value, declared with a `ReadableStream<T>` return type. Writes are persisted to the world's storage and survive process restarts.
 
-```ts
-import { getWritable } from 'workflow';
+```ts title="src/workflows/track-order.ts"
+import { outputStream } from '@midwess/worldant';
+import type { OrderStatus } from './types.js';
 
-export async function streamProgress(jobId: string) {
-  'use workflow';
-  const stream = getWritable({ name: `progress-${jobId}` });
-  const writer = stream.getWriter();
-  for (let i = 0; i < 100; i++) {
-    await writer.write(new TextEncoder().encode(`step ${i}\n`));
+const STAGES = ['received', 'packed', 'shipped', 'out-for-delivery', 'delivered'];
+
+async function track(orderId: string): Promise<void> {
+  'use step';
+  const out = outputStream<OrderStatus>();
+  for (let i = 0; i < STAGES.length; i++) {
+    await out.write({ stage: `${orderId}: ${STAGES[i]}`, pct: Math.round(((i + 1) / STAGES.length) * 100) });
   }
-  await writer.close();
+  await out.close();
+}
+
+export async function trackOrder(orderId: string): Promise<ReadableStream<OrderStatus>> {
+  'use workflow';
+  await track(orderId);
+  return outputStream<OrderStatus>();
 }
 ```
 
-Streams are append-only chunks with an EOF marker. They're useful for long-running progress updates, log shipping, and any case where the consumer wants to see partial output before the workflow completes.
+`outputStream<T>()` plays two roles depending on where it is called:
+
+- **In a step**: the real writer — `.write(value)` encodes and persists the typed value to the world's stream storage; `.close()` writes the EOF marker.
+- **In the workflow return**: a by-reference handle. The body does nothing — the `ReadableStream<T>` return annotation is the signal the codegen uses to detect this as a stream endpoint.
+
+Streams are append-only chunks with an EOF marker. They're useful for long-running progress updates, live status feeds, and any case where the consumer wants to see partial output before the workflow completes.
+
+The raw `getWritable` / `getReadable` primitives from `@workflow/core` remain available for direct `Uint8Array` writes.
 
 ## Child workflows
 

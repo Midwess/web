@@ -117,6 +117,20 @@ export async function processFile(data: Uint8Array): Promise<{ processedAt: Date
 }
 ```
 
+## Streams (SSE)
+
+When a workflow's return type is `ReadableStream<T>`, the world serves it as an SSE endpoint. No extra configuration is required — the `ReadableStream<T>` annotation is the only signal. The codegen detects it and the client automatically opens `GET /__worldant/v1/runs/:id/stream` instead of the polling path.
+
+The generated wrapper returns an `AsyncIterable<T>`. Consume it with `for await`:
+
+```ts
+for await (const status of trackOrder(order.id)) {
+  console.log(status.stage, status.pct);
+}
+```
+
+Codec runs on stream chunks — `Uint8Array` and `Date` fields in the payload type round-trip correctly.
+
 ## Security
 
 `defaultConfiguration` (world id, base URL, poll interval) is embedded in the generated package and is safe to expose publicly — it never contains a token. Supply auth at runtime:

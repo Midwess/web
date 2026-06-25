@@ -72,8 +72,11 @@ server {
     }
 
     # SPA fallback: any other path is a client-side route
+    # $uri/index.html (not $uri/) avoids nginx's directory-detection redirect
+    # that would 301 /worldant -> /worldant/. merge_slashes on (default) lets
+    # the trailing-slash variant still resolve to the same index.html.
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/index.html /index.html;
     }
 
     # Security headers

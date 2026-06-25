@@ -38,6 +38,11 @@ COPY <<'EOF' /etc/nginx/conf.d/default.conf
 server {
     listen 8080 default_server;
     server_name _;
+    # Behind Railway's HTTPS edge proxy, nginx only sees plain HTTP on 8080.
+    # absolute_redirect off makes Location relative to the request URL,
+    # preserving the original https:// scheme the client used.
+    absolute_redirect off;
+    port_in_redirect off;
     root /usr/share/nginx/html;
     index index.html;
 

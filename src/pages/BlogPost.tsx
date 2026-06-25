@@ -5,6 +5,7 @@ import { DivideX } from "@/components/landing/Divide";
 import { Container } from "@/components/landing/Container";
 import { Link } from "@/components/landing/_link";
 import { getPost } from "@/content/blogs";
+import { SeoHead, blogPostingLd, breadcrumbListLd } from "@/lib/seo";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", {
@@ -32,6 +33,30 @@ const BlogPost = () => {
 
   return (
     <>
+      <SeoHead
+        title={post.title}
+        description={post.description}
+        path={`/blog/${post.slug}`}
+        type="article"
+        image={post.cover}
+        publishedTime={new Date(post.date).toISOString()}
+        author={post.author}
+        jsonLd={[
+          blogPostingLd({
+            title: post.title,
+            description: post.description,
+            path: `/blog/${post.slug}`,
+            date: new Date(post.date).toISOString(),
+            author: post.author,
+            cover: post.cover,
+          }),
+          breadcrumbListLd([
+            { name: "Home", path: "/" },
+            { name: "Blog", path: "/#writing" },
+            { name: post.title, path: `/blog/${post.slug}` },
+          ]),
+        ]}
+      />
       <Navbar />
       <main>
         <DivideX />

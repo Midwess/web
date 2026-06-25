@@ -1,5 +1,13 @@
+import { SeoHead } from "@/lib/seo";
+
 const Policy = () => {
   return (
+    <>
+      <SeoHead
+        title="Privacy Policy"
+        description="How Midwess collects, uses, and protects your data. We do not sell personal information."
+        path="/policy"
+      />
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-3xl font-bold text-foreground mb-2">Privacy Policy</h1>
@@ -67,6 +75,7 @@ const Policy = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

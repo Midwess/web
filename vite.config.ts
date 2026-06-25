@@ -73,4 +73,15 @@ export default defineConfig(() => ({
       transformMixedEsModules: true,
     },
   },
+  // `ssgOptions` is read by `vite-react-ssg` and isn't part of Vite's
+  // own config schema — cast through `unknown` so tsc doesn't complain.
+  ...({ ssgOptions: {
+    // Emit `dist/<route>/index.html` instead of `dist/<route>.html`. Sitemap
+    // + canonical URLs use trailing slashes, which line up with any static
+    // host (Netlify / Vercel / nginx) and Google canonicalisation.
+    dirStyle: "nested",
+    // Pretty-print the HTML so it's diff-friendly in PRs. Requires the
+    // `prettier` package to be installed.
+    formatting: "prettify",
+  } } as unknown as Record<string, unknown>),
 }));

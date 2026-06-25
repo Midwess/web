@@ -4,6 +4,7 @@ import { DivideX } from "@/components/landing/Divide";
 import { Container } from "@/components/landing/Container";
 import { Badge, Heading, SectionHeading, SubHeading } from "@/components/landing/Typography";
 import { Values } from "@/components/landing/Values";
+import { SeoHead, organizationLd } from "@/lib/seo";
 
 const principles = [
   {
@@ -22,6 +23,12 @@ const principles = [
 
 const About = () => (
   <>
+    <SeoHead
+      title="About"
+      description="Midwess is a small team building durable infrastructure for stateful workloads — embedded Postgres, durable workflow runtimes, realtime caches. MIT licensed."
+      path="/about"
+      jsonLd={organizationLd()}
+    />
     <Navbar />
     <main>
       <DivideX />
@@ -96,6 +103,7 @@ const About = () => (
       </Container>
 
       <DivideX />
+
       <Values />
       <DivideX />
     </main>

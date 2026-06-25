@@ -29,6 +29,12 @@ import {
   DNote,
 } from "@/components/docs/diagram/flow";
 import { GraphDiagram } from "@/components/docs/diagram/GraphDiagram";
+import {
+  SeoHead,
+  breadcrumbListLd,
+  techArticleLd,
+  softwareSourceCodeLd,
+} from "@/lib/seo";
 
 const KNOWN = slugs as readonly string[];
 
@@ -150,8 +156,59 @@ const ProjectDocs = () => {
   }));
   const pageTree = withIcons(toPageTree(slug));
 
+  // Per-page SEO from MDX frontmatter (falls back to the section meta).
+  const projectPath = `/${slug}`;
+  const isProjectIndex = file === "index";
+  const pagePath = pathname.replace(/\/+$/, "") || projectPath;
+  const pageTitle =
+    mod.frontmatter?.title ?? tree.projectTitle ?? slug;
+  const pageDescription =
+    mod.frontmatter?.description ??
+    tree.projectDescription ??
+    `${tree.projectTitle ?? slug} documentation.`;
+  const repoUrl = tree.github ?? `https://github.com/midwess/${slug}`;
+
+  // JSON-LD: every docs page emits a TechArticle + BreadcrumbList; the
+  // project's index page also emits a SoftwareSourceCode block so the
+  // project itself can surface in software-result rich snippets.
+  const breadcrumb = breadcrumbListLd([
+    { name: "Home", path: "/" },
+    { name: tree.projectTitle ?? slug, path: projectPath },
+    ...(isProjectIndex
+      ? []
+      : [{ name: pageTitle, path: pagePath }]),
+  ]);
+  const tech = techArticleLd({
+    title: pageTitle,
+    description: pageDescription,
+    path: pagePath,
+    projectPath,
+    projectName: tree.projectTitle ?? slug,
+    repoUrl,
+  });
+  const jsonLd = isProjectIndex
+    ? [
+        breadcrumb,
+        tech,
+        softwareSourceCodeLd({
+          name: tree.projectTitle ?? slug,
+          description:
+            tree.projectDescription ?? pageDescription,
+          path: projectPath,
+          repoUrl,
+          programmingLanguage: ["TypeScript", "Rust"],
+        }),
+      ]
+    : [breadcrumb, tech];
+
   return (
     <DocsProvider>
+      <SeoHead
+        title={pageTitle}
+        description={pageDescription}
+        path={pagePath}
+        jsonLd={jsonLd}
+      />
       <DocsLayout
         tree={pageTree}
         // full Midwess logo (icon + wordmark) in the sidebar header
@@ -159,7 +216,7 @@ const ProjectDocs = () => {
         themeSwitch={{ enabled: false }}
         // GitHub icon link in the sidebar footer — per-project repo
         // (meta.json `github` override, else github.com/midwess/<slug>).
-        githubUrl={tree.github ?? `https://github.com/midwess/${slug}`}
+        githubUrl={repoUrl}
         // Paint the real fumadocs background over our (darker) olive body bg.
         containerProps={{ className: "bg-fd-background" }}
       >

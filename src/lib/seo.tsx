@@ -10,8 +10,8 @@
 import { Helmet } from "react-helmet-async";
 
 export const SITE = {
-  name: "midwess.ai",
-  url: "https://midwess.ai",
+  name: "midwess.com",
+  url: "https://midwess.com",
   ogImage: "/ours/app-icon.png",
   description:
     "Midwess builds durable infrastructure for stateful workloads — embedded Postgres, durable workflow runtimes, and realtime caches.",

@@ -12,7 +12,7 @@
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
-const SITE = "https://midwess.ai";
+const SITE = "https://midwess.com";
 const DIST = new URL("../dist/", import.meta.url).pathname;
 
 /** Recursively find every pre-rendered `.html` file under `dir`. */

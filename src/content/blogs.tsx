@@ -104,7 +104,7 @@ export const posts: BlogPost[] = [
           At compile time, Worldant parses TypeScript files marked with the <code>"use workflow"</code> and <code>"use step"</code> directives. In the backend, we use the TypeScript compiler API to extract the program's Abstract Syntax Tree (AST), collecting the parameters, return shapes, and exported names.
         </p>
         <p>
-          This is implemented in Worldant's contract extractor (<code>src/codegen/extract.ts</code>). It traverses the exported functions:
+          This is implemented in Worldant's contract extractor (<code>packages/worldant/src/codegen/extract.ts</code>). It traverses the exported functions:
         </p>
         <Code lang="typescript">{`ts.forEachChild(source, (node) => {
   if (!ts.isFunctionDeclaration(node) || !node.body || !node.name) return;
@@ -309,9 +309,9 @@ for await (const tick of watchRate('EUR')) {
           Worldant projects workflows directly as <Link href="https://modelcontextprotocol.io">Model Context Protocol (MCP)</Link> tools. Your workflows' parameter types and docstrings are compiled into standard MCP tool schemas. When an agent connects, it gets a list of what it can run.
         </p>
         <p>
-          In the <code>worldant</code> HTTP handler (<code>src/net/handler.ts</code>), we can see the unified data plane. A client call to run a workflow is handled dynamically by looking up the workflow registry:
+          In the <code>worldant</code> HTTP handler (<code>packages/worldant/src/net/handler.ts</code>), we can see the unified data plane. A client call to run a workflow is handled dynamically by looking up the workflow registry:
         </p>
-        <Code lang="typescript">{`// src/net/handler.ts
+        <Code lang="typescript">{`// packages/worldant/src/net/handler.ts
 if (method === 'POST' && path === '/runs') {
   const { workflowId: requested, args } = decode(await readBody(req));
   const workflowId = await resolveWorkflowId(src.native, requested);
@@ -321,7 +321,7 @@ if (method === 'POST' && path === '/runs') {
         <p>
           And if the workflow returns a live output stream, Worldant pipes it over Server-Sent Events (SSE):
         </p>
-        <Code lang="typescript">{`// src/net/handler.ts
+        <Code lang="typescript">{`// packages/worldant/src/net/handler.ts
 const reader = getRun(runId).readable.getReader();
 for (;;) {
   const { done, value } = await reader.read();
@@ -339,7 +339,7 @@ for (;;) {
         <p>
           Worldant implements this using a native supervisor CLI that runs in front of the application. The supervisor binds the public TCP port, while the child Node/Deno app hijacks its own listen calls:
         </p>
-        <Code lang="typescript">{`// src/supervisor.ts
+        <Code lang="typescript">{`// packages/worldant/src/supervisor.ts
 function installListenHijack() {
   http.Server.prototype.listen = function (this: http.Server, ...args: unknown[]) {
     const parsed = parseListenArgs(args);

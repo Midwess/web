@@ -1,150 +1,52 @@
 ---
 title: POST /query
-description: The entry point — request format, public 303 response, access-controlled inline response
+description: Run a read-only SELECT and receive a redirect or private inline JSON.
 ---
 
-# `POST /query`
-
-Run a read-only `SELECT`. Returns a `303 See Other` for public queries (pointing to the snapshot URL) or the rows inline for access-controlled queries.
-
-## Request
+`POST /query` accepts:
 
 ```json
-{ "sql": "select id, email from users where id = 7" }
+{
+  "sql": "select id, email from users where id = 7"
+}
 ```
 
-Headers:
+## Public response
 
-- `Authorization: Bearer <jwt>` — required for access-controlled queries, omitted for public ones
-- `content-type: application/json`
+When every touched table is public, PgPaw materializes the query and returns:
 
-The body is a single object with a `sql` field. Anything else returns a `400` — name `RejectedError` for classifier rejections (multi-statement, non-`SELECT`, writes, DDL, locking reads, side-effecting/volatile functions, non-replicated tables) or `ParseError` for SQL that does not parse. See [SQL classifier](/pgpaw/sql-classifier) for the full rules.
-
-## Routing: one POST, three responses
-
-A single `POST /query` resolves to one of three response shapes. The request first passes the halt check, then auth, then the classifier, then the public-vs-access-controlled verdict before branching.
-
-<GraphDiagram
-  direction="DOWN"
-  label="Routing"
-  title="One POST /query resolves to a 303 redirect, an inline 200, or an SSE stream"
-  nodes={[
-    { id: "post", kind: "accent", mono: true, title: "POST /query", sub: ["{ \"sql\": … }", "?live param · Authorization header"] },
-    { id: "gates", title: "Pipeline gates", sub: ["1 · halt check → 503 if halted", "2 · auth → 401 on error", "3 · ReadClassifier → 400 on reject"] },
-    { id: "decide", title: "is_private(tables)?", sub: ["over replicated catalog", "public vs access-controlled"] },
-    { id: "pub", kind: "success", title: "303 See Other", sub: ["public snapshot", "Location: /q/{hash}/{version}", "Cache-Control: no-store · empty body"] },
-    { id: "priv", kind: "accent", title: "200 OK", sub: ["inline JSON rows", "Cache-Control: private, no-store", "runs as token role · 401 if missing"] },
-    { id: "sse", kind: "info", title: "200 OK · SSE", sub: ["text/event-stream · no-store", "snapshot + deltas · public or private", "see api/live →"] },
-  ]}
-  edges={[
-    { from: "post", to: "gates", kind: "accent" },
-    { from: "gates", to: "decide", kind: "accent" },
-    { from: "decide", to: "pub", kind: "success", label: "public" },
-    { from: "decide", to: "priv", kind: "accent", label: "private" },
-    { from: "decide", to: "sse", kind: "info", label: "?live=true" },
-  ]}
-/>
-
-## Public response — `303 See Other`
-
-```
+```http
 HTTP/1.1 303 See Other
-Location: /q/9a4f/42
+Location: /q/{hash}/{version}
 Cache-Control: no-store
 ```
 
-The body is empty. The `Location` URL points at the versioned snapshot — fetch it (with `curl -L`, or follow the redirect in fetch / browser) to get the actual result.
+The response body is empty. Follow `Location` to fetch the JSON snapshot.
 
-The `303` keeps `POST` semantics: a `POST` body is non-cacheable, but the `Location` header on a `303` is cacheable. Browsers, fetch, and `curl -L` all follow the redirect to the snapshot URL.
+## Private response
 
-## Access-controlled response — `200 OK`
+When any table has RLS enabled or lacks `PUBLIC SELECT`, PgPaw requires a bearer token. It verifies the token, extracts the configured role claim, runs the query through `query_json_as`, and returns:
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json
 Cache-Control: private, no-store
 ```
 
-```json
-[
-  { "id": 7, "total": 4200 }
-]
-```
+## Gates
 
-Access-controlled queries do not redirect. Rows are returned inline. The response is never cached and never CDN-served.
-
-The classification happens once per query against the current replicated catalog. A query that is public today can become access-controlled if a downstream RLS change moves the table into the access-controlled bucket — re-classification is automatic when `Replica::security_version()` bumps (the verdict cache is keyed on it). See [Authorization](/pgpaw/authorization) for the public vs access-controlled split.
-
-## The hash and the version
-
-The `Location` URL has the shape `/q/{hash}/{version}` — a bare hash segment and a bare numeric LSN, no `v=` prefix.
-
-<DChart label="Snapshot URL" title="How the snapshot URL hash and version are derived from an accepted query">
-  <DRow gap={18} align="center">
-    <DGroup label="Cacheable query">
-      <DBox kind="accent" mono title="accepted query" sub={["fingerprint: u64", "tables: [..] · eq_filters: [..]", "from ReadClassifier"]} />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DCol gap={12}>
-      <DGroup kind="success" label="Hash">
-        <DBox kind="success" mono title={"{:x} of fingerprint"} sub={["DefaultHasher of the", "normalized parsed statement string"]} />
-      </DGroup>
-      <DGroup kind="accent" label="Version · version_of()">
-        <DBox kind="accent" title="version_of(tables, eq_filters).0 → LSN" sub={["single table + anchorable filter (single-col PK, or any col on REPLICA IDENTITY FULL)", "→ max(value-watermark, structural floor)", "else (joins / multi-table / no anchor) → max table / structural LSN"]} />
-      </DGroup>
-    </DCol>
+<DChart label="Handler gates" title="Request is rejected before query execution when any gate fails.">
+  <DRow wrap>
+    <DBox badge={1} title="Replica halt check" sub="503 if halted" />
+    <DArrow />
+    <DBox badge={2} title="Auth parse" sub="401 for malformed token" />
+    <DArrow />
+    <DBox badge={3} kind="accent" title="ReadClassifier" sub="400 for unsafe SQL" />
+    <DArrow />
+    <DBox badge={4} kind="info" title="Privacy" sub="public redirect or private inline rows" />
   </DRow>
-  <DArrow dir="down" kind="accent" dashed />
-  <DGroup label="Snapshot URL">
-    <DBox mono title={"/q/{hash}/{version}"} sub="an upstream write bumps the version → mints a new URL; the old one keeps its frozen body" />
-  </DGroup>
 </DChart>
 
-- **Hash** is `DefaultHasher` over the normalized (re-serialized parsed) statement. Two byte-different SQL strings that parse to the same AST share a fingerprint; the hash is `format!("{:x}", query.fingerprint)`.
-- **Version** is the `VersionIndex` value at lookup time. For a single-table query with an anchorable equality filter, it is `max(value-watermark, structural floor)`. For joins, multi-table queries, or queries without an anchorable filter, it falls back to the max per-table / structural LSN across all touched tables.
+## Snapshot identity
 
-Two clients that fetch `/q/9a4f/42` always get the same body. A relevant upstream write bumps the version, so a new request gets a new URL. The old URL keeps serving its frozen snapshot for as long as the [`/q` resource](/pgpaw/api/snapshot) stays cached — `public, max-age=259200` (72 hours), by default.
-
-For a `WHERE pk = literal` query, the anchor is `(table, pk, value)`. Writes to other rows do not bump the LSN for the queried value, so the URL stays valid. Joins and queries without anchorable equality filters fall back to per-table versioning.
-
-## Examples
-
-Public, anchored — same URL across writes to other rows:
-
-```bash
-curl -i -X POST http://127.0.0.1:8080/query \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, email from users where id = 7"}'
-# HTTP/1.1 303 See Other
-# Location: /q/9a4f/42
-# Cache-Control: no-store
-```
-
-Public, unanchored — version bumps on every write to the table:
-
-```bash
-curl -i -X POST http://127.0.0.1:8080/query \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, status from orders where status = '\''paid'\''"}'
-```
-
-Access-controlled — rows inline, never cached:
-
-```bash
-curl -X POST http://127.0.0.1:8080/query \
-     -H 'authorization: Bearer <jwt>' \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, total from orders"}'
-# [{"id":7,"total":4200}]
-```
-
-## What's next
-
-- [**`GET /q/{hash}/{version}`**](/pgpaw/api/snapshot) — fetch the snapshot
-- [**`POST /query?live=true`**](/pgpaw/api/live) — SSE event stream
-- [**API overview**](/pgpaw/api) — error envelope, CORS, status codes
-- [**SQL classifier**](/pgpaw/sql-classifier) — what's allowed, what's rejected
-- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
+`hash` is the hexadecimal `DefaultHasher` of the parsed statement string. `version` is the `VersionIndex` LSN for touched tables and equality filters.

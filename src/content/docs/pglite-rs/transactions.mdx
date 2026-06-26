@@ -1,142 +1,38 @@
 ---
 title: Transactions
-description: db.transaction(), rollback on drop, connection pinning in multi-process mode
+description: Use explicit PostgreSQL transactions with rollback-on-drop behavior.
 ---
 
-# Transactions
-
-`db.transaction()` returns a `Transaction<'_>` that borrows the `PGlite`. The transaction owns a single session — in-process mode serializes it with the rest of the engine, multi-process mode pins it to one backend. Drop the transaction without committing and the host sends a fire-and-forget `ROLLBACK` so Postgres unwinds the session.
-
-<DChart label="Transaction lifecycle" title="Transaction lifecycle from begin through commit, rollback, or drop-rollback">
-  <DRow gap={18} align="center">
-    <DBox kind="accent" badge={1} mono title="db.transaction()" sub="sends BEGIN, done = false" />
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" />
-      <DArrow dir="left" kind="accent" dashed label="loop" />
-    </DCol>
-    <DBox kind="accent" badge={2} mono title="exec / query" sub={"repeatable, borrows &self"} />
-  </DRow>
-  <DNote center>Three ways out — each consumes the handle</DNote>
-  <DRow gap={14} align="stretch">
-    <DCol align="center">
-      <DArrow dir="down" kind="success" />
-      <DBox kind="success" title="commit(mut self)" sub={["done = true", "sends COMMIT over the wire"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="down" kind="warn" />
-      <DBox kind="warn" title="rollback(mut self)" sub={["done = true", "sends ROLLBACK explicitly"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="down" kind="error" />
-      <DBox kind="error" title="Drop (no commit)" sub={["done == false → fire-and-forget", "ROLLBACK (early ? lands here)"]} />
-    </DCol>
-  </DRow>
-  <DNote center>commit / rollback take mut self; the borrow on PGlite ends, the session is released back</DNote>
-  <DNote center>transaction.rs — commit/rollback set done = true; Drop rolls back only when !done</DNote>
-</DChart>
-
-## Basic transaction
+Start a transaction from a `PGlite` handle:
 
 ```rust
 let tx = db.transaction().await?;
 tx.exec("INSERT INTO users (name) VALUES ('alice')").await?;
-tx.exec("INSERT INTO users (name) VALUES ('bob')").await?;
+let rows = tx.query("SELECT count(*) FROM users", &[]).await?;
 tx.commit().await?;
 ```
 
-`commit` flushes the transaction and consumes the `Transaction`; the `PGlite` is unborrowed and can be used for the next statement. `query` works the same way inside a transaction as outside.
+## Rollback
 
-## Rollback on drop
-
-If the `Transaction` is dropped without `commit`, the host issues a `ROLLBACK` over the wire on the way out. This makes the borrow pattern safe: returning early from a function with `?` rolls the transaction back automatically.
-
-```rust
-fn maybe_insert(db: &PGlite, name: &str) -> Result<(), pglite::Error> {
-    let tx = db.transaction().await?;
-    tx.query(
-        "INSERT INTO users (name) VALUES ($1)",
-        &[&name],
-    ).await?;
-    if name == "forbidden" {
-        // tx dropped here → ROLLBACK sent on the wire
-        return Err(pglite::Error::Protocol("forbidden name".into()));
-    }
-    tx.commit().await?;
-    Ok(())
-}
-```
-
-`Transaction` also exposes an explicit `rollback()` for cases where you want to fail loud instead of relying on drop.
-
-## Reading inside a transaction
-
-`Transaction::query` returns rows just like `PGlite::query`. Bind parameters work the same way; types are decoded with `row.get::<T>(idx)` — a single type parameter — or, more commonly, let inference fill it in via the positional form `let id: i32 = row.get(0)?` as the code block below does.
+Call `rollback()` explicitly:
 
 ```rust
 let tx = db.transaction().await?;
-let rows = tx
-    .query("SELECT id, name FROM users WHERE id > $1", &[&0i32])
-    .await?;
-for row in &rows {
-    let id: i32 = row.get(0)?;
-    let name: &str = row.get(1)?;
-    println!("{id} {name}");
-}
-tx.commit().await?;
+tx.exec("INSERT INTO users (name) VALUES ('discarded')").await?;
+tx.rollback().await?;
 ```
 
-## Multi-process connection pinning
+If the transaction value is dropped before `commit()` or `rollback()`, the implementation sends `ROLLBACK`.
 
-In multi-process mode the pool is a set of real Postgres backends. A `Transaction` borrows one backend exclusively — `BEGIN` and `COMMIT` hit the same backend, which is required for Postgres' session state (advisory locks, `SET LOCAL`, temp tables, prepared statements, etc.).
+## API
 
-The host enforces this. While a `Transaction` is alive, the borrowed backend is not returned to the pool, even if you call `db.query` from another task — that call will wait for the backend to free up or surface `Error::PoolExhausted` after 30 seconds. So `Transaction` borrows are exclusive by design.
+| Method | Purpose |
+| --- | --- |
+| `exec(sql)` | Execute SQL without returning rows. |
+| `query(sql, params)` | Execute SQL with bind parameters and return rows. |
+| `commit()` | Commit and consume the transaction. |
+| `rollback()` | Roll back and consume the transaction. |
 
-<DChart label="Transaction isolation" title="Transaction isolation differs between in-process tx_lock and multi-process connection pinning">
-  <DBox kind="accent" title="db.transaction()" sub={"Transaction::begin → BEGIN"} />
-  <DRow gap={18} align="start">
-    <DGroup kind="warn" label="In-process — tx_lock">
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="warn" title={"holds MutexGuard<()>"} sub={["lock_for_transaction() — one session", "serializes the whole engine thread"]} />
-      <DArrow dir="down" kind="warn" />
-      <DBox title="single pglite-engine thread" sub="all FFI calls confined here" />
-      <DArrow dir="down" kind="error" dashed />
-      <DBox kind="error" title="another db.query()" sub="blocks on tx_lock until commit/drop" />
-    </DGroup>
-    <DGroup kind="warn" label="Multi-process — pinned conn">
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="warn" title={"pool.checkout() → PinnedConn"} sub={["pins one UnixStream backend;", "held out of the pool until done"]} />
-      <DArrow dir="down" kind="warn" />
-      <DBox title="dedicated postmaster backend" sub="BEGIN / COMMIT pinned to it" />
-      <DArrow dir="down" kind="success" dashed />
-      <DBox kind="success" title="another db.query()" sub="gets a different conn — concurrent" />
-    </DGroup>
-  </DRow>
-  <DNote center>pool exhausted (all conns pinned) → waits up to ACQUIRE_TIMEOUT (30s) then Error::PoolExhausted</DNote>
-</DChart>
+## Single-process note
 
-## Savepoints
-
-`SAVEPOINT` and `RELEASE SAVEPOINT` are plain SQL — issue them through `tx.exec`. pglite-rs does not expose a dedicated savepoint API; the underlying Postgres handles nested transactions the standard way.
-
-## Error handling
-
-A statement that returns an `Error::Database` rolls the transaction back. The `Transaction` is still alive afterwards — you can decide to keep going (issuing more statements) or drop it to confirm the rollback. A `?` on the error leaves the function and drops the transaction, which sends the `ROLLBACK` for you.
-
-```rust
-let tx = db.transaction().await?;
-tx.exec("INSERT INTO accounts (id, balance) VALUES (1, 100)").await?;
-match tx.exec("INSERT INTO accounts (id, balance) VALUES (2, 50)").await {
-    Ok(()) => tx.commit().await?,
-    Err(e) => {
-        // tx drops at end of block, ROLLBACK is sent on the wire
-        return Err(e);
-    }
-}
-```
-
-## What's next
-
-- [**Listen & notify**](/pglite-rs/listen-notify) — `listen()` callbacks, `NOTIFY`, live queries
-- [**ORM integration**](/pglite-rs/orm) — `unix_uri()` for SQLx, SeaORM, Diesel
-- [**Multi-process mode**](/pglite-rs/multi-process) — real concurrent sessions, connection pinning
-- [**Configuration**](/pglite-rs/configuration) — `MultiProcessOptions.extra_connections`, `idle_ttl`
+In single-process mode, the database uses a transaction lock so other `db.exec()` or `db.query()` calls do not interleave inside a transaction.

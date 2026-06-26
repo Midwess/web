@@ -1,296 +1,53 @@
 ---
 title: Supervisor
-description: The worldant CLI — scale-to-zero, zero-downtime redeploy, SupervisionConfig, env vars, on-disk paths
+description: Use the Worldant CLI to own sockets, forward traffic, redeploy, and manage app processes.
 ---
 
-# Supervisor
+The supervisor is `@midwess/worldant-cli`. It is separate from the durable world: it never opens the SQLite data directory. It starts and manages app processes that use `@midwess/worldant`.
 
-The `worldant` CLI is a standalone supervisor binary that sits in front of your app. It **owns the public TCP port**, forwards every byte over `copy_bidirectional` into the app's **private unix socket**, and scales the app to zero when it has been idle long enough. The next request restarts it and replays the log.
+## Commands
 
-It is also a **multi-app daemon**: `worldant run` joins (or becomes) a single background daemon that can supervise many apps at once, each keyed by its code-first id. The supervisor never opens the World or the SQLite database — durability lives entirely in the library. The supervisor only owns sockets, watches activity, and moves bytes.
+| Command | Purpose |
+| --- | --- |
+| `worldant run -- <command>` | Start through the daemon. Re-running the same app id performs a managed redeploy. |
+| `worldant start -- <command>` | Foreground single-app supervision. |
+| `worldant up` | Start the daemon. |
+| `worldant ps` | List supervised apps. |
+| `worldant logs <id> -f` | Tail captured app logs. |
+| `worldant stop <id>` | Stop one app. |
+| `worldant down` | Stop daemon/app set. |
+| `worldant install --env-file <path>` | Install as a per-user OS service with optional env file. |
+| `worldant uninstall` | Remove service installation. |
 
-Without the supervisor, your app is one long-lived Node process — fine for a server, wrong for a function or a serverless handler.
+## Socket ownership
 
-## Install the CLI
+<DChart label="Traffic path" title="App code still calls listen(); supervisor owns the public port.">
+  <DRow>
+    <DBox kind="muted" title="Client" sub="connects to public host:port" />
+    <DArrow />
+    <DBox kind="info" title="Supervisor" sub="bound socket stays up across process swaps" />
+    <DArrow />
+    <DBox kind="accent" title="App private socket" sub="relocated listen() target" />
+  </DRow>
+</DChart>
+
+When supervised, `http.Server.prototype.listen` is intercepted. The app receives a private Unix socket, and the supervisor forwards public traffic to it.
+
+## Redeploy
+
+Run the same command again with the same world id:
 
 ```bash
-# npm (prebuilt binaries for darwin-arm64, darwin-x64, linux-x64-gnu)
-npm install -g @midwess/worldant-cli
-
-# or cargo
-cargo install worldant-cli
+worldant run -- npm start
+worldant run -- npm start
 ```
 
-The npm package picks the right prebuilt binary for your OS via platform-specific optional dependencies — no separate install step. Supported platforms today are macOS (arm64 / x64) and Linux x64 (glibc); Windows and Deno are not supported.
+The daemon can identify the duplicate app, start the replacement, drain the old process, and keep the public endpoint open.
 
-The npm packages are at `0.1.1` (`@midwess/worldant`) and `0.1.0` (`@midwess/worldant-cli`); the `worldant-cli` crate is at `0.1.0`.
-
-## Run the app under the supervisor
+## Public host
 
 ```bash
-# Join-or-become the background daemon, then register this app
-worldant run -- node dist/main.js
-
-# Or supervise a single app in the foreground (no daemon)
-worldant start -- node dist/main.js
+worldant run --public-host 0.0.0.0 -- npm start
 ```
 
-What happens on `run`:
-
-1. Binds (or joins) the daemon control socket at `$XDG_RUNTIME_DIR/worldant/control.sock`. The first invocation becomes the daemon; later ones join it as clients.
-2. Sends a `Run` request (argv, cwd, env, `--public-host`) over the line protocol; the daemon spawns your child with `WORLDANT_CONTROL_FD` set to the write-end of an **announce pipe**.
-3. The child's library hijacks `listen()`: instead of binding the public port it binds a private unix socket and announces over the pipe, then streams control frames.
-4. The supervisor binds the **public TCP port** the app reported and forwards traffic to the private socket.
-5. Watches activity (dispatch in flight, in-flight connections, durable timers) and scales the app to zero when idle.
-6. Wakes the app on the next inbound connection or durable timer.
-
-The app announces the **host and port it wants** via the `Listen` control frame; the supervisor binds exactly that public TCP port. `--public-host` only *overrides* the host — when unset, the host is the per-port host the app reported, falling back to `0.0.0.0`.
-
-### The handshake and the data path
-
-<DChart title="Supervisor and app control handshake plus public traffic data path">
-  <DGroup label="CONTROL PLANE — APP ANNOUNCES, SUPERVISOR LISTENS" kind="muted">
-    <DRow gap={18} align="center">
-      <DBox kind="accent" title="worldant supervisor" sub={["daemon · owns sockets · moves bytes", "SharedState: ports · active · conns", "PublicEndpoint + Forwarder", "never opens the World / SQLite"]} />
-      <DCol align="center">
-        <DBox badge={1} kind="info" title="announce over WORLDANT_CONTROL_FD pipe" />
-        <DArrow dir="left" kind="info" />
-        <DBox badge={2} kind="info" title={"control unix socket: worldant-<idHash>.sock"} sub={"Register{pid} · Listen{host,port,privateSock} · State{active} · Wake{at}"} />
-        <DArrow dir="left" kind="info" />
-      </DCol>
-      <DBox kind="info" title="node app" sub={["@midwess/worldant library", "listen() hijacked → private sock", "durable World (SQLite)", "reports active / wake from the log"]} />
-    </DRow>
-  </DGroup>
-  <DGroup label="DATA PLANE — PUBLIC TCP IN, PRIVATE UNIX SOCKET OUT" kind="muted">
-    <DRow gap={18} align="center">
-      <DBox kind="info" title="public client" sub={["HTTP / WebSocket", "over TCP"]} />
-      <DCol align="center">
-        <DNote center kind="muted">TCP</DNote>
-        <DArrow dir="right" kind="accent" />
-        <DArrow dir="left" kind="accent" />
-      </DCol>
-      <DBox kind="accent" title="PublicEndpoint + Forwarder" sub={["TcpListener::bind(host:port)", "copy_bidirectional · ConnGuard counts conns", "host: --public-host or reported, fallback 0.0.0.0"]} />
-      <DCol align="center">
-        <DNote center kind="muted">unix</DNote>
-        <DArrow dir="right" kind="info" />
-        <DArrow dir="left" kind="info" />
-      </DCol>
-      <DBox kind="info" title="app unix socket" sub={["worldant-<idHash>.", "<port>.app.sock"]} />
-    </DRow>
-  </DGroup>
-  <DGroup label="Who binds what">
-    <DNote>Supervisor binds the public TCP port; the app binds a private unix socket and never touches the public port.</DNote>
-    <DNote>Frames flow app → supervisor only. The supervisor sleeps an app with SIGTERM and wakes it by respawning — it never sends "stop" or "wake" commands over the control socket.</DNote>
-  </DGroup>
-</DChart>
-
-`worldant start` does the same socket-owning and forwarding for **one** app, in the foreground, without the shared daemon.
-
-The full set of subcommands is below.
-
-| Command | What it does |
-|---|---|
-| `run -- <cmd>` | Join-or-become the daemon, then register and supervise the app |
-| `start -- <cmd>` | Supervise a single app in the foreground (no daemon) |
-| `serve` | Run the long-lived daemon; restore apps persisted in `apps.json` |
-| `up` | Ensure the daemon is running (idempotent) |
-| `ps` | List supervised apps (`AppSnapshot`: id, pid, ports, state, uptime, restarts) |
-| `stop <id>` | Stop one app by its code-first id and drop it from the set |
-| `down` | Stop the daemon |
-| `install [--env-file]` | Register the daemon as a per-user systemd/launchd service running `worldant serve` |
-| `uninstall` | Remove the service |
-| `logs <id> [-f / --follow]` | Tail an app's `app.log` |
-
-(`__daemon` is a hidden worker the CLI spawns for itself — not for direct use.)
-
-## The daemon / run-or-join lifecycle
-
-<DChart title="Run-or-join daemon lifecycle and which CLI commands act on it">
-  <DGroup label="ONE DAEMON, MANY APPS — CLAIM OR JOIN THE CONTROL SOCKET" kind="muted">
-    <DRow gap={18} align="center">
-      <DBox kind="accent" mono title="worldant run -- …" sub={["bind_or_none(control.sock)", "flock-guarded claim"]} />
-      <DCol gap={14}>
-        <DRow gap={10} align="center">
-          <DArrow dir="right" kind="success" />
-          <DBox kind="success" title="claimed → become daemon" sub="spawn_detached __daemon" grow={2} />
-          <DArrow dir="right" kind="success" />
-        </DRow>
-        <DRow gap={10} align="center">
-          <DArrow dir="right" kind="info" />
-          <DBox kind="info" title="already live → join as client" sub="connect to the running daemon" grow={2} />
-          <DArrow dir="right" kind="info" />
-        </DRow>
-      </DCol>
-      <DBox title="daemon registry" sub={["BTreeMap<id, AppHandle>", "IdLock (flock) — one per id", "AppSet → apps.json (0600) · env never persisted"]} />
-    </DRow>
-  </DGroup>
-  <DGroup label="CLIENT COMMANDS → LINE-PROTOCOL REQUESTS" kind="muted">
-    <DRow gap={14} align="stretch">
-      <DBox title="run → Request::Run" sub="{ argv, cwd, env, publicHost }" grow={1} />
-      <DBox title="ps → PsReply" sub="list of AppSnapshot" grow={1} />
-      <DBox kind="error" title="stop <id> → Stop · down → Down" sub="remove app · stop daemon" grow={1} />
-    </DRow>
-  </DGroup>
-  <DGroup label="Daemon-level commands">
-    <DNote>serve — long-lived daemon, restores every app spec from apps.json on boot.</DNote>
-    <DNote>up — ensure the daemon is running.   install — register a systemd/launchd service that runs `worldant serve`.</DNote>
-    <DNote kind="muted">control.sock: $XDG_RUNTIME_DIR/worldant/control.sock (fallback $HOME/.worldant, then a temp dir)</DNote>
-  </DGroup>
-</DChart>
-
-## Scale to zero and wake
-
-The supervisor decides whether an app is busy from **two signals** carried over the control socket plus its own connection count:
-
-1. **`active`** — the app reports `active = true` while a queue dispatch or run is in flight, **or** when its next durable timer (`next_wake()`) is already due.
-2. **`open_conns`** — the supervisor's own count of in-flight forwarded TCP connections.
-
-When both are quiet for `max(graceMs, remaining minAliveMs warmup)`, the supervisor sleeps the app: it blanks the private socket (`clear_socks`), marks it inactive, and `SIGTERM`s the child (a 3-second grace, then `SIGKILL`). **The public TCP port stays bound** the whole time.
-
-<DChart title="How an app scales to zero and then wakes">
-  <DGroup label="STATE MACHINE — THE PUBLIC PORT NEVER UNBINDS" kind="muted">
-    <DRow gap={10} align="center">
-      <DBox kind="success" title="SERVING" sub={["forwarding public TCP → app sock", "await_idle watches active + conns · conns keep it awake"]} grow={1} />
-      <DArrow dir="right" kind="warn" />
-      <DBox kind="warn" title="IDLE WHEN" sub={["active() == false   AND", "open_conns() == 0   for", "max(grace 30s, minAlive 2s warmup)"]} grow={1} />
-      <DArrow dir="right" kind="warn" />
-      <DBox kind="muted" title="SLEEPING (zero)" sub={["clear_socks + set_active(false)", "SIGTERM → 3s → SIGKILL · public port stays bound"]} grow={1} />
-    </DRow>
-  </DGroup>
-  <DGroup label="WAKE TRIGGERS" kind="muted">
-    <DRow gap={14} align="stretch">
-      <DBox kind="accent" title="inbound connection" sub={["Forwarder sees no port_sock → notify_wake", "holds the connection up to wakeHoldMs (15s)"]} grow={1} />
-      <DBox kind="accent" title="durable timer fires" sub={["Wake{at} from the app's next_wake()", "wake_timer elapses → respawn"]} grow={1} />
-    </DRow>
-    <DArrow dir="up" kind="accent" />
-  </DGroup>
-  <DGroup label="Respawn → resume from the log">
-    <DNote>child reopens the same dataDir · reenqueues active runs · memoized completed steps do not re-run</DNote>
-    <DNote kind="muted">held connections are forwarded to the woken app</DNote>
-  </DGroup>
-</DChart>
-
-A woken child reopens the same `dataDir`, reenqueues active runs, and resumes from the durable log. Memoized completed steps do not re-run; held connections are pushed to the woken app.
-
-## Zero-downtime redeploy
-
-Run a second `worldant run -- …` that announces the **same code-first id**, and the daemon hot-swaps the running app without dropping a connection.
-
-<DChart title="How a redeploy hot-swaps without dropping connections">
-  <DGroup label="SAME ID → DRAIN OLD, BOOT NEW ON THE INHERITED SHAREDSTATE" kind="muted">
-    <DRow gap={10} align="center">
-      <DBox kind="accent" badge={1} title="second run, same id" sub={["spawn_app sees the id live → redeploy()", "new child already booted + announced"]} grow={1} />
-      <DArrow dir="right" kind="warn" />
-      <DBox kind="warn" badge={2} title="drain old, hold port" sub={["wait_drained (30s) for in-flight conns", "clear_socks · cancel old task · port held"]} grow={1} />
-      <DArrow dir="right" kind="success" />
-      <DBox kind="success" badge={3} title="swap on healthy" sub={["new app on inherited SharedState", "wait_port_ready(target, 25s) · registry swap"]} grow={1} />
-    </DRow>
-  </DGroup>
-  <DBox kind="success" title="no connection refused" sub="connections that arrive during the swap window are backlogged on the held public port, then forwarded to the new app." />
-  <DBox kind="error" title="new version fails to start" sub="if wait_port_ready times out, the daemon records the failure (history capped at 16) and returns an error — the old swap is already torn down." />
-</DChart>
-
-## `SupervisionConfig`
-
-The `config` field of `WorldConfig` is `SupervisionConfig`. It is **code-first** — you announce it from `createWorld({ config })` and the app forwards it to the supervisor over the control pipe at boot. There are no CLI flags for these values; `--public-host` is the only flag, and it only sets the public bind host. `SupervisionConfig` only matters when the app is launched under the `worldant` CLI — without it, the supervisor code is a no-op.
-
-```ts
-await install({
-  dataDir: './.world',
-  id: 'checkout-app',
-  config: {
-    graceMs: 30_000,
-    minAliveMs: 2_000,
-    wakeHoldMs: 15_000,
-    restart: {
-      maxRestarts: 5,
-      windowMs: 60_000,
-      delayMs: 500,
-    },
-  },
-});
-```
-
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `graceMs` | `number` | `30_000` | How long the app must be idle (no `active` signal, no open connections) before the supervisor scales it to zero |
-| `minAliveMs` | `number` | `2_000` | Warmup floor measured from when the app last booted (`alive_since`). The app is ineligible to sleep until it has been alive this long |
-| `wakeHoldMs` | `number` | `15_000` | How long a held inbound connection waits for a sleeping app to wake before timing out |
-| `restart.maxRestarts` | `number` | `5` | Maximum restart attempts within `windowMs` before the supervisor gives up and fails the app |
-| `restart.windowMs` | `number` | `60_000` | Sliding window over which `maxRestarts` is counted |
-| `restart.delayMs` | `number` | `500` | Fixed delay between restart attempts. The same delay is used each time — it does not escalate |
-
-These map directly onto the supervisor's `Settings` (`grace` / `min_alive` / `wake_hold` / `max_restarts` / `restart_window` / `restart_delay`). The queue-job retry backoff inside the durable core *is* exponential, but that is a separate mechanism unrelated to the supervisor's restart delay.
-
-## When does the supervisor stop the process?
-
-The supervisor sleeps the app when **both** of these are quiet for `max(graceMs, remaining minAliveMs warmup)`:
-
-1. **`active`** — the app reports `active = false` (no dispatch or run in flight, and its next durable timer is not yet due).
-2. **`open_conns`** — there are no in-flight forwarded TCP connections.
-
-Open connections count as activity, so a WebSocket or a long-lived stream keeps the app awake — the app is never slept out from under a live connection. The relevant durable signal is the app's `next_wake()`, carried via the `Wake` control frame; the supervisor never reads `nextDueMs()` for this.
-
-## When does the supervisor wake the process?
-
-On the next inbound connection, or when a durable timer fires. When the public listener accepts a connection and finds no private socket (the app is asleep), it calls `notify_wake` and holds the connection for up to `wakeHoldMs` while the child respawns. A `Wake{at}` durable timer wakes the app even with no inbound traffic.
-
-If the child crashes `maxRestarts` times within `windowMs`, the supervisor gives up and fails the app. This is the difference between "the app is idle" (expected) and "the app is broken" (not).
-
-## CLI flags
-
-| Flag | Argument | What it does |
-|------|----------|--------------|
-| `--public-host` | `<host>` | Overrides the host the public TCP port binds on. When unset, the host is the per-port host the app reported, falling back to the literal `0.0.0.0` |
-| `--env-file` | `<path>` | (`install` only) Inject env (and `PATH`) into the installed systemd/launchd service |
-| `-f` / `--follow` | | (`logs` only) Keep tailing `app.log` |
-| `--` | | Separator. Everything after `--` is the child command |
-| `<command>` | | The command to run as the child. Required for `run` / `start`. Use a shell-style form: `node dist/main.js`, `npm start`, etc. |
-
-There is no `--port` flag. The app announces the host and port it wants over the `Listen` control frame, and the supervisor binds exactly that public TCP port. See the [how-it-works](/worldant/how-it-works) page for the full handshake.
-
-## Environment variables (supervisor)
-
-| Variable | Set by | Read by | What it does |
-|---|---|---|---|
-| `WORLDANT_CONTROL_FD` | `worldant` CLI (via FD inheritance) | `connectSupervisor()` | Numeric FD for the announce pipe. If unset, the supervisor code is a no-op and the app runs standalone |
-| `WORLDANT_ID` | daemon (injected per app) | the app library | Per-app id used as the supervision / fallback id when restoring persisted apps |
-| `XDG_RUNTIME_DIR` | shell | `supervisor.ts` / `world.ts` and the Rust daemon | App side: per-app control socket, dedup lock, and private app sockets (falls back to `os.tmpdir()`). Daemon side: `worldant/control.sock` (falls back to `$HOME/.worldant`, then a temp dir) |
-| `XDG_STATE_HOME` | shell | `paths.rs` | Base for daemon state: `apps.json`, per-app `app.log`, `daemon.log`. Falls back to `$HOME/.local/state` |
-| `XDG_CONFIG_HOME` | shell | `paths.rs` | Base for the systemd user unit path. Falls back to `$HOME/.config` |
-| `HOME` | shell | `paths.rs` / `main.rs` | Fallback root for the daemon control socket, state, and the launchd agent (`~/Library/LaunchAgents`) |
-
-`WORLDANT_CONTROL_FD` is the on/off switch. You do not set it yourself — the `worldant` CLI does when it spawns your app.
-
-`XDG_RUNTIME_DIR` follows the [XDG Base Directory spec](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html). On most Linux systems it is `/run/user/<uid>`. On macOS it is usually unset, in which case a temp dir is used.
-
-## On-disk paths (supervisor)
-
-The app library and the daemon write to different trees. The app library's per-app sockets and locks live under the runtime dir; the daemon's state lives under the state dir.
-
-| Path | Owner | Purpose |
-|---|---|---|
-| `$XDG_RUNTIME_DIR/worldant/control.sock` | daemon | Daemon control socket. CLI clients (`run`, `ps`, `stop`, `down`) send line-protocol `Request`s here |
-| `$XDG_RUNTIME_DIR/worldant-<idHash>.sock` | app library | Per-app control socket. Carries app → supervisor frames: `Register{pid}`, `Listen{host,port,privateSock}`, `State{active}`, `Wake{at}` |
-| `$XDG_RUNTIME_DIR/worldant-<idHash>.lock` | app library | Dedup lock. With the daemon's `IdLock` (flock), ensures one supervisor per app id |
-| `$XDG_RUNTIME_DIR/worldant-<idHash>.<port>.app.sock` | app library | Private app socket. The app binds here instead of the public port; the supervisor forwards public TCP traffic into it |
-| `$XDG_STATE_HOME/worldant/apps.json` | daemon | Persisted app set (mode `0600`; env is never persisted). Restored on `serve` |
-| `$XDG_STATE_HOME/worldant/<id>/app.log` | daemon | Per-app log, capped at 10 MB and rotated to `app.log.1` |
-| `$XDG_STATE_HOME/worldant/daemon.log` | daemon | Daemon log |
-
-`<idHash>` is `sha256(id).slice(0, 16)` — the first 16 hex characters of the digest. If you run `ls -la $XDG_RUNTIME_DIR/worldant-*` while a supervised app is running, you can see the per-app socket and lock in place.
-
-The app process is responsible for unlinking its private app socket. The library installs a `process.on('exit', ...)` hook to remove the sockets it owns, and the `listen()` hijack also `fs.rmSync`s a stale private socket before binding a fresh one. The Rust supervisor never opens these app sockets except to connect as a client.
-
-## When NOT to use the supervisor
-
-- **You want a long-lived server.** Skip the CLI; run `node dist/main.js` directly. The supervisor only stops processes that are idle.
-- **You are in tests.** The supervisor adds a hop. Test against `install()` directly — omit `dataDir` to get an in-memory, ephemeral World (it routes to `open_temp()`). Do not pass `dataDir: ':memory:'`; that would open a SQLite file literally named `:memory:`.
-
-WebSockets and long-lived streams are **supported** under the supervisor: open connections count as activity, so the app is never slept while connections are in flight, and the integration test proves a zero-downtime WebSocket redeploy. You only lose scale-to-zero while a connection is held open — that is by design.
-
-## Where to go next
-
-- [**Configuration**](/worldant/configuration) — `WorldConfig`, `id`, `dataDir`, codec
-- [**How it works**](/worldant/how-it-works) — what the supervisor does with this config
-- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model
+`--public-host` is available on `run` and `start`.

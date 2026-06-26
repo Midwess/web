@@ -1,265 +1,66 @@
 ---
 title: Replication
-description: Replica::start — read-only logical replication from a real upstream Postgres
+description: Consume logical replication from upstream PostgreSQL into pglite-rs.
 ---
 
-# Replication
+Enable the feature:
 
-The `replica` cargo feature turns the local `PGlite` into a read-only logical replica of a real upstream Postgres. The application never writes locally — writes go to upstream through your existing path — and the host streams committed changes into the local copy, where the rest of the codebase reads them as if they were local.
-
-## Cargo feature
-
-```toml title="Cargo.toml"
-pglite-rs = { version = "0.2", features = ["replica"] }
+```bash
+cargo add pglite-rs --features replica,multiple-process
 ```
 
-`replica` adds `rustls` and `webpki-roots` as dependencies for the upstream TLS path. The local engine is still a normal in-process or multi-process `PGlite`. Replica mode does not own its own data dir: you open a `PGlite` yourself, hand one clone to `Replica::start` (the applier writes through it), and keep another clone for your application's reads. The `Replica` and your reads share that single instance.
-
-<DChart label="Wiring" title="The caller opens one PGlite, clones it, and passes one clone to Replica::start while keeping the other for reads">
-  <DBox kind="accent" mono title={"PGlite::open(\"./local\")"} sub="one in-process instance" />
-  <DArrow dir="down" kind="accent" label="db.clone()" />
-  <DRow gap={18} align="start">
-    <DBox kind="warn" mono grow title="Replica::start(db, cfg)" sub={["db passed by value · applier writes", "control + status: stop · watermark · is_halted", "subscribe · security_version"]} />
-    <DBox mono grow title="application · held clone" sub={["read-only access · db.query(sql, params)", "db.query_as(role, Some(claims), …)", "never write locally"]} />
-  </DRow>
-  <DNote center>both clones drive the same engine / same data dir</DNote>
-  <DNote center>Replica has no public query/exec/transaction and does not Deref to PGlite</DNote>
-</DChart>
-
-## Prerequisites on the upstream
-
-```sql
--- 1. A role with REPLICATION (or superuser)
-CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '...';
-
--- 2. A publication naming the tables to stream
-CREATE PUBLICATION app_pub FOR TABLE users, orders, order_items;
-
--- 3. A replication slot (the replica creates one if missing, but you can pre-create it)
--- The slot is created on first Replica::start if the configured slot_name is missing.
-
--- 4. (Recommended) the DDL signal trigger so the replica sees schema changes
---    See "DDL tracking" below.
-```
-
-The published tables are recreated in the local PGlite under the published schema; the local `PGlite` is read-only to application code.
-
-## Open a replica
-
-You open the local `PGlite` yourself, then pass a clone into `Replica::start`. The first argument is an already-open `PGlite` handle (by value), not a path.
+Start a replica:
 
 ```rust
 use pglite::{PGlite, Replica, ReplicaConfig, SslMode};
-use std::time::Duration;
 
-// Open the local engine first, then clone it for the replica.
-let db = PGlite::open("./local").await?;
+let db = PGlite::open_multi_process("./replica", Default::default()).await?;
 
-let cfg = ReplicaConfig {
-    host: "db.internal".into(),
-    port: 5432,
-    user: "replicator".into(),
-    password: std::env::var("DB_PASSWORD")?,
-    database: "app".into(),
-    publication: "app_pub".into(),
-    slot_name: "pglite_slot".into(),
-    application_name: "pglite-replica".into(),
-    read_timeout: Duration::from_secs(5),
-    status_interval: Duration::from_secs(10),
-    role_poll_interval: Duration::from_secs(60),
-    sslmode: SslMode::Require,
-};
-
-// db.clone() goes to the applier; keep `db` for your reads.
-let replica = Replica::start(db.clone(), cfg).await?;
+let replica = Replica::start(
+    db.clone(),
+    ReplicaConfig {
+        host: "127.0.0.1".into(),
+        port: 5432,
+        user: "postgres".into(),
+        password: "postgres".into(),
+        database: "app".into(),
+        publication: "app_pub".into(),
+        slot_name: "app_slot".into(),
+        sslmode: SslMode::Disable,
+        ..Default::default()
+    }
+).await?;
 ```
 
-What happens:
-
-1. You have already opened the local `PGlite` (`PGlite::open("./local")` or `open_temp()`); `Replica::start` does not open a data dir — it takes the clone you pass in.
-2. The replication client connects to the upstream and authenticates with whatever the server requests — cleartext, MD5, or SCRAM-SHA-256.
-3. The client requests `CREATE_REPLICATION_SLOT … EXPORT_SNAPSHOT` (creating the slot if it does not exist). The exported snapshot is the LSN boundary that backfill and stream share.
-4. The applier runs `backfill` under that snapshot — recreates the published tables, their types, indexes, and grants in the local PGlite.
-5. The replication client then sends `START_REPLICATION SLOT … LOGICAL` and begins streaming pgoutput messages.
-6. The applier buffers one upstream transaction (`Begin..Commit` pgoutput frame), applies it as one local PGlite transaction, and bumps the watermark in the same commit.
-7. Standby feedback (`status_interval`) keeps the upstream's `replay_location` advanced so WAL can be recycled.
-
-<DChart label="Applier lifecycle" title="The applier backfills under an exported snapshot on first run or resumes from the stored watermark, then streams until stop or a halt branch">
-  <DBox title="load _pglite_replica state" sub="prior watermark present?" />
-  <DRow gap={18} align="start">
-    <DCol grow align="center">
-      <DArrow dir="down" kind="accent" label="no → first run" />
-      <DBox kind="error" badge={1} title="FIRST RUN · backfill" sub={["CREATE_REPLICATION_SLOT … EXPORT_SNAPSHOT", "→ then SET TRANSACTION SNAPSHOT, recreate", "tables / types / indexes / security"]} />
-      <DNote kind="error">2 · 3 · persist consistent_point as watermark</DNote>
-    </DCol>
-    <DCol grow align="center">
-      <DArrow dir="down" kind="accent" label="yes → resume" />
-      <DBox title="RESUME · from watermark" sub={["read stored watermark from meta table", "START_REPLICATION from that LSN", "already-applied txns skipped by LSN"]} />
-      <DNote>reconnect with backoff on IO loss</DNote>
-    </DCol>
-  </DRow>
-  <DArrow dir="down" kind="accent" />
-  <DRow gap={18} align="center">
-    <DBox kind="warn" grow title="stream_loop (pgoutput)" sub="apply txn + watermark, ack on cadence" />
-    <DArrow dir="right" kind="error" dashed />
-    <DBox kind="error" grow title="ReplicaHalted" sub={["incompatible DDL · unrebuildable", "security · slot missing"]} />
-  </DRow>
-</DChart>
-
-## `ReplicaConfig` in full
-
-See [Configuration](/pglite-rs/configuration#replicaconfig) for the field-by-field reference. The non-obvious ones:
-
-- `password` must be filled in. Empty password is not usable.
-- `host`, `user`, `database`, `publication`, and `slot_name` must be non-empty. An empty required field causes `Error::ReplicaConfig(...)` at `start` — not `ReplicaHalted`.
-- `sslmode = VerifyFull` is the only mode that validates the upstream certificate. It checks the chain against the bundled `webpki-roots` Mozilla root store (not the OS/system trust store). `Prefer` and `Require` encrypt the connection but use a `NoVerify` verifier — no certificate or CA validation — so they protect against passive sniffing only. `Disable` (the default) does not use TLS at all.
-
-## Read access
-
-Application code reads from the local `PGlite` clone you kept — the same `exec` / `query` / `transaction` API. The `Replica` value itself exposes no `query` / `exec` / `transaction` and does not `Deref` to `PGlite`; reads go through your held `db` handle.
+## Replica events
 
 ```rust
-let rows = db.query("SELECT id, name FROM users WHERE id = $1", &[&42i32]).await?;
-```
+let mut rx = replica.subscribe();
 
-Do **not** write to the local PGlite. Writes go to upstream through your normal path; the replica applies them as they commit. A local write would be silently overwritten by the next applied transaction and would corrupt the local watermark.
-
-## DDL tracking
-
-Logical replication only ships committed row data. Schema changes (new column, new table, drop column) need a separate channel. The replica feature recognizes an optional `pglite_emit_ddl` event trigger that calls `pg_logical_emit_message(true, 'pglite_ddl', '')` on every DDL — a content-less signal riding the slot (pgoutput `messages 'true'`). Install it manually on the upstream:
-
-```sql
-CREATE OR REPLACE FUNCTION pglite_emit_ddl() RETURNS event_trigger AS $$
-BEGIN
-    PERFORM pg_logical_emit_message(true, 'pglite_ddl', '');
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE EVENT TRIGGER pglite_emit_ddl ON ddl_command_end
-    WHEN TAG IN (
-        'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE',
-        'CREATE TYPE', 'DROP TYPE',
-        'CREATE INDEX', 'DROP INDEX'
-    )
-    EXECUTE FUNCTION pglite_emit_ddl();
-```
-
-On the `'M'` (logical message, prefix `pglite_ddl`) the replica re-introspects the published schema and applies a structured delta. Additive changes (new column, new table) auto-apply; incompatible ones (column type change, drop with no replacement) halt the replica with a precise reason.
-
-<DChart label="Schema drift" title="An upstream DDL fires the event trigger, rides the slot as a pgoutput logical message, and triggers re-introspection that either auto-applies or halts">
-  <DRow gap={14} align="center">
-    <DBox grow title="upstream DDL" sub={["ddl_command_end fires", "pglite_emit_ddl trigger", "installed manually"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="warn" grow title={"pgoutput 'M' message"} sub={["prefix 'pglite_ddl'", "rides the same slot as DML", "→ re-introspect schema"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox grow title="classify" sub="schema delta" />
-    <DCol gap={10}>
-      <DRow gap={10} align="center">
-        <DArrow dir="right" kind="success" />
-        <DBox kind="success" grow title="additive" sub="auto-applied" />
-      </DRow>
-      <DRow gap={10} align="center">
-        <DArrow dir="right" kind="error" dashed />
-        <DBox kind="error" grow title="incompatible" sub="halts (reason)" />
-      </DRow>
-    </DCol>
-  </DRow>
-  <DNote center>without the trigger, upstream schema changes never arrive — the next applied DML may fail with &quot;column does not exist&quot; and halt the applier</DNote>
-</DChart>
-
-The replica is **not** silently catching DDL if you skip the trigger — without `pglite_ddl` signals, schema changes upstream will not appear locally, and the next applied transaction may fail with a "column does not exist" error that halts the applier.
-
-## Security catalog (RLS)
-
-Logical replication does **not** carry roles, role memberships, `SELECT` grants, RLS enable/force flags, or policies. The replica mirrors the security catalog by introspect-and-rebuild on three triggers:
-
-- the initial backfill (under the exported snapshot),
-- the `pglite_ddl` signal (policies and grants ride it), and
-- a periodic role poll (roles and memberships are invisible to event triggers).
-
-Roles are rebuilt as `NOLOGIN NOBYPASSRLS` shells. The applier halts if a security object cannot be rebuilt — fail-closed, so RLS-off does not silently leak.
-
-For application-side reads, use the `query_as` seam — a method on `PGlite`, not on `Replica` — to run as a non-superuser role with `request.jwt.claims` set, so the load-bearing RLS guarantee holds. Its `claims` parameter is `Option<&str>`, so pass `Some(claims)` or `None`:
-
-```rust
-let rows = db
-    .query_as(&role, Some(&claims), "SELECT id, name FROM users WHERE tenant = $1", &[&tenant])
-    .await?;
-```
-
-`query_as` runs `SET LOCAL ROLE` (plus `SET LOCAL request.jwt.claims` when claims are present) inside a pinned transaction that is rolled back, so it never mutates state. This is the only safe way to do access-controlled reads on replicated tables — a superuser bypasses RLS even with `FORCE ROW LEVEL SECURITY`, and replicated tables are owned by `postgres` on the local PGlite.
-
-## Subscribing to the change broadcast
-
-In addition to applying changes to the local store, the replica exposes an in-process fan-out: `Replica::subscribe()` returns a `std::sync::mpsc::Receiver<Arc<CommittedTransaction>>`. It is synchronous and infallible — no `.await`, no `?`. Each `CommittedTransaction` carries the xid, commit LSN, end LSN, commit timestamp, and the row changes (`RowChange::Insert | Update | Delete | Truncate`). This is the seam for a future cache layer (Electric-style shape logs, live deltas).
-
-```rust
-let rx = replica.subscribe();
-for tx in &rx {
+while let Some(tx) = rx.recv().await {
+    println!("xid={} lsn={}", tx.xid, tx.commit_lsn.to_pg_str());
     for change in &tx.changes {
-        match change {
-            RowChange::Insert { schema, table, row } => { /* ... */ }
-            RowChange::Update { schema, table, key, row } => { /* ... */ }
-            RowChange::Delete { schema, table, key } => { /* ... */ }
-            RowChange::Truncate { schema, table } => { /* ... */ }
-        }
+        println!("{change:?}");
     }
 }
 ```
 
-You can also drive it with `recv_timeout(...)` / `try_recv()` when you do not want to block forever. The applier is the first consumer of the decoded stream; `subscribe()` receivers are the second.
+`CommittedTransaction` includes `xid`, `commit_lsn`, `end_lsn`, `commit_ts`, and row changes.
 
-<DChart label="One txn, applied once" title="One upstream transaction is decoded from pgoutput, buffered, applied as a single local transaction that advances the watermark, then broadcast to subscribers">
-  <DRow gap={14} align="center">
-    <DBox grow title="upstream WAL" sub={["START_REPLICATION", "LOGICAL pgoutput"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox grow title="ReplConn · pgoutput decode" sub={["Begin · Relation · Insert/Update/Delete", "Truncate · Message · Commit", "buffered into one TxnBuf"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="warn" grow title="one local PGlite transaction" sub={["apply DML to published tables", "UPDATE watermark_lsn in _pglite_replica", "committed atomically together"]} />
-  </DRow>
-  <DRow gap={14} align="start">
-    <DCol grow align="center">
-      <DArrow dir="down" kind="success" />
-      <DBox kind="success" grow title="standby status feedback" sub="ack_pos advances on status_interval → upstream recycles WAL" />
-    </DCol>
-    <DCol grow align="center">
-      <DArrow dir="down" kind="info" />
-      <DBox kind="info" grow title="broadcast CommittedTransaction → subscribe() receivers" sub={["xid · commit_lsn · end_lsn · commit_ts", "Vec<RowChange> over std::sync::mpsc (sync recv)"]} />
-    </DCol>
-  </DRow>
-</DChart>
+## Row changes
 
-## Watermark and resume
+- `Insert { schema, table, row }`
+- `Update { schema, table, key, row }`
+- `Delete { schema, table, key }`
+- `Truncate { schema, table }`
 
-The watermark is the applied-LSN high-water mark, stored in a `_pglite_replica` meta table and committed atomically with each applied transaction. On reconnect, the replication client resumes from the watermark — already-applied transactions are skipped by LSN comparison. The ack position (sent in standby feedback) is allowed to advance past the watermark across data-free spans (empty upstream transactions, idle keepalives); it resets to the watermark on reconnect.
+## Control
 
-## Decommission
-
-`Replica::decommission` is the explicit teardown. It is an associated function (not a method on a `Replica` value), taking the `PGlite` handle and config by reference: `decommission(db: &PGlite, config: &ReplicaConfig)`. It:
-
-- terminates the slot's walsender on the upstream,
-- drops the replication slot,
-- deletes the local `_pglite_replica` meta row.
-
-```rust
-Replica::decommission(&db, &cfg).await?;
-```
-
-After decommission, the next `Replica::start` is a fresh backfill. This is the single-replica answer to Zero's slot pools + periodic sweepers.
-
-## Error handling
-
-A halted replica returns `Error::ReplicaHalted(reason)` — a tuple variant carrying a `String`, not a struct/brace variant. Read the reason via `replica.halt_reason()` and check `replica.is_halted()`. Common causes:
-
-- Incompatible DDL (column type change, drop with no replacement).
-- A security object that cannot be rebuilt (fail-closed).
-- Upstream connection lost past `read_timeout`.
-- Slot missing or owned by another replica.
-
-The applier is not auto-resumed; a halted replica requires operator intervention. There is no public schema-resync entry point — recovery is `Replica::decommission(&db, &cfg)` followed by `Replica::start(db.clone(), cfg)` for a fresh backfill (fix the upstream DDL first if the halt was caused by an incompatible change).
-
-## What's next
-
-- [**How it works**](/pglite-rs/how-it-works#replica-mode) — the replication client, the applier, the watermark
-- [**Configuration**](/pglite-rs/configuration#replicaconfig) — `ReplicaConfig` field reference
-- [**Cargo features**](/pglite-rs/installation#features) — `replica`, `full`
+| Method | Purpose |
+| --- | --- |
+| `stop()` | Stop the replication worker. |
+| `watermark()` | Current applied LSN. |
+| `is_halted()` | Whether replication halted on an error. |
+| `halt_reason()` | Halt detail when available. |
+| `security_version()` | Version used by consumers that cache privilege/RLS metadata. |
+| `decommission(db, config)` | Remove replica state for a config. |

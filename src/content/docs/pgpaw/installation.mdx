@@ -1,143 +1,32 @@
 ---
 title: Installation
-description: cargo install pgpaw or npm install -g pgpaw, plus the upstream init step
+description: Install the PgPaw binary through Cargo or npm.
 ---
 
-# Installation
-
-PgPaw is a single static binary. Install it with whichever toolchain you have, then run `pgpaw init` once against the upstream Postgres to set up the logical replication source.
-
-## Install
+Install from crates.io:
 
 ```bash
-# via Cargo (builds from source — needs a Rust toolchain)
 cargo install pgpaw
+```
 
-# via npm (downloads a prebuilt binary for your platform)
+Or install the npm package that provides prebuilt binaries for supported platforms:
+
+```bash
 npm install -g pgpaw
 ```
 
-Prebuilt binaries are published for:
+The CLI binary in source is named `cache-server` through Clap metadata, but package usage is `pgpaw`.
 
-| Platform | Architecture | Rust target |
-|---|---|---|
-| Linux | `x86_64` (glibc) | `x86_64-unknown-linux-gnu` |
-| macOS | Apple Silicon (`arm64`) | `aarch64-apple-darwin` |
+## Requirements
 
-Other platforms build from source via `cargo install pgpaw`. Cargo and npm are the only tools you need.
-
-The npm install runs a `postinstall` script that resolves your `platform:arch` against the table above and downloads the matching prebuilt tarball directly from the project's GitHub releases (`v{version}/pgpaw-{target}.tar.gz`). If no prebuilt target matches your platform, it prints a message and tells you to `cargo install pgpaw` from source instead.
-
-<DChart label="INSTALL PATHS → ARTIFACT" title="Two install paths: cargo compiles from source; npm downloads a prebuilt tarball, falling back to source for unmatched platforms">
-  <DGroup label="cargo path">
-    <DRow gap={14} align="center">
-      <DBox kind="success" mono title="cargo install pgpaw" sub="needs Rust 1.85+ toolchain" />
-      <DArrow dir="right" kind="success" />
-      <DBox kind="success" title="compiles the crate" sub="from source on your machine" />
-    </DRow>
-  </DGroup>
-  <DGroup label="npm path">
-    <DRow gap={14} align="center">
-      <DBox kind="info" mono title="npm install -g pgpaw" sub="runs postinstall.js" />
-      <DArrow dir="right" kind="info" />
-      <DBox kind="info" title="resolve platform:arch" sub={["linux:x64 → x86_64-…-gnu", "darwin:arm64 → aarch64-…-darwin"]} />
-      <DArrow dir="right" kind="success" />
-      <DBox kind="success" badge={1} title="matched" sub={["download tarball from", "GitHub release v{version}"]} />
-    </DRow>
-    <DArrow dir="down" kind="error" dashed label="else" />
-    <DBox kind="error" badge={2} title="no prebuilt target matches" sub="prints a message → fall back to cargo install pgpaw from source" />
-  </DGroup>
-  <DArrow dir="down" kind="success" />
-  <DBox kind="accent" title="pgpaw binary" sub="single static executable" />
-</DChart>
-<p style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground)',marginTop:'0.5rem',textAlign:'center'}}>Both paths produce the same <code>pgpaw</code> binary; npm only differs in where the binary comes from.</p>
+- A reachable upstream PostgreSQL database.
+- Superuser or equivalent privileges for one-time `pgpaw init` when changing `wal_level`, creating the publication, and installing the DDL event trigger.
+- A local data directory for the embedded pglite-rs replica.
 
 ## Verify
 
 ```bash
-pgpaw --version
 pgpaw --help
+pgpaw serve --help
+pgpaw init --help
 ```
-
-You should see the subcommand list (`init`, `serve`) and the full set of flags.
-
-A couple of cosmetic quirks worth knowing: the binary's built-in `--help` text and the `init`/`serve` console messages still self-identify as `cache-server` internally (e.g. "start the server with `cache-server serve`") — the published binary is named `pgpaw`, so keep using `pgpaw` to invoke it; the old name is harmless. The crate version (`0.2.5`) and the npm package version (`0.2.4`) can also diverge, so `--version` may not match the npm package version exactly.
-
-## Requirements
-
-- **A reachable upstream Postgres** with superuser access. PgPaw needs Postgres that supports logical replication (`wal_level=logical`, a server-level setting that requires a restart) and event triggers, and the privilege to run `ALTER SYSTEM`, `CREATE PUBLICATION`, and `CREATE EVENT TRIGGER`. All of this is done by `pgpaw init`.
-- **For `cargo install`:** Rust 1.85+ on the build machine. The resulting binary is static and runs anywhere.
-- **For `npm install`:** nothing extra. The `postinstall` script downloads the matching prebuilt binary from the project's GitHub releases for your OS/arch.
-- **Disk:** the replica data dir lives at `./cache-data` by default (`--data-dir`), holding the embedded pglite replica plus your replicated data.
-- **Network:** the replica connects to the upstream Postgres for logical replication. The PgPaw process binds an HTTP port for `serve`. No other inbound or outbound connections.
-
-## One-time upstream setup: `pgpaw init`
-
-Before serving queries, run `pgpaw init` against the upstream Postgres. It makes the following changes (all idempotent):
-
-1. Sets `wal_level=logical` if it is not already. This is a restart-only setting — if `init` changes it, PgPaw prints a notice to restart Postgres before it takes effect.
-2. Raises `max_wal_senders` and `max_replication_slots` to at least `10` (via `ALTER SYSTEM`) if they are lower. These are also restart-only, contributing to the same restart notice.
-3. Creates the publication (`cache_server_pub` by default) `FOR ALL TABLES`, only if it does not already exist.
-4. Installs a function `pglite_emit_ddl()` and an event trigger named `pglite_ddl_watch` firing on `ddl_command_end`, so the replica sees schema changes online.
-
-The replication slot is **not** created by `init` — it is created automatically when the server starts.
-
-```bash
-pgpaw init \
-    --pg-host 127.0.0.1 \
-    --pg-user postgres \
-    --pg-password "$POSTGRES_PASSWORD" \
-    --pg-database myapp
-```
-
-After `init`, if it printed a notice about restart-only settings, restart Postgres. The publication and trigger are durable in the catalog — you only need to run `init` once per upstream.
-
-## Then serve
-
-```bash
-pgpaw serve \
-    --pg-host 127.0.0.1 \
-    --pg-user postgres \
-    --pg-password "$POSTGRES_PASSWORD" \
-    --pg-database myapp \
-    --port 8080
-```
-
-`serve` boots in order: it runs **preflight** validation against the upstream (requires `wal_level=logical`, `max_wal_senders` and `max_replication_slots` ≥ 1, and that the publication exists — otherwise it errors with remediation text and refuses to start). Note the asymmetry: `init` *applies* the value `10`, but the serve-time gate only requires ≥ 1. It then opens the multi-process pglite replica (`open_multi_process`), starts the replica (`Replica::start`), scans the schema (replicated tables, single-column PKs, `REPLICA IDENTITY FULL` tables), wires the CDC bridge (a dedicated OS thread named `cache-cdc`) into the version index and the live hub, builds the moka cache, the SQL classifier, and the JWT verifier, and finally binds the HTTP port.
-
-<DChart label="LOCAL MACHINE / PGPAW PROCESS" title="Setup sequence: install, then pgpaw init mutates the upstream, restart if needed, then serve runs preflight and wires the local process before binding HTTP">
-  <DRow gap={18} align="start">
-    <DCol>
-      <DBox badge={1} kind="info" title="install" sub="cargo install / npm install -g" />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={3} kind="accent" title="pgpaw serve → preflight" sub="validates wal_level=logical · senders/slots ≥ 1 · publication exists" />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={4} kind="info" title="wire the local PgPaw process" sub={["open_multi_process (pglite replica) → Replica::start", "scan_schema (tables / single-col PKs / REPLICA IDENTITY FULL)", "CdcBridge (cache-cdc) → VersionIndex + LiveHub · moka + classifier + JWT → bind HTTP"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" label="init" />
-      <DArrow dir="left" kind="success" dashed label="reads" />
-      <DArrow dir="left" kind="info" dashed label="logical repl" />
-    </DCol>
-    <DGroup kind="success" label="Upstream Postgres">
-      <DBox badge={2} kind="success" title="pgpaw init" sub={["ALTER SYSTEM wal_level=logical", "max_wal_senders/slots ≥ 10 (restart-only)", "CREATE PUBLICATION FOR ALL TABLES + pglite_ddl_watch trigger"]} />
-      <DArrow dir="down" kind="warn" />
-      <DBox kind="warn" title="restart Postgres" sub="only if restart-only settings changed" />
-    </DGroup>
-  </DRow>
-  <DArrow dir="down" kind="success" />
-  <DBox badge={5} kind="success" title="GET /healthz" sub={"200 { status:ok, watermark } when caught up · 503 { status:halted, reason } if the applier halted"} />
-</DChart>
-<p style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground)',marginTop:'0.5rem',textAlign:'center'}}><code>init</code> mutates the upstream Postgres; <code>serve</code> validates it, then wires the local PgPaw process and binds HTTP.</p>
-
-## Health check
-
-```bash
-curl -s http://127.0.0.1:8080/healthz
-```
-
-`{"status":"ok","watermark":12345678}` once the replica is caught up. `{"status":"halted","reason":"…"}` if the applier halted (incompatible DDL, security reconcile failure, etc.).
-
-## Next step
-
-Run the [Quickstart](/pgpaw/quickstart) to send your first snapshot and live query.

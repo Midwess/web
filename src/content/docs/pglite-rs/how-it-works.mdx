@@ -1,215 +1,36 @@
 ---
 title: How it works
-description: Engine thread, FFI waist, multi-process pool, socket gateway, replica flow
+description: pglite-rs wraps a patched PostgreSQL engine with a safe async Rust API.
 ---
 
-# How it works
+`pglite-rs` ships a bundled `postgres-pglite` runtime. Single-process mode starts the engine on one dedicated thread. Async calls send wire-protocol messages to that thread and decode PostgreSQL responses into Rust rows.
 
-pglite-rs is one API surface over three operating modes (in-process, multi-process, replica) and one wire-protocol shuttle (the unix socket gateway). This page walks the layers top-down, then drills into each mode.
-
-## The layer stack
-
-Three things compile into your binary: the safe Rust API, a hand-written FFI, and a prebuilt native static library of patched Postgres 17.
-
-<DChart label="Architecture" title="The three layers that compile into your binary">
-  <DBox kind="accent" title="pglite" sub={["safe async API · PGlite · Transaction · Row · LiveQuery · Replica", "LISTEN / NOTIFY · live queries · COPY · pool · tar dump / restore"]} />
-  <DArrow dir="down" kind="warn" dashed label="FFI waist · 25 symbols" />
-  <DBox kind="warn" mono title="pglite-sys" sub={["pgl_native_call · pgl_native_pump · pgl_set_rw_cbs · pgl_startPGlite", "hand-written extern \"C\" · no bindgen · only wire-protocol bytes cross"]} />
-  <DArrow dir="down" kind="warn" />
-  <DBox kind="error" mono title="libpglite.a" sub="patched Postgres 17 · no postmaster · no background workers · per-target prebuilt" />
-</DChart>
-
-- **`pglite`** is the public surface: `PGlite::open`, `exec`, `query`, `transaction`, `listen`, `live_query`, `unix_uri`, `dump_data_dir`, `close`, plus the `Replica::start` API. It also owns the engine-thread plumbing (`mpsc::Sender<EngineCommand>` in, `futures::channel::oneshot` reply out), the live-query fan-out, the socket gateway, and the multi-process connection pool when that feature is on.
-- **`pglite-sys`** is the FFI waist. 25 `extern "C"` functions declared by hand in `crates/pglite-sys` against `native/pglite_native.h` (no `bindgen`). The host calls into it; the engine calls back through registered function-pointer callbacks.
-- **`libpglite.a`** is the prebuilt static library. CI compiles the `postgres-pglite` fork (a patched Postgres 17) for each target triple and uploads a tarball of `libpglite.a` + headers + the `share/postgresql` runtime. `pglite-sys/build.rs` downloads it, sha256-verifies it, and tells the linker to link it in. `PGLITE_LIB_DIR=/path/to/dir` overrides resolution if you build the artifact yourself.
-
-## The FFI waist and engine thread
-
-The in-process engine is real Postgres, and Postgres' main loop has a contract: it can `longjmp`, fake-`exit()`, and call back into C. None of that is safe to expose to Rust frames. The fix is to **confine every engine call to one dedicated OS thread** and put the longjmp containment in a C trampoline established once at boot.
-
-<DChart title="The FFI waist: only wire bytes cross between the caller and the engine thread">
-  <DRow gap={18} align="start">
-    <DGroup label="Caller · any async runtime">
-      <DBox kind="accent" mono title="PGlite::query(sql, params)" sub="postgres-protocol → wire bytes in a BytesMut" />
-      <DArrow dir="down" />
-      <DBox mono title={"mpsc::Sender<EngineCommand>"} sub={"EngineCommand::Exec { wire, reply } down the channel"} />
-      <DArrow dir="down" />
-      <DBox mono title="futures::channel::oneshot" sub="reply arrives with wire bytes" />
-      <DArrow dir="down" />
-      <DBox mono title="postgres-protocol deserialise" sub={"DataRow → Vec<Row> · ErrorResponse → Err"} />
-      <DArrow dir="down" />
-      <DBox kind="accent" mono title={"Vec<Row> returned to caller"} />
-    </DGroup>
-    <DCol align="center">
-      <DNote center kind="warn">FFI waist</DNote>
-      <DArrow dir="right" kind="accent" label="wire bytes" />
-      <DArrow dir="left" kind="accent" label="wire bytes" />
-    </DCol>
-    <DGroup kind="warn" label={"One dedicated OS thread · pglite-engine"}>
-      <DBox mono title="thread_local EngineIo" sub={"input/output Vec<u8> · via read_cb / write_cb"} />
-      <DArrow dir="down" />
-      <DBox kind="warn" mono title="pump loop · pgl_native_pump()" sub={["until input drained & buffer_remaining ≤ 0", "rc == 100 → PostgresMainLongJmp()"]} />
-      <DArrow dir="down" />
-      <DBox kind="error" mono title="pgl_native_call · sigsetjmp at boot" sub="pgl_native_exit → siglongjmp lands here" />
-      <DArrow dir="down" />
-      <DBox kind="error" title="libpglite.a" sub={["patched Postgres 17 · --single mode", "callback-based IO · longjmp / fake-exit", "no postmaster · no background workers"]} />
-    </DGroup>
+<DChart label="Single process" title="No postmaster, no TCP server, one engine thread.">
+  <DRow>
+    <DBox kind="accent" title="Rust task" sub="exec/query/transaction" />
+    <DArrow />
+    <DBox kind="info" title="Channel" sub="frontend wire bytes" />
+    <DArrow />
+    <DBox kind="success" title="Engine thread" sub="postgres-pglite runtime" />
+    <DArrow />
+    <DBox title="Rows" sub="backend wire decoded" />
   </DRow>
 </DChart>
 
-What this guarantees:
+## Open constraints
 
-- **No longjmp ever unwinds a Rust frame.** The `sigsetjmp` trampoline is `pgl_native_call`: it is entered once at boot, pushing a `sigjmp_buf` and calling the engine entry (`pgl_backend_main`). Every Postgres `longjmp` and fake-`exit` is caught by `pgl_native_exit`, which `siglongjmp`s back into that trampoline and returns an ordinary status to Rust. (`postgres-pglite` is an Emscripten fork upstream; this trampoline is the native-build analogue of the JS-exception containment the wasm build gets for free.) During a query, the per-statement hot loop calls `pgl_native_pump` repeatedly and, when it returns `rc == 100`, calls `PostgresMainLongJmp` — `pgl_native_pump` is the pump, not the trampoline.
-- **The engine never blocks on Rust.** IO crosses through function-pointer callbacks registered with `pgl_set_rw_cbs`. On the engine thread the buffers are a `thread_local` `EngineIo { input: Vec<u8>, output: Vec<u8> }`: `read_cb` copies from `input`, `write_cb` appends to `output`. The caller serialises wire frames in its own `BytesMut`, but that buffer is never shared into the engine thread — only the `Vec<u8>` wire bytes cross via the `mpsc` command.
-- **State is thread-confined.** No `Arc<Mutex<…>>` over engine state. Engine globals are written and read only on the engine thread. Cross-thread handoff is just channel send + wire bytes.
-- **`BOOTED` and `OPEN` are `AtomicBool`s.** One engine boot per process lifetime, and at most one open `PGlite` at a time. Reopening a data dir after close in the same process returns `Error::ReopenUnsupported` — but cross-process reopen is fully supported, which is the right model for tests, serverless, and child-process supervisors.
+Single-process mode uses a process-wide guard. Opening a second in-process `PGlite` returns `Error::AlreadyOpen`. Reopening after the engine booted is not supported in that mode.
 
-### Cold-start boot order
+Use multi-process mode when one application needs real concurrent sessions.
 
-The first `open()` boots the engine thread once. Everything below happens on `"pglite-engine"`, in order, before the first query can run.
+## Serialization
 
-<DChart label="Cold-start boot order on the engine thread" title="Each step runs once, in order, before the first query">
-  <DBox kind="error" title="CAS guard · OPEN & BOOTED AtomicBool" sub="one instance + one boot per process — else Error::AlreadyOpen / Error::ReopenUnsupported" />
-  <DRow gap={14}>
-    <DBox badge={1} title="extract_runtime" sub="unpack RUNTIME_TAR (include_bytes!) → temp dir" />
-    <DBox badge={2} title="run_initdb" sub="runtime bin/initdb if PG_VERSION absent" />
-  </DRow>
-  <DRow gap={14}>
-    <DBox badge={3} title="pgl_native_setup → pgl_set_rw_cbs" sub="freopen(/dev/null) · register read_cb / write_cb" />
-    <DBox badge={4} kind="error" title="pgl_native_call(pgl_backend_main)" sub="--single -O -j · workers=0 · returns rc 99" />
-  </DRow>
-  <DRow gap={14}>
-    <DBox badge={5} title="pgl_startPGlite" sub="activate the in-process backend" />
-    <DBox badge={6} title="synthetic startup packet" sub="ProcessStartupPacket → pgl_sendConnData" />
-  </DRow>
-  <DBox kind="success" badge={7} title="ready" sub="boot result over oneshot · sweep_live_views drops orphaned views · engine sleeps on its channel" />
-  <DNote center>workers disabled at boot: max_worker_processes=0, max_parallel_*=0 — the source of the small memory footprint</DNote>
-</DChart>
+Single-process `exec`, `query`, transaction, and copy calls take an internal async lock. Multi-process mode skips that lock because it uses pooled backend connections.
 
-Workers are disabled deliberately. The boot args pass `max_worker_processes=0`, `max_parallel_workers=0`, `max_parallel_workers_per_gather=0`, and `max_parallel_maintenance_workers=0`, so there is no parallel-query or background-worker machinery to allocate — that, plus running a single backend in `--single` mode, is what keeps a single in-process engine to a small footprint.
+## Data directory
 
-## The unix socket gateway (in-process mode)
+`open()` initializes the data directory on first use. `open_temp()` creates a temporary directory and removes it when dropped.
 
-When you call `db.unix_uri()` on an in-process `PGlite`, the host lazily starts a small std-thread gateway embedded inside the `PGlite`. It accepts exactly one client session and pumps the wire protocol between the client and the engine thread.
+## Locale provider
 
-<DChart title="The unix socket gateway bridges an ORM driver to the single engine session">
-  <DRow gap={18} align="center">
-    <DBox kind="info" title="ORM client" sub={["SQLx · SeaORM · Diesel", "tokio-postgres · postgres", "pool size MUST be 1 · speaks Postgres"]} />
-    <DCol align="center">
-      <DNote center kind="warn">Unix socket</DNote>
-      <DArrow dir="right" kind="warn" />
-      <DArrow dir="left" kind="warn" />
-      <DNote center>RAM-backed 0700 dir · no TCP</DNote>
-    </DCol>
-    <DGroup label="SocketGateway · embedded in PGlite, lazy on first unix_uri()">
-      <DBox badge={1} title="UnixListener + accept loop" sub="waits for the first (and only) client" />
-      <DArrow dir="down" />
-      <DBox badge={2} kind="accent" title="doorman (std thread)" sub="synthesises the v3 startup handshake" />
-      <DArrow dir="down" />
-      <DBox badge={3} title="batch at Q / F / S / c / f boundary" sub="one batch → Backend::roundtrip under tx_lock" />
-      <DArrow dir="down" />
-      <DBox badge={4} kind="error" title="engine · one session, tx_lock" sub={["reply strips duplicate ReadyForQuery;", "NotificationResponse side-channelled to listeners"]} />
-    </DGroup>
-  </DRow>
-</DChart>
-
-Key constraints:
-
-- **One client session at a time.** The doorman holds the single `Backend` and the in-process `tx_lock`. The engine only has one session, so size the ORM pool to exactly 1.
-- **The ORM and the Rust API share a session.** A `db.exec` issued while the ORM holds an open transaction executes *inside* that transaction. Sequencing is the caller's problem.
-- **`COPY ... TO STDOUT` works** through the gateway. **`COPY ... FROM STDIN` does not** — the in-process engine cannot pause mid-COPY across roundtrips. Use multi-process mode for bulk loads.
-- **The doorman holds `Backend`, not a `PGlite` clone.** Holding a `PGlite` would be an `Arc` cycle leaking the engine. The gateway is owned by `PGlite` itself and drops on `close()` / last drop, stopping the thread and removing the socket dir.
-
-## Multi-process mode
-
-When you turn on the `multiple-process` cargo feature, `PGlite::open_multi_process` spawns the bundled `bin/postgres` as a child postmaster on a private unix socket and pools N connections behind the same `PGlite` API. There is no in-process engine boot — that mode is exempt from the one-boot constraint.
-
-<DChart title="Multi-process mode: a pooled child postmaster gives true concurrency">
-  <DRow gap={18} align="start">
-    <DCol>
-      <DBox kind="accent" mono title="Your app" sub={["PGlite::open_multi_process(dir, opts)", "same API · same types · true concurrency"]} />
-      <DGroup kind="warn" label="Connection pool · worker + UnixStream each">
-        <DBox title="backend 1 · free" />
-        <DBox kind="warn" title="backend 2 · pinned (txn)" />
-        <DBox title="backend 3 · free" />
-        <DNote>reaper evicts idle &gt; min · 30s acquire → PoolExhausted</DNote>
-      </DGroup>
-      <DBox kind="info" title="NotifyConn · outside the pool" sub={["dedicated conn · lazy on first listen()", "reader thread → shared listener map"]} />
-    </DCol>
-    <DArrow dir="right" kind="accent" label="unix socket" />
-    <DGroup kind="error" label="Child postmaster · bin/postgres">
-      <DNote kind="error">spawned with -k &lt;ram_dir&gt; -c listen_addresses=&apos;&apos;</DNote>
-      <DBox kind="error" title="Private unix socket" sub=".s.PGSQL.5432 · 0700 RAM dir · no networking" />
-      <DBox kind="error" title="Real Postgres backends" sub="parallel workers · shared lock table · MVCC" />
-      <DBox kind="error" title="Connection pinning" sub="Transaction holds one backend through commit" />
-      <DBox kind="error" mono title="max_connections = pool + 2 + extra" sub="extra slots reserved for external ORM clients" />
-    </DGroup>
-  </DRow>
-</DChart>
-
-Properties:
-
-- **True concurrent sessions.** A pool of N real Postgres backends, each with its own state, sharing the standard Postgres shared lock table and MVCC.
-- **Connection pinning.** A `Transaction` borrows one backend exclusively until `commit` / `rollback` / drop. `BEGIN` and `COMMIT` hit the same backend — required for Postgres' session state.
-- **A dedicated `NotifyConn`** *outside* the pool holds all `LISTEN` subscriptions; it is created lazily on first `listen()` in this mode and is never part of the acquire/release rotation. A blocking reader thread streams `NotificationResponse` into the shared listener map. Live queries and `listen()` ride it in multi-process mode.
-- **`unix_uri()` returns the child postmaster's native socket URI** in this mode — the same `postgresql://user@localhost/db?host=…` DSN every Postgres driver accepts, so the ORM code is identical to the in-process case.
-- **Self-healing pool.** A worker that hits an IO error reconnects; if the server is gone, the connection leaves the rotation. Acquire waits are bounded by a 30s timeout that surfaces as `Error::PoolExhausted`.
-
-## Replica mode
-
-The `replica` cargo feature makes the local `PGlite` a read-only logical replica of a real upstream Postgres. The application never writes locally — writes go to upstream through your existing path — and the host streams committed changes into the local copy.
-
-<DChart title="Replica mode: one upstream stream, one applier, a read-only local copy">
-  <DRow gap={14} align="start">
-    <DGroup kind="error" label="Upstream Postgres · source of truth">
-      <DBox kind="error" title="publication + slot" sub="START_REPLICATION · pgoutput" />
-      <DBox kind="error" title="standby feedback sink" sub="advances replay_location" />
-      <DBox kind="muted" title="event trigger (operator)" sub={["emits pg_logical_emit_message", "('pglite_ddl') — NOT shipped"]} />
-      <DBox kind="error" title="app writes go here" />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="error" label="pgoutput" />
-      <DArrow dir="left" kind="success" dashed label="standby ack" />
-    </DCol>
-    <DGroup kind="warn" label="Replica client · one OS thread, no tokio">
-      <DBox kind="warn" title="connect + auth" sub="cleartext / MD5 / SCRAM · TLS" />
-      <DBox kind="accent" title="backfill (first_run)" sub="CREATE_REPLICATION_SLOT snapshot" />
-      <DBox kind="warn" title="pgoutput decode" sub="Begin..Commit · Message" />
-      <DBox kind="warn" title="TxnBuf" sub="one upstream txn at a time" />
-      <DBox kind="warn" title="reconcile_security" sub="backfill · pglite_ddl · role poll" />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" label="apply" />
-    </DCol>
-    <DGroup kind="info" label="Local PGlite · read-only">
-      <DBox kind="info" title="applier" sub="sole writer" />
-      <DBox kind="info" title="apply txn" sub="DML + watermark" />
-      <DBox kind="info" title="data" sub={["replicated tables", "_pglite_replica meta"]} />
-      <DBox kind="success" title="subscribe()" />
-    </DGroup>
-  </DRow>
-</DChart>
-
-Properties:
-
-- **One stream, one writer.** The applier is the only writer to local PGlite. The replica client buffers one upstream transaction in a `TxnBuf` and applies it as one PGlite transaction, bumping the watermark in the same commit.
-- **Backfill under the slot's exported snapshot.** On `first_run` the client opens the slot with `CREATE_REPLICATION_SLOT … EXPORT_SNAPSHOT`, copies tables under `SET TRANSACTION SNAPSHOT`, then begins `START_REPLICATION … LOGICAL pgoutput`. The initial table copy and the stream start share one consistent LSN boundary by construction — no separate coordination step.
-- **Idempotent resume.** The watermark drives skip-already-applied and resume-after-restart. Standby feedback advances the upstream's `replay_location` as transactions apply; the ack position is allowed to run past the watermark across data-free spans, and resets to it on reconnect.
-- **Schema tracking via the `pglite_ddl` signal.** The shipping replica only *consumes* the pgoutput logical-message stream: it requests `messages 'true'` in `START_REPLICATION` and, when it receives a `Message` whose prefix equals `DDL_SIGNAL_PREFIX` (`"pglite_ddl"`), it re-introspects the published schema and applies a structured delta. Additive changes (new column, new table) auto-apply; incompatible ones halt the replica with a precise reason (`Error::ReplicaHalted`). **Emitting that signal upstream is an external prerequisite** — you install an event trigger on `ddl_command_end` that calls `pg_logical_emit_message(true, 'pglite_ddl', …)`; no crate in this workspace installs it for you.
-- **Security catalog mirrored by introspect-and-rebuild.** Roles, role memberships, `SELECT` grants, RLS enable/force flags, and policies are NOT carried by any logical-replication stream. They are pulled in by `backfill::reconcile_security`, a separate idempotent reconcile that fires on backfill, on the `pglite_ddl` signal, and on a periodic role poll (`role_poll_interval`, default 60s). Roles are rebuilt as `CREATE ROLE … NOLOGIN NOBYPASSRLS` shells; the application-side `query_as(role, claims, sql, params)` seam uses `SET LOCAL ROLE` (and `SET LOCAL request.jwt.claims`) inside a pinned, rolled-back transaction so the load-bearing RLS guarantee holds.
-
-## Why the FFI waist matters for safety
-
-Postgres predates Rust by decades. Its main loop, error paths, and signal handling were not designed to be called from safe languages. Three design choices in pglite-rs keep the boundary safe:
-
-1. **No `Arc<Mutex<EngineState>>`.** Engine globals are touched only on the engine thread. Cross-thread handoff is `mpsc::Sender<EngineCommand>` plus a `futures::channel::oneshot` reply, with the reply carrying wire bytes — the same bytes an external client would see.
-2. **No Rust frame inside a `longjmp` region.** The `sigsetjmp` trampoline `pgl_native_call`, entered once at boot, contains every Postgres jump and fake-exit; the C ABI presents an ordinary status code outward. A `longjmp` that landed in Rust frames would leave `RefCell` borrows, locks, and destructors in undefined states.
-3. **The exit-on-error path is plumbed, not implicit.** Errors come back as parsed `Message::ErrorResponse` frames carrying SQLSTATE; they are decoded into `Error::Database { sqlstate, … }`. There is no "engine panicked" path that can silently leave a transaction open — the trampoline unwinds the engine, and Rust sees a normal `Err`.
-
-## What it costs
-
-- **One OS thread, dedicated to the engine.** Negligible. It sleeps on a channel between queries.
-- **A precompiled static library per target triple.** `pglite-sys/build.rs` downloads it on first build and caches it under `~/.cache/pglite-rs/`; subsequent builds skip the download.
-- **A small constant overhead per query** for the channel hop and the wire-format roundtrip — not a real Postgres driver cost, but not free either. For batch work, prefer `COPY` or a single multi-statement `exec`.
-
-For typical interactive use (open, query, transaction, close), the overhead is dominated by Postgres itself, not the binding.
+`PGliteOptions.locale_provider` can be `Libc` or `Icu`. An ICU data directory must be reopened with an ICU build.

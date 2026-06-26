@@ -1,127 +1,36 @@
 ---
 title: GET /q/{hash}/{version}
-description: Fetch a content-and-version-addressed snapshot
+description: Fetch a cached public query snapshot.
 ---
 
-# `GET /q/{hash}/{version}`
+Snapshot URLs are only produced by public `POST /query` calls.
 
-Fetch a content-and-version-addressed snapshot. The URL is the content — the same `{hash}/{version}` always returns the same body, served straight from the in-process cache.
-
-## Path
-
-```
-GET /q/{hash}/{version}
+```bash
+curl http://127.0.0.1:8080/q/{hash}/{version}
 ```
 
-- `{hash}` — hex of the `CacheableQuery` fingerprint: a `DefaultHasher` over the normalized (sqlparser-canonicalized) statement string, set in `classify.rs`. Identical normalized statements share a hash.
-- `{version}` — the LSN watermark returned by `VersionIndex::version_of` for this query's tables and filters at issue time. It is an LSN, not a sequential counter, and advances as upstream writes touch the relevant table or row.
+## Hit
 
-<DChart label="Snapshot fetch — cache lookup by content + version" title="Snapshot fetch: a GET resolves to a cache key, hitting (200) or missing (404)">
-  <DRow gap={18} align="center">
-    <DBox kind="accent" mono title="GET request" sub={["/q/{hash}/{version}", "e.g. /q/9a4f/42"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="accent" mono title="cursor()" sub={['key = "{hash}:{version}"', "QueryCache.get(key)"]} />
-    <DCol gap={14} align="center">
-      <DArrow dir="right" kind="success" label="found" />
-      <DArrow dir="right" kind="error" dashed label="evicted" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="HIT → 200" sub={["application/json", "ETag: {hash}:{version}", "public, max-age=259200"]} />
-      <DBox kind="error" title="MISS → 404" sub={['{"name":"NotFound",', '"message":"unknown cursor"}']} />
-    </DCol>
-  </DRow>
-  <DNote>key = content(fingerprint hash) + version(LSN watermark)</DNote>
-  <DNote kind="muted">A data change yields a NEW url (new version segment) — this URL is never mutated in place.</DNote>
-  <DNote kind="muted">ETag value equals the cache key string exactly (etag == key).</DNote>
-</DChart>
-
-## Response
-
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json
-ETag: 9a4f:42
+ETag: {hash}:{version}
 Cache-Control: public, max-age=259200
 ```
 
+Body is the JSON array returned by the replica query.
+
+## Miss
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+```
+
 ```json
-[{"id":7,"email":"alice@example.com"}]
+{ "name": "NotFound", "message": "unknown cursor" }
 ```
 
-The body is the JSON-array text from the `jsonb_agg` wrapper in `rows::wrap_json` — `coalesce(jsonb_agg(to_jsonb(_t)), '[]'::jsonb)::text` — returned compactly, exactly as pglite produced it. An empty result set is `[]`.
+## Cache semantics
 
-The response is safe to cache at the CDN edge for the 72-hour `max-age` window. The URL is the cache key; the body is content-addressed.
-
-## Headers
-
-| Header | Value | Why |
-|---|---|---|
-| `Content-Type` | `application/json` | result rows are JSON |
-| `ETag` | `{hash}:{version}` | strong validator equal to the cache key string; the URL is the actual cache key |
-| `Cache-Control` | `public, max-age=259200` | cacheable by every CDN, browser, and proxy for 72 hours |
-| `Vary` | *(none — the URL is the key)* | the URL is the cache key; no header-based variation |
-
-After the 72-hour `max-age` elapses, a CDN may revalidate against the strong `ETag` (`{hash}:{version}`) the server emits. Because the URL is content-and-version-addressed, the same body is still correct — a revalidation simply confirms the existing entry.
-
-## Stale versions
-
-If the version in the URL is older than the current `VersionIndex` value, the request still returns the frozen snapshot. The current request gets a new URL on the next call to `POST /query`.
-
-This is the right behavior:
-
-- A client that fetches `/q/9a4f/42` and caches the URL gets that body for the 72-hour cache window (and may revalidate after via the `ETag`).
-- A subsequent `POST /query` for the same SQL returns the new version's URL (`/q/9a4f/43`), pointing the client to the new snapshot.
-- The old URL never has to be invalidated because it is content-addressed; the old body is still correct for the moment it was issued.
-
-There is no forced `If-None-Match` round-trip during the `max-age` window — the URL itself is the cache key.
-
-<DChart label="Why an upstream write produces a new url (never mutates the old one)" title="An upstream write bumps the version, so the same SQL issues a new URL while the old one keeps serving">
-  <DRow gap={18} align="center">
-    <DBox badge={1} kind="accent" title="POST /query" sub={["same SQL → hash 9a4f", "version_of → LSN 42"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="info" title="303 → /q/9a4f/42" sub="frozen body, still served" />
-  </DRow>
-  <DArrow dir="down" kind="accent" />
-  <DBox badge={2} kind="accent" title="Upstream write → CdcBridge → VersionIndex.advance" sub="the table/row watermark bumps: LSN 42 → 43" />
-  <DArrow dir="down" kind="accent" />
-  <DRow gap={18} align="center">
-    <DBox badge={3} kind="accent" title="POST /query (same SQL)" sub="hash 9a4f, version_of → 43" />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="success" title="303 → /q/9a4f/43" sub="new url, new snapshot" />
-  </DRow>
-  <DNote>same hash · differing version</DNote>
-  <DNote kind="muted">/42 keeps serving its frozen body</DNote>
-</DChart>
-
-## What `404` means
-
-`/q/{hash}/{version}` returns a `404` only if the cache key `{hash}:{version}` is not present — because the `{hash}` was never produced, or because the local moka cache evicted the body under memory pressure. The body is exactly `{"name":"NotFound","message":"unknown cursor"}` — a hand-written JSON response, not a `CacheError::envelope` payload, and the name is literally `NotFound` (no `Error` suffix). The URL is content-addressed, so a valid `{hash}/{version}` should normally find its body; `404` indicates cache eviction, not a missing snapshot.
-
-If you see `404` in normal operation, your `--cache-size-bytes` is too small for the working set of snapshot URLs. Increase it.
-
-## Examples
-
-```bash
-# Follow a 303 from POST /query
-curl -L -X POST http://127.0.0.1:8080/query \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, email from users where id = 7"}'
-# [{"id":7,"email":"alice@example.com"}]
-
-# Fetch a known snapshot URL directly
-curl -i http://127.0.0.1:8080/q/9a4f/42
-# HTTP/1.1 200 OK
-# Content-Type: application/json
-# ETag: 9a4f:42
-# Cache-Control: public, max-age=259200
-
-# CDN-friendly: same body within the 72h window
-curl http://127.0.0.1:8080/q/9a4f/42
-```
-
-## What's next
-
-- [**`POST /query`**](/pgpaw/api/query) — the entry point that issues these URLs
-- [**`POST /query?live=true`**](/pgpaw/api/live) — SSE event stream for live deltas
-- [**API overview**](/pgpaw/api) — error envelope, CORS, status codes
-- [**How it works**](/pgpaw/how-it-works) — the cache invalidation flow that makes this safe
+The code sets `max-age=259200`, which is 72 hours. The URL includes the query fingerprint and version. When relevant upstream data changes, PgPaw issues a new URL for the same SQL.

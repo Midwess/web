@@ -1,135 +1,64 @@
 ---
 title: Quickstart
-description: End-to-end — init, serve, snapshot, live
+description: Prepare upstream Postgres, start PgPaw, and issue snapshot and live queries.
 ---
 
-# Quickstart
-
-The smallest end-to-end path: `init` against an upstream Postgres, `serve` PgPaw, send one snapshot query, then one live query. If you have done this once, the rest of the guides pick up a single concept at a time.
-
-Assumes `pgpaw` is installed (see [Installation](/pgpaw/installation)) and a reachable Postgres 13+ with superuser access.
-
-<DChart label="Operator sequence — setup to first query" title="Operator setup: init touches the upstream, restart if wal_level changed, serve creates the slot and binds HTTP">
-  <DRow gap={14} align="stretch">
-    <DBox badge={1} kind="accent" title="pgpaw init" sub={["ALTER SYSTEM wal_level=logical", "senders/slots = 10", "CREATE PUBLICATION ALL TABLES", "install pglite_ddl_watch trigger"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DBox badge={2} kind="warn" title="Restart" sub={["Only if wal_level", "actually changed.", "Postgres reload needed."]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DBox badge={3} kind="success" title="pgpaw serve" sub={["preflight: wal_level / senders", "+ slots ≥ 1 / publication", "creates the replication slot here", "open replica → backfill → bind HTTP"]} />
-  </DRow>
-  <DRow gap={14} align="start">
-    <DGroup kind="success" label="Upstream Postgres">
-      <DArrow dir="up" kind="success" dashed label="steps 1 & 2" />
-      <DNote>Steps 1 &amp; 2 mutate the upstream catalog &amp; config — durable.</DNote>
-    </DGroup>
-    <DGroup kind="warn" label="PgPaw process">
-      <DArrow dir="up" kind="warn" dashed label="step 3" />
-      <DNote>Embedded pglite replica + HTTP on serve.</DNote>
-    </DGroup>
-  </DRow>
-</DChart>
-
-## 1. One-time upstream setup
+## 1. Prepare upstream
 
 ```bash
 pgpaw init \
-    --pg-host 127.0.0.1 \
-    --pg-user postgres \
-    --pg-password "$POSTGRES_PASSWORD" \
-    --pg-database myapp
+  --pg-host 127.0.0.1 \
+  --pg-port 5432 \
+  --pg-user postgres \
+  --pg-password "$POSTGRES_PASSWORD" \
+  --pg-database myapp
 ```
 
-`init` runs `ALTER SYSTEM` to set `wal_level = logical` and to raise `max_wal_senders` / `max_replication_slots` to `10` when they are below it, runs `CREATE PUBLICATION ... FOR ALL TABLES`, and installs the `pglite_ddl_watch` DDL event trigger (online schema-change capture). It does **not** create the replication slot — that happens at serve time.
+`init` checks logical replication settings, creates the publication when missing, and installs a DDL event trigger when permissions allow it.
 
-If `init` reports it changed `wal_level`, restart Postgres. The publication and DDL trigger are durable in the catalog — `init` is a one-shot.
-
-> Some internal help and error text still self-identifies as `cache-server` (a known internal mismatch). The published binary and the command you run is `pgpaw`, so if an error tells you to `Run cache-server init`, it means `pgpaw init`.
+Restart Postgres if `wal_level=logical` or sender/slot settings changed.
 
 ## 2. Serve
 
 ```bash
 pgpaw serve \
-    --pg-host 127.0.0.1 \
-    --pg-user postgres \
-    --pg-password "$POSTGRES_PASSWORD" \
-    --pg-database myapp \
-    --port 8080
+  --host 127.0.0.1 \
+  --port 8080 \
+  --data-dir ./cache-data \
+  --pg-host 127.0.0.1 \
+  --pg-user postgres \
+  --pg-password "$POSTGRES_PASSWORD" \
+  --pg-database myapp
 ```
 
-On serve, `preflight` validates the upstream: `wal_level = logical`, `max_wal_senders` and `max_replication_slots` each `>= 1`, and that the publication exists — erroring with remediation text otherwise. (Note the asymmetry: `init` *applies* the value `10`, while the serve-time `preflight` gate only requires `>= 1`.) PgPaw then opens the embedded pglite replica, **creates the replication slot at this point**, runs the initial backfill, and binds HTTP.
+`serve` preflights upstream, opens `PGlite::open_multi_process`, starts a logical replica, scans schema, starts CDC, and binds HTTP.
 
-First boot runs the initial backfill; later boots resume from the watermark. The HTTP server is up while the replica catches up — queries still work, they just see the current snapshot.
-
-## 3. Wait for healthy
-
-```bash
-curl -s http://127.0.0.1:8080/healthz
-# {"status":"ok","watermark":12345678}
-```
-
-A healthy replica returns `200` with `{"status":"ok","watermark":...}`. If the applier hits an unrecoverable error the replica is `halted`, and `/healthz` returns `503` with `{"status":"halted","reason":...}`. See [How it works](/pgpaw/how-it-works#why-the-replica-is-the-right-place-to-run-reads) for the failure modes.
-
-## 4. Send a snapshot query
-
-The request body accepts exactly one field, `sql`. No `params`, `role`, or extra keys are read.
+## 3. Query a snapshot
 
 ```bash
 curl -i -X POST http://127.0.0.1:8080/query \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, email from users where id = 7"}'
+  -H "content-type: application/json" \
+  -d '{"sql":"select id, email from users where id = 7"}'
 ```
 
-You get a `303 See Other` with `Location: /q/{hash}/{version}` and `Cache-Control: no-store` on the redirect itself. Follow the redirect to fetch the body, which sets `ETag: {hash}:{version}` and `Cache-Control: public, max-age=259200` (72 hours):
+Public query response:
+
+```http
+HTTP/1.1 303 See Other
+Location: /q/{hash}/{version}
+Cache-Control: no-store
+```
+
+Fetch the snapshot:
 
 ```bash
-curl -L -X POST http://127.0.0.1:8080/query \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, email from users where id = 7"}'
-# [{"id":7,"email":"alice@example.com"}]
+curl http://127.0.0.1:8080/q/{hash}/{version}
 ```
 
-That URL serves the same frozen body for its 72-hour cache window. Because the URL is content + version addressed, a relevant upstream write does not mutate it — it re-issues a *new* `/q/{hash}/{version}` on the next `POST /query`.
-
-<DChart label="One POST /query — three response shapes" title="One POST /query branches into a 303 snapshot, an inline private result, or an SSE live stream">
-  <DRow gap={14} align="center">
-    <DBox mono title="POST /query" sub={[`{"sql": ...}`, "?live=true · Authorization?"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DBox kind="info" title="gates" sub={["halt → 503", "auth → 401", "classify → 400", "is_private?"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="success" label="public" />
-      <DArrow dir="right" kind="accent" label="private" />
-      <DArrow dir="right" kind="info" label="live" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="public → 303 snapshot" sub={["Location: /q/{hash}/{version} · redirect no-store", "body: ETag + Cache-Control public, max-age=259200"]} />
-      <DBox kind="accent" title="private → 200 inline JSON" sub="Cache-Control: private, no-store · run as token role" />
-      <DBox kind="info" title="?live=true → 200 SSE" sub="text/event-stream · Cache-Control: no-store" />
-    </DCol>
-  </DRow>
-</DChart>
-
-## 5. Open a live stream
+## 4. Subscribe live
 
 ```bash
-curl -N -X POST 'http://127.0.0.1:8080/query?live=true' \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, status from orders"}'
+curl -N -X POST "http://127.0.0.1:8080/query?live=true" \
+  -H "content-type: application/json" \
+  -d '{"sql":"select id, status from orders"}'
 ```
-
-The stream opens with one `snapshot` frame — for a public query it carries a `url` pointer (`{"type":"snapshot","url":"/q/{hash}/{version}","version":...}`), for an access-controlled query it carries inline `rows` (`{"type":"snapshot","rows":[...],"version":...}`). Then, on each relevant upstream commit, the server re-runs the SQL, diffs against the last snapshot, and emits zero or more per-row frames — `{"op":"insert","key":...,"row":...,"txid":...}`, `update`, or `delete` (delete carries `key` only) — followed by a terminal `{"op":"up-to-date","txid":...}` for that same commit. The `up-to-date` frame is emitted even when the diff is empty, so an `awaitTxId` can't hang.
-
-Every delta frame and the `up-to-date` frame carry `txid`, the low 32 bits of the upstream transaction xid. On a replication `Lagged` (dropped transactions under back-pressure), the server sends `{"op":"reset"}` and the client should reload. Frames are SSE-framed as `data: <json>\n\n`. See [API](/pgpaw/api/live) for the full event format.
-
-## What's next
-
-- [**API**](/pgpaw/api) — `POST /query`, `GET /q/{hash}/{version}`, `?live=true` SSE, error envelope
-- [**SQL classifier**](/pgpaw/sql-classifier) — what queries are allowed, what's rejected
-- [**Authorization**](/pgpaw/authorization) — JWT, RLS policies, public vs access-controlled
-- [**How it works**](/pgpaw/how-it-works) — architecture, cache invalidation flow, SSE deltas
-- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var

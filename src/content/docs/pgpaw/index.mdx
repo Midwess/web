@@ -1,124 +1,45 @@
 ---
 title: PgPaw
-description: Read-only Postgres cache + realtime server over an embedded pglite-rs logical replica
+description: Read-only Postgres cache and realtime server over an embedded pglite-rs logical replica.
 ---
 
-# PgPaw
+PgPaw is a small HTTP server that accepts read-only PostgreSQL `SELECT` queries, runs them against an embedded pglite-rs logical replica, and returns either a cacheable snapshot URL or a live SSE stream.
 
-PgPaw is a single Rust binary that sits in front of a Postgres and serves **CDN-cacheable, version-addressed query snapshots** *and* **live realtime updates** from the same endpoint. Unlike shape- or ZQL-based sync engines, you query with plain Postgres SQL — no bespoke query language to learn.
-
-It embeds a [pglite-rs](/pglite-rs) instance as a logical replica of your upstream Postgres, runs every read inside that replica, and gives you three things that are usually painful to bolt on:
-
-1. **Precise, watermark-derived cache invalidation** keyed on per-table / per-PK LSN state.
-2. **CDN-cacheable, version-addressed snapshots** — a `303` redirect to a content-hash URL (`/q/{hash}/{version}`). The redirect itself carries `Cache-Control: no-store`; the snapshot resource it points at is served with `Cache-Control: public, max-age=259200` (72h) plus an `ETag`.
-3. **Realtime deltas over SSE** — first event is a snapshot (a `url` pointer for public queries, inline `rows` for access-controlled ones), then `insert` / `update` / `delete` events per affected row, each carrying a `txid`.
-
-{/* DIAGRAM 1 — one POST /query becomes both a cacheable snapshot and a live feed */}
-<DChart label="One endpoint, two outcomes" title="One POST /query becomes both a cacheable snapshot and a live SSE feed">
-  <DRow gap={14} align="center" wrap>
-    <DBox kind="accent" title="Client" sub={["POST /query", "{ sql } [?live=true]"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="success" title="ReadClassifier" sub={["read-only SELECT gate", "else → 400 Rejected"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="info" title="VersionIndex" sub={["derives LSN version", "key = {hash}:{version}"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox title="moka cache" sub={["QueryCache", "get_or_compute"]} />
+<DChart label="Service shape" title="Upstream writes replicate into pglite; clients read from PgPaw.">
+  <DRow>
+    <DBox kind="muted" title="Upstream Postgres" sub="publication + logical slot" />
+    <DArrow />
+    <DBox kind="success" title="pglite-rs replica" sub="embedded multi-process database" />
+    <DArrow />
+    <DBox kind="accent" title="PgPaw" sub="classifier, cache, live hub, HTTP API" />
+    <DArrow />
+    <DBox kind="info" title="Clients" sub="snapshots or SSE deltas" />
   </DRow>
-  <DRow gap={18} align="start">
-    <DGroup kind="success" label="Public (not ?live)">
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="success" title={"303 → /q/{hash}/{version}"} sub={["redirect header: Cache-Control: no-store", "GET /q/… → 200 + ETag", "Cache-Control: public, max-age=259200 (CDN-cacheable)"]} />
-    </DGroup>
-    <DGroup kind="info" label="?live=true">
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="info" title="LiveHub → SSE stream" sub={["first: snapshot (public: url · private: inline rows)", "then: insert / update / delete {txid}", "round terminator: up-to-date {txid}"]} />
-    </DGroup>
-  </DRow>
-  <DGroup kind="warn" label="Invalidation loop (LSN, not wall-clock)" row>
-    <DBox title="upstream write → CdcBridge → VersionIndex bump" sub="LSN-keyed, not wall-clock" />
-    <DArrow dir="right" kind="success" />
-    <DBox kind="success" title={"new {hash}:{version} URL"} />
-    <DArrow dir="right" kind="info" />
-    <DBox kind="info" title="SSE insert/update/delete" sub="+ up-to-date {txid}" />
-  </DGroup>
 </DChart>
 
-## Features
+## Core behavior
 
-- **Single static binary.** `cargo install pgpaw` or `npm install -g pgpaw`. One process, one config, one upstream.
-- **Plain Postgres SQL.** `SELECT id, email FROM users WHERE id = 7` — no DSL, no codegen, no schema sync. Drop it into [TanStack Query](https://tanstack.com) / DB, REST clients, anything that speaks HTTP.
-- **Version-addressed, CDN-cacheable responses.** Every snapshot lives at `/q/{hash}/{version}`, served with `Cache-Control: public, max-age=259200` (72h) plus an `ETag` equal to the cache key `{hash}:{version}`. The URL is the content+version: a data change yields a new URL rather than mutating an existing one.
-- **Per-row cache anchoring.** A `WHERE pk = literal` becomes a per-row anchor — writes to other rows do not invalidate the cache entry. Per-table fallback for joins and unanchored queries.
-- **Live SSE deltas.** `POST /query?live=true` opens a stream: a snapshot event, then row-level `insert` / `update` / `delete` events for affected rows (each carrying a `txid`), then a terminal `up-to-date {txid}` for that recompute round — emitted even when the diff is empty, so a client awaiting a `txid` cannot hang.
-- **Native Postgres Row-Level Security.** Access-controlled queries are verified by JWT, then run as the token's role inside the embedded replica. Your existing RLS policies are the authority — PgPaw only verifies tokens, never issues them.
-- **Public vs access-controlled split.** Public data (RLS disabled, `GRANT SELECT TO PUBLIC`) serves from the shared cache. Anything else is private, per-token, never cached.
-- **Logical replication out of the box.** One `pgpaw init` sets `wal_level=logical`, creates the publication, and installs a DDL event trigger (`pglite_ddl_watch`, firing on `ddl_command_end`). After that, the replica stays in sync automatically — DDL, schema changes, and all.
-- **Read-only by construction.** The SQL classifier rejects `INSERT` / `UPDATE` / `DELETE` / `MERGE` / DDL, `FOR UPDATE` / `FOR SHARE`, `SELECT INTO`, multi-statement input, side-effecting functions (`nextval` / `setval` / `pg_advisory_*`), volatile-read functions (`now` / `random` / `clock_timestamp` / `gen_random_uuid` / …), and references to non-replicated tables. The replica is also read-only to PgPaw.
-- **Built on [pglite-rs](/pglite-rs).** The replica is the same embedded engine that powers the rest of the stack. Logical replication, DDL tracking, security catalog mirroring, change broadcast — all inherited.
-- **Sub-millisecond cache hits.** `moka` in-process cache. The key is the string `{hash}:{version}`, where `hash` is `{fingerprint:x}` (a `DefaultHasher` of the normalized statement) and `version` is the LSN watermark from `VersionIndex`; that same string doubles as the `ETag`. The key is stable until a relevant write actually occurs.
-- **Health endpoint.** `GET /healthz` reports replica watermark and `ok` / `halted` status.
+- `POST /query` accepts a single read-only `SELECT`.
+- Public queries return `303 See Other` to `/q/{hash}/{version}`.
+- Private queries run under a JWT-derived Postgres role and return inline `200` JSON with `private, no-store`.
+- `POST /query?live=true` streams a snapshot and row deltas.
+- `GET /q/{hash}/{version}` reads from an in-process result cache and is public-cacheable for 72 hours.
+- `GET /healthz` reports replica state and watermark.
 
-## How it fits
+## Main components
 
-A typical deployment looks like:
+| Component | Purpose |
+| --- | --- |
+| `ReadClassifier` | Parses SQL, rejects unsafe statements, extracts tables and equality filters. |
+| `VersionIndex` | Tracks LSN watermarks per table/key from committed replication transactions. |
+| `QueryCache` | Stores JSON snapshot bodies keyed by `{hash}:{version}`. |
+| `LiveHub` | Re-runs subscribed queries after commits and emits insert/update/delete/up-to-date events. |
+| `Verifier` | Validates HS256 or RS256/ES256 JWTs and maps a claim to a Postgres role. |
 
-{/* DIAGRAM 2 — where PgPaw sits in a deployment */}
-<DChart label="Reads never touch upstream · the replica is the cache" title="Where PgPaw sits in a deployment and what flows over each hop">
-  <DRow gap={14} align="center" wrap>
-    <DBox kind="info" title="CDN / browser / mobile app" sub={["GET /q/{hash}/{version}", "cacheable, max-age=259200", "POST /query?live=true"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="accent" title="PgPaw" sub={["single process · in-memory", "moka QueryCache", "VersionIndex (LSN) · LiveHub (SSE)"]} />
-    <DArrow dir="right" kind="accent" label="run read" />
-    <DBox kind="warn" title="pglite-rs replica" sub={["embedded engine", "every read runs here,", "read-only to PgPaw"]} />
-  </DRow>
-  <DArrow dir="up" kind="warn" dashed label="logical replication · pgoutput + DDL signal" />
-  <DBox title="Upstream Postgres" sub={["publication + replication slot", "wal_level = logical", "DDL event trigger: pglite_ddl_watch"]} />
-</DChart>
+## Start here
 
-Reads never touch the upstream. Writes go through your normal path. The replica is the cache.
-
-## What it is not
-
-- **Not a write proxy.** PgPaw is read-only. Writes go to upstream through your existing path.
-- **Not a generic SQL cache.** It does not serve OLTP workloads — every read must fit the classifier and the publication.
-- **Not a Postgres connection pooler.** The replica is a single embedded engine; the upstream connection is one logical-replication client.
-- **Not a sync engine DSL.** It speaks plain Postgres SQL, not a custom query language. If you want a sync engine with shape subscriptions, look at [ElectricSQL](https://electric-sql.com) or [Rocicorp Zero](https://zero.rocicorp.dev) directly.
-
-## The live subscription lifecycle
-
-A `?live=true` stream is driven by the CDC pipeline: each relevant upstream commit triggers a recompute-and-diff round on the server.
-
-{/* DIAGRAM 3 — lifecycle of a single live SSE subscription */}
-<DChart label="CdcBridge → LiveHub: recompute + diff per commit" title="Lifecycle of a single live SSE subscription's event stream">
-  <DRow gap={18} align="start">
-    <DCol>
-      <DBox badge={1} title="subscribe" sub={["LiveHub registers the SQL + its tables", "mpsc receiver returned to the request"]} />
-      <DArrow dir="down" kind="success" />
-      <DBox badge={2} kind="success" title="first event: snapshot" sub={["public → {type:snapshot, url, version}", "private → {type:snapshot, rows, version}", "private rows are inline, never CDN-cached"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="right" kind="info" />
-    </DCol>
-    <DCol>
-      <DBox badge={3} kind="info" title="per relevant commit (loop)" sub={["re-run SQL → diff keyed_map snapshots", "insert / update / delete — each with {txid}", "up-to-date {txid} — round terminator"]} />
-      <DNote kind="info">emitted even on an empty diff (awaitTxId can't hang)</DNote>
-      <DNote kind="info">closed senders are reaped each commit</DNote>
-      <DArrow dir="down" kind="error" dashed />
-      <DBox badge={4} kind="error" title={"{op: reset}"} sub={["on broadcast Lagged (dropped txns)", "subs dropped → client reloads from a fresh snapshot"]} />
-    </DCol>
-  </DRow>
-  <DGroup kind="success" label="Driven by">
-    <DBox kind="success" title="Upstream commit → CdcBridge (cache-cdc thread)" sub="advances VersionIndex, broadcasts the txn to LiveHub" />
-  </DGroup>
-</DChart>
-
-## Where to go next
-
-- [**How it works**](/pgpaw/how-it-works) — architecture, cache invalidation flow, SSE deltas
-- [**Installation**](/pgpaw/installation) — `cargo install` / `npm install`, upstream `init`
-- [**Quickstart**](/pgpaw/quickstart) — init → serve → first query
-- [**API**](/pgpaw/api) — `POST /query`, `GET /q/{hash}/{version}`, SSE deltas
-- [**SQL classifier**](/pgpaw/sql-classifier) — what queries are allowed, what's rejected
-- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
-- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var
-- [**pglite-rs**](/pglite-rs) — the embedded engine that powers the replica
+- [Installation](/pgpaw/installation)
+- [Quickstart](/pgpaw/quickstart)
+- [HTTP API](/pgpaw/api)
+- [Authorization](/pgpaw/authorization)
+- [Configuration](/pgpaw/configuration)

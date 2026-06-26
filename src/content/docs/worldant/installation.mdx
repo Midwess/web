@@ -1,104 +1,49 @@
 ---
 title: Installation
-description: Install worldant via npm — prebuilt native binary included
+description: Install the Worldant runtime package and optional supervisor CLI.
 ---
 
-# Installation
-
-Worldant ships as `@midwess/worldant` on npm with a prebuilt native binary for your platform. No compiler toolchain, no Rust install.
-
-## Install
+Install the package that runs inside your Node app:
 
 ```bash
-pnpm add @midwess/worldant
-# or
 npm install @midwess/worldant
-# or
-yarn add @midwess/worldant
 ```
 
-This pulls in `@workflow/core`, `@workflow/world`, and the prebuilt native addon. The library bundles **all** of its prebuilt binaries directly in the package — its `files` field is `["dist", "native"]`, so every supported `world.<target>.node` is shipped inside the single npm tarball and the loader picks the one matching your OS and architecture at runtime. (The matching-binary-via-optional-dependencies mechanism described below applies only to the CLI package, not the library.)
+Add it to app startup:
 
-## What installs where
+```ts
+import { install } from "@midwess/worldant";
 
-<DChart label="TWO ARTIFACTS · ONE OPTIONAL SERVICE" title="Which artifact installs where and what each provides">
-  <DRow gap={18} align="start">
-    <DGroup label="LIBRARY · IN-APP">
-      <DBox kind="accent" title="@midwess/worldant" sub={["LIBRARY · IN-APP", "pnpm / npm / yarn add — v0.1.1"]} />
-      <DArrow dir="down" />
-      <DBox title="TS shim (dist/)" sub={"@workflow/world World"} />
-      <DArrow dir="down" />
-      <DBox title="native/ bundled addon" sub={"world.<target>.node — picked at runtime"} />
-      <DArrow dir="down" />
-      <DBox kind="success" title="embedded SQLite" sub="owns durability" />
-      <DNote>deps: @workflow/core + @workflow/world</DNote>
-      <DNote>loaded into your host Node process</DNote>
-    </DGroup>
-    <DGroup kind="info" label="CLI · STANDALONE BINARY">
-      <DBox kind="info" title="@midwess/worldant-cli" sub={["CLI · STANDALONE BINARY", "npm install -g — v0.1.0 · binary: worldant"]} />
-      <DArrow dir="down" kind="info" />
-      <DBox kind="info" title="binary via optionalDependencies" sub="platform-specific package" />
-      <DArrow dir="down" kind="info" />
-      <DBox kind="info" title="prebuilt targets" sub="darwin-arm64 · darwin-x64 · linux-x64-gnu" />
-      <DArrow dir="down" kind="info" />
-      <DBox kind="info" mono title="cargo install worldant-cli" sub="or build from the published crate" />
-      <DNote kind="info">owns the public port · forwards bytes</DNote>
-      <DNote kind="error">never opens the DB — durability is in the library</DNote>
-    </DGroup>
-  </DRow>
-  <DGroup kind="warn" label="OPTIONAL · PER-USER OS SERVICE">
-    <DBox kind="warn" title="worldant install" sub={["registers a service that runs `worldant serve`", "uninstall with `worldant uninstall`"]} />
-    <DRow gap={14}>
-      <DBox title="Linux" sub="systemd --user" />
-      <DBox title="macOS" sub="launchd agent" />
-    </DRow>
-    <DNote>optional `--env-file` injects env (and PATH) · unsupported on other OSes (returns an error)</DNote>
-  </DGroup>
-</DChart>
-
-## Supported platforms
-
-The package ships prebuilt binaries for:
-
-| Platform | Architecture | Status |
-|----------|--------------|--------|
-| macOS | Apple Silicon (`arm64`) | prebuilt |
-| macOS | Intel (`x64`) | prebuilt |
-| Linux | `x64` (glibc) | prebuilt |
-
-Other platforms (Linux ARM, musl libc, Windows, Deno) are not yet published as prebuilt binaries. The source build path lives in the [worldant repo](https://github.com/Midwess/worldant) on GitHub.
-
-## Requirements
-
-- **JavaScript.** Node.js 18+ and any package manager (`pnpm`, `npm`, or `yarn`). The CLI package declares `node >= 18`; the example app uses Node 20+.
-
-No C compiler. No Rust. No system SQLite. The native binary ships prebuilt inside the package.
-
-## Verify
-
-```bash
-node -e "import('@midwess/worldant').then(m => m.install()).then(w => console.log('ok'))"
+await install();
 ```
 
-You should see `ok`. Called with no config, `install()` opens an **in-memory (ephemeral) World** via `open_temp()` — no on-disk data dir is created — then starts the world and registers it as the active `@workflow/core` runtime. To get a durable on-disk database, pass `dataDir` to `install()`/`createWorld()`. (For reference, the example app resolves its own default path as `process.env.WORLDANT_DATA_DIR ?? join(process.cwd(), '.worldant-data')` — that is an app-level default, not a library default.)
+`install()` calls `createWorld()`, registers the result with `@workflow/core`, starts the world, and returns the world handle.
 
-## Optional: install the supervisor
+## Supervisor CLI
 
-The `worldant` CLI is a separate package. It is only needed if you want the scale-to-zero supervisor (otherwise your app runs as a normal long-lived Node process).
+Install the CLI when the app should run under Worldant supervision:
 
 ```bash
-pnpm add -g @midwess/worldant-cli
-# or
 npm install -g @midwess/worldant-cli
-# or, build from the published crate
-cargo install worldant-cli
 ```
 
-The npm package picks the right prebuilt binary for your OS via platform-specific optional dependencies (`@midwess/worldant-cli-darwin-arm64`, `-darwin-x64`, `-linux-x64-gnu`) — no separate install step. The published crate is `worldant-cli`; the installed binary is named `worldant`.
+Then start your app through the supervisor:
 
-## Where to go next
+```bash
+worldant run -- npm start
+```
 
-- [**Quickstart**](/worldant/quickstart) — install, wire up, run a workflow, read the result
-- [**Workflows**](/worldant/workflows) — `'use workflow'`, `'use step'`, retries, hooks, streams
-- [**Supervisor**](/worldant/supervisor) — the `worldant` CLI for scale-to-zero
-- [**Configuration**](/worldant/configuration) — `WorldConfig`, codec, paths
+Use `start` for single-process foreground supervision. Use `run` for daemon-backed app management.
+
+## Platform notes
+
+The cloned source ships native packages for Node apps on macOS and Linux. The supervisor code uses Unix sockets and Unix process primitives. Deno and Windows are not the current target.
+
+## Verify setup
+
+```bash
+node -e "import('@midwess/worldant').then(m => console.log(typeof m.install))"
+worldant ps
+```
+
+`worldant ps` starts or contacts the daemon and prints active supervised apps when any exist.

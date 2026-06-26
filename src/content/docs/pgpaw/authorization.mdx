@@ -1,204 +1,51 @@
 ---
 title: Authorization
-description: JWT verification, RLS policies, public vs access-controlled, request.jwt.claims
+description: Configure JWT verification and Postgres RLS enforcement.
 ---
 
-# Authorization
+PgPaw relies on Postgres for row-level security. JWT verification only decides which role and claims are set before running a private query.
 
-PgPaw enforces your **upstream Postgres Row-Level Security** on cached reads. It verifies a JWT, then runs access-controlled queries **as the token's role** inside the embedded pglite-rs replica. The replica's own RLS policies filter the rows — the database is the authority, not PgPaw. PgPaw only *verifies* tokens; it never issues them.
+## Configure verification
 
-The split between public and access-controlled is **fail-closed**: anything that cannot be proven public is treated as access-controlled.
-
-<DChart label="VERDICT + TOKEN → ROLE + CACHEABILITY" title="A request's privacy verdict plus its token decide the execution role and the response's cacheability">
-  <DRow gap={18} align="center">
-    <DBox kind="success" mono title="POST /query" sub={["{ \"sql\": \"…\" }", "optional: Authorization: Bearer"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="AuthOutcome → Verifier" sub={"Principal { role, claims_json }"} />
-      <DBox kind="accent" title="Di::is_private(tables)" sub={["relrowsecurity OR not PUBLIC-SELECT", "any-private wins · unknown ⇒ fail-closed"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-      <DArrow dir="right" kind="accent" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="PUBLIC" sub={["runs anonymously, shared cache", "303 → /q/{hash}/{version}", "public, max-age=259200 (72 h)"]} />
-      <DBox kind="accent" title="ACCESS-CONTROLLED" sub={["token required (else 401)", "query_as(role, claims) under RLS", "inline JSON · never cached", "private, no-store · denial 42501/42704/28000 → 403"]} />
-    </DCol>
-  </DRow>
-  <DGroup label="Error codes">
-    <DBox kind="warn" title="401 UnauthorizedError — missing/invalid token, or token with no verifier configured" />
-    <DBox kind="error" title="403 ForbiddenError — RLS denial (sqlstate 42501 / 42704 / 28000)" />
-    <DRow gap={14}>
-      <DBox kind="info" grow={1} title="503 HaltedError — replica halted (checked first)" />
-      <DBox kind="muted" grow={1} title={"500 PgliteError / etc. — any other failure (no \"InternalError\" name)"} />
-    </DRow>
-  </DGroup>
-</DChart>
-
-## 1. Configure a verification key
-
-Give PgPaw the key your existing auth signs with. Symmetric or asymmetric:
+Use exactly one key source:
 
 ```bash
-# HS256 shared secret
-pgpaw serve --jwt-secret "$JWT_SECRET" ...
-
-# RS256 / ES256 verification public key (PEM) — verify-only, no shared secret
-pgpaw serve --jwt-public-key "$(cat jwt_public.pem)" ...
+pgpaw serve \
+  --jwt-secret "$JWT_SECRET" \
+  --jwt-role-claim role
 ```
 
-With **no** key, PgPaw runs anonymous-only. It serves public data and rejects every access-controlled query with `401 UnauthorizedError`.
+or:
 
-Set at most one verification key. The algorithm is pinned by the key type — `--jwt-secret` only accepts HS256, `--jwt-public-key` accepts RS256 or ES256 (RSA is tried first, then EC as fallback; the type is detected from the PEM, not a separate flag). A `--jwt-jwks-url` flag exists but JWKS verification is **not yet implemented** — setting it errors at startup; use `--jwt-secret` or `--jwt-public-key`.
-
-## 2. Write RLS on the upstream
-
-Policies live in **your** Postgres and are replicated into the cache automatically. Enable + force RLS, target a role, and read claims from `request.jwt.claims`:
-
-```sql
--- Enable RLS, force it even for table owners
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders FORCE ROW LEVEL SECURITY;
-
--- The non-superuser role your tokens carry
-GRANT SELECT ON orders TO member;
-
--- A policy that reads tenant id from the JWT
-CREATE POLICY orders_by_org ON orders FOR SELECT TO member
-  USING ( org_id = ((select current_setting('request.jwt.claims', true))::json->>'org_id')::int );
+```bash
+pgpaw serve \
+  --jwt-public-key "$JWT_PUBLIC_KEY" \
+  --jwt-role-claim role
 ```
 
-PgPaw's security reconcile pulls roles, memberships, `SELECT` grants, RLS enable/force flags, and policies into the replica on every relevant upstream change. Replicated roles are created `NOLOGIN NOBYPASSRLS`, so a token's role can never sidestep a policy. The replica's policies are what filter the rows.
+`--jwt-jwks-url` exists as a flag, but the cloned code returns a configuration error because JWKS verification is not implemented yet.
 
-### Guidelines
+## Supported algorithms
 
-- **Self-contained policies** — read `current_setting('request.jwt.claims', true)` inline. Do not depend on helper functions like `auth.uid()` — user functions are not yet replicated into the cache.
-- **Wrap `current_setting(...)` in `(select ...)`** — `current_setting` is a stable, parameterless GUC function call. Wrapping it in a scalar subquery lets the Postgres planner treat it as an InitPlan it can hoist and evaluate **once for the statement** rather than re-invoking it per row, which keeps RLS-predicate plans tight. This is an optimizer hint, not a correctness requirement.
-- **Index the columns your policies filter on** — the RLS predicate is in the query plan. `org_id` is the typical case; index it.
-- **For multi-tenant**, combine a permissive per-role `SELECT` policy with a `RESTRICTIVE` tenant policy. Permissive policies are OR'd within their kind, restrictive policies are AND'd across kinds. The RLS docs in Postgres cover this in detail.
+- `--jwt-secret`: HS256.
+- `--jwt-public-key`: RS256 when the PEM parses as RSA, otherwise ES256 when it parses as EC.
 
-```sql
--- Per-role permissive
-CREATE POLICY orders_role ON orders FOR SELECT TO member
-  USING ( true );
+Audience validation is disabled. Expiration is still validated by `jsonwebtoken`.
 
--- Tenant-scoped restrictive (applies to every SELECT)
-CREATE POLICY orders_tenant ON orders AS RESTRICTIVE FOR SELECT TO member
-  USING ( org_id = ((select current_setting('request.jwt.claims', true))::json->>'org_id')::int );
+## Request header
+
+```http
+Authorization: Bearer <token>
 ```
 
-The effective predicate is `true AND (org_id = current_tenant_id)` — the tenant scope always applies, the role predicate is a no-op filter.
-
-## 3. The JWT (claims contract)
-
-Your auth service mints HS256, RS256, or ES256 tokens; PgPaw verifies them.
-
-Required:
-
-- `exp` — expiry. Validated. The algorithm is pinned to the configured key type, and audience (`aud`) validation is disabled.
-- A **`role` claim** (name configurable via `--jwt-role-claim`, default `role`) whose value is a real, non-superuser database role your policies target (`TO <role>`).
-
-Every other claim is free-form. PgPaw forwards the whole verified payload into `request.jwt.claims`, and your policies decide which keys matter. A claim key must match what the policy reads (`->>'key'`); it need **not** match a column name (the policy is the bridge).
-
-Example token payload (HS256):
+The role claim must be a string. If `--jwt-role-claim org_role` is set, the token must include:
 
 ```json
-{
-  "sub": "user_42",
-  "role": "member",
-  "org_id": 7,
-  "exp": 1742500000
-}
+{ "org_role": "member" }
 ```
 
-A policy that reads `->>'org_id'` will get `7`. The `sub` claim is not used by PgPaw; it is just preserved in the GUC for the policy to read.
+## Privacy verdict
 
-## 4. Send the token
+A query is private if any touched table has RLS enabled or lacks `PUBLIC SELECT`. Public queries ignore JWT and use the shared snapshot path. Private queries require JWT and are never cached publicly.
 
-```bash
-curl -X POST http://127.0.0.1:8080/query \
-     -H 'authorization: Bearer <jwt>' \
-     -H 'content-type: application/json' \
-     -d '{"sql":"select id, total from orders"}'
-```
-
-The token is verified, then the read runs inside **one transaction** on the replica that is rolled back when it finishes. First `SET LOCAL request.jwt.claims = '<verified payload>'` injects the claims, then `SET LOCAL ROLE "<role>"` switches to the token's role, then the wrapped `SELECT` runs and the policy fires, returning the policy's filtered rows. Because both settings are `SET LOCAL`, they unwind when the transaction ends — so the pool's missing `RESET ALL` is not load-bearing.
-
-<DChart label="INSIDE PGlite::query_as — ONE TRANSACTION, ROLLED BACK" title="What happens inside the replica transaction when an access-controlled query runs as the token's role">
-  <DGroup kind="accent" label="tx = replica.transaction()">
-    <DRow gap={14} align="center">
-      <DBox badge={1} kind="success" title="inject claims" sub={["SET LOCAL", "request.jwt.claims", "= '<verified payload>'", "only if claims present"]} />
-      <DArrow dir="right" kind="accent" />
-      <DBox badge={2} kind="accent" title="become the role" sub={["SET LOCAL ROLE \"<role>\"", "non-superuser, NOBYPASSRLS", "missing role → 42704 → 403"]} />
-      <DArrow dir="right" kind="accent" />
-      <DBox badge={3} kind="success" title="run the SELECT" sub={["jsonb_agg-wrapped read", "policies read request.jwt.claims", "via current_setting, filter rows", "→ inline JSON, no-store"]} />
-    </DRow>
-    <DNote kind="warn">tx.rollback() ↩</DNote>
-  </DGroup>
-  <DNote>Both SET LOCAL settings unwind at rollback — connection-pool reuse cannot leak the role or claims into the next request. The rollback also discards any side effects of the wrapped statement.</DNote>
-</DChart>
-
-## Public vs access-controlled
-
-PgPaw classifies each query against the replicated catalog via `Di::is_private`. For every referenced table it asks the replica for `relrowsecurity OR NOT has_table_privilege('public', oid, 'SELECT')`. The classification decides the cache path, the JWT requirement, and the SSE event shape.
-
-- **Public** — *every* referenced table has RLS disabled **and** `SELECT` is granted to `PUBLIC`. The query is served from the shared cache, and the snapshot URL carries `Cache-Control: public, max-age=259200` (72 hours; no `immutable` directive). No token required. `?live=true` is supported.
-- **Access-controlled** — anything else. If **any** referenced table is RLS-enabled or not `PUBLIC`-readable, the whole query is access-controlled. An unknown or non-replicated table fails **closed** (treated as private). Requires a valid token. Executed under the token's role. Rows returned inline with `Cache-Control: private, no-store` — never cached, never CDN-served. `?live=true` is supported and streams per-token deltas.
-
-The verdict is memoized and invalidated by the replica's `security_version()`: it is recomputed only when the replicated security catalog actually changes. A table that flips from RLS-off to RLS-on upstream is reclassified on the next pglite_ddl signal.
-
-<DChart label="SECURITY CATALOG MIRROR + VERDICT FRESHNESS" title="How upstream RLS roles, grants, and policies are mirrored into the replica and how the public-vs-private verdict is kept fresh">
-  <DRow gap={14} align="center">
-    <DBox kind="error" title="Upstream Postgres" sub={["system catalog (source of truth)", "pg_roles · pg_auth_members", "SELECT grants", "relrowsecurity", "relforcerowsecurity", "pg_policy", "logical replication + pglite_ddl signal"]} />
-    <DArrow dir="right" kind="success" />
-    <DBox kind="success" title="Replica reconcile" sub={["introspect_security → reconcile_security", "CREATE ROLE … NOLOGIN NOBYPASSRLS", "GRANT memberships", "GRANT SELECT ON … TO <role>", "ALTER TABLE [NO] FORCE ROW LEVEL SECURITY", "CREATE POLICY …", "bumps Replica::security_version()"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="accent" title="Di.security_cache" sub={["keyed by security_version", "memoizes is_private", "verdicts per table", "version mismatch ⇒", "clear + recompute"]} />
-  </DRow>
-  <DNote>The next relevant DDL or security change advances security_version, so the cached public-vs-private verdict is invalidated and re-derived on demand — no stale classification survives a policy change.</DNote>
-</DChart>
-
-## Why `SET LOCAL ROLE`
-
-The replica is multi-process with a connection pool (see [pglite-rs multi-process mode](/pglite-rs/multi-process)). `SET ROLE` would persist past the transaction and leak into the next request that picks up the same connection. `SET LOCAL ROLE` unwinds at `COMMIT` or `ROLLBACK` — and PgPaw always rolls the read-only transaction back — so the pool's missing `RESET ALL` is not load-bearing. `FORCE ROW LEVEL SECURITY` is defense-in-depth only; the load-bearing guarantee is that queries are executed under a non-superuser, `NOBYPASSRLS` role.
-
-## The three authorization outcomes
-
-<DChart label="ONE POST /query — THREE OUTCOMES" title="Decision tree for the three authorization outcomes of one POST /query">
-  <DRow gap={18} align="center">
-    <DBox kind="accent" title="verify + classify" sub={["token present?", "verifier configured?", "is_private verdict?", "(halt checked first → 503)"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-      <DArrow dir="right" kind="warn" />
-      <DArrow dir="right" kind="error" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="no token + public query → 200, shared cache (303)" sub="valid token + public query also OK — runs anonymously" />
-      <DBox kind="warn" title="401 UnauthorizedError" sub={["private query + no token → \"bearer token is required\"", "token + no verifier configured · bad sig / exp / missing role", "a token can only be used on the access-controlled path"]} />
-      <DBox kind="error" title="private query + valid token" sub={["role denied / absent (42501 / 42704 / 28000) → 403 ForbiddenError", "role allowed → 200 inline JSON, private, no-store", "other sqlstates fall through as 500 PgliteError"]} />
-    </DCol>
-  </DRow>
-</DChart>
-
-## What if the token has no `role` claim?
-
-PgPaw returns `401 UnauthorizedError`. A token without a role cannot be used for access-controlled reads, and the access-controlled path is the only one that accepts a token.
-
-## What if the token's role is not on the upstream?
-
-The replica's `SET LOCAL ROLE "<role>"` fails because the role does not exist (the security reconcile only mirrors roles that exist upstream). That Postgres error carries sqlstate `42704` (or `28000`), which `map_db_denial` maps to `403 ForbiddenError`. There is no `InternalError` envelope name in PgPaw — any error that is *not* one of the recognized denial sqlstates would instead fall through as a `500` whose name is the underlying variant (e.g. `PgliteError`), but the missing-role case is a `403 ForbiddenError`.
-
-## What if the policy denies the table entirely?
-
-PgPaw returns `403 ForbiddenError`. The RLS policy is the authority — if the policy says the role cannot read the table, PgPaw does not.
-
-## What's next
-
-- [**API**](/pgpaw/api) — request/response format, error envelope
-- [**SQL classifier**](/pgpaw/sql-classifier) — what's allowed, what's rejected
-- [**Configuration**](/pgpaw/configuration) — every CLI flag and env var
-- [**pglite-rs replica mode**](/pglite-rs/replication) — how the security catalog is replicated
+Database denial SQLSTATEs `42501`, `42704`, and `28000` map to `403`.

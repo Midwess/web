@@ -1,290 +1,63 @@
 ---
 title: Workflows
-description: The 'use workflow' and 'use step' directives, retries, hooks, streams, child workflows
+description: Use Vercel Workflow code unchanged while Worldant stores the world state.
 ---
 
-# Workflows
+Worldant does not replace the Workflow compiler or framework adapters. It provides the world that those packages run against.
 
-A worldant app is just a Vercel Workflow app — the `"use workflow"` and `"use step"` directives, `getStepMetadata`, `getWorkflowMetadata`, `FatalError` / `RetryableError`, hooks, streams, and child workflows all work unchanged. worldant does not define its own workflow DSL: it implements the `@workflow/world` interface and reuses `@workflow/core`'s compiler and replay engine verbatim. What worldant supplies is the durable World — events, steps, queue, hooks, waits, streams — backed by an embedded SQLite database (no Postgres, Redis, or Temporal). The rest of the model is the Vercel Workflow model. See the [Vercel Workflow docs](https://github.com/vercel/workflow) for the underlying primitive set.
-
-This page focuses on what worldant does with the workflow at runtime: the directives, the durable entities behind a run, the retry semantics, and the world-specific helpers (`world.events`, `world.steps`, `world.runs`).
-
-## The directives
-
-Two string directives tell `@workflow/core`'s SWC plugin which functions to extract:
-
-- `"use workflow"` — sits inside an exported function. Marks the function as the durable entry point. The transform replaces its body with a call that drives the run through the registered World.
-- `"use step"` — sits inside a helper function. The body of that function runs at most once across the lifetime of the run, even across process restarts.
-
-The directives, the SWC transform, and the replay loop all belong to `@workflow/core`. worldant is the World that the transformed code calls into, registered via `setWorld()` into the `@workflow/core` runtime registry.
-
-```ts title="src/workflows/checkout.ts"
-import {
-  FatalError,
-  RetryableError,
-  getStepMetadata,
-  getWorkflowMetadata,
-} from 'workflow';
-import { start } from 'workflow/api';
-import type { Order, CheckoutResult } from './types.js';
-
-async function chargePayment(order: Order, idempotencyKey: string) {
-  'use step';
-  const { attempt } = getStepMetadata();
-  if (order.scenario?.chargeFault === 'decline') {
-    throw new FatalError('card_declined');
-  }
-  if (order.scenario?.chargeFault === 'timeout' && attempt === 1) {
-    throw new RetryableError('payment gateway timeout', { retryAfter: '1s' });
-  }
-  // Real charge call here. The idempotency key makes retries safe.
-  return { chargeId: `chg_${order.id}` };
-}
-
-async function shipOrder(order: Order) {
-  'use step';
-  return { trackingId: `trk_${order.id}` };
-}
-
-export async function checkout(order: Order): Promise<CheckoutResult> {
-  'use workflow';
-  const { workflowRunId } = getWorkflowMetadata();
-
-  const { chargeId } = await chargePayment(order, `charge:${workflowRunId}`);
-  const { trackingId } = await shipOrder(order);
-  return { ok: true, runId: workflowRunId, chargeId, trackingId };
-}
-```
-
-A step is a regular async function with `'use step'` at the top. It looks like normal code, but its return value is memoized by the world: once a step body has committed, the same step in the same run never runs again. Even if the process crashes, the next replay sees the recorded return value and skips the body.
-
-## The durable entities behind a run
-
-Every run is an event log. worldant stores it across a small set of `world_*` SQLite tables and projects the JSON shapes back to `@workflow/core`:
-
-- **WorkflowRun** — `status` moves through `pending → running → (completed | failed | cancelled)`. The three end states are terminal: `is_terminal()` gates any further transition, so a completed or cancelled run cannot move again.
-- **Step** — `status` has the same five values (`pending`, `running`, `completed`, `failed`, `cancelled`). A step also carries `attempt` (incremented on every retry) and `retryAfter` (the timestamp before which a retrying step is not re-dispatched).
-- **Event log** — the source of truth. There are **16 event types**: `RunCreated`, `RunStarted`, `RunCompleted`, `RunFailed`, `RunCancelled`, `StepCreated`, `StepCompleted`, `StepFailed`, `StepRetrying`, `StepStarted`, `HookCreated`, `HookReceived`, `HookDisposed`, `HookConflict`, `WaitCreated`, `WaitCompleted`. Every reduce appends one of these to `world_events`.
-- **Hook** — a named, token-addressed external wait (see [Hooks](#hooks)).
-- **Wait** — a durable timer/correlation slot keyed `<runId>-<correlationId>`, with an optional `resumeAt` timestamp.
-- **Stream** — append-only byte chunks with an EOF marker (see [Streams](#streams)).
-- **Job** — a row in the `world_jobs` queue that drives a step or workflow back into your code.
-
-The world spec version is **3** (`SPEC_VERSION_CURRENT` in Rust, surfaced as `world.specVersion = 3`). An event whose `specVersion` is greater than 3 is rejected with a `RunNotSupported` error — keep your `@workflow/core` and worldant versions in step.
-
-<GraphDiagram
-  direction="RIGHT"
-  label="Run lifecycle"
-  title="A workflow run's state machine — terminal states absorb, no re-transition"
-  nodes={[
-    { id: "pending", kind: "accent", title: "pending", sub: "RunCreated" },
-    { id: "running", kind: "accent", title: "running", sub: "RunStarted" },
-    { id: "completed", kind: "success", title: "completed", sub: "RunCompleted" },
-    { id: "failed", kind: "error", title: "failed", sub: "RunFailed" },
-    { id: "cancelled", kind: "muted", title: "cancelled", sub: "RunCancelled" },
-  ]}
-  edges={[
-    { from: "pending", to: "running", kind: "accent" },
-    { from: "running", to: "completed", kind: "success" },
-    { from: "running", to: "failed", kind: "error" },
-    { from: "running", to: "cancelled", kind: "muted" },
-  ]}
-/>
-
-<GraphDiagram
-  direction="DOWN"
-  label="Step lifecycle"
-  title="A step's state machine — RetryableError loops back through retrying; completed is terminal"
-  nodes={[
-    { id: "pending", kind: "info", title: "pending", sub: "StepCreated" },
-    { id: "running", kind: "info", title: "running", sub: "StepStarted" },
-    { id: "completed", kind: "success", title: "completed", sub: "StepCompleted · memoized" },
-    { id: "failed", kind: "error", title: "failed", sub: "StepFailed · FatalError" },
-    { id: "retrying", kind: "warn", title: "retrying", sub: "StepRetrying · attempt++" },
-  ]}
-  edges={[
-    { from: "pending", to: "running", kind: "info" },
-    { from: "running", to: "completed", kind: "success" },
-    { from: "running", to: "failed", kind: "error" },
-    { from: "failed", to: "retrying", kind: "warn", dashed: true, label: "RetryableError" },
-    { from: "retrying", to: "running", kind: "warn", dashed: true, label: "after retryAfter" },
-  ]}
-/>
-
-<DNote>Each transition appends one of the 16 EventTypes to world_events; *_created events dedup via a partial UNIQUE index (ON CONFLICT).</DNote>
-
-## `getStepMetadata` and `getWorkflowMetadata`
-
-These are sync helpers that return the current execution context:
-
-- `getStepMetadata()` — `{ attempt, stepId, ... }`. Branch on `attempt` to fail on the first try and succeed on the second (transient faults), or fail every time (permanent faults).
-- `getWorkflowMetadata()` — `{ workflowRunId, ... }`. The run's stable identifier. Use it as part of idempotency keys for any external system that charges money, sends mail, etc.
+## Define functions
 
 ```ts
-async function chargePayment(order: Order, idempotencyKey: string) {
-  'use step';
-  const { attempt } = getStepMetadata();
-  if (order.scenario?.chargeFault === 'timeout' && attempt === 1) {
-    throw new RetryableError('payment gateway timeout', { retryAfter: '1s' });
-  }
-  // attempt === 2 here, fall through to the real charge
-  return await payments.charge(order.amount, idempotencyKey);
+async function reserveInventory(sku: string) {
+  "use step";
+  return { sku, reserved: true };
+}
+
+export async function shipOrder(orderId: string, sku: string) {
+  "use workflow";
+  const reservation = await reserveInventory(sku);
+  return { orderId, reservation };
 }
 ```
 
-## `FatalError` vs `RetryableError`
+`"use step"` marks side-effecting work that should be memoized by the workflow runtime. `"use workflow"` marks the durable function entrypoint.
 
-Two error classes decide what the world does with a failure:
-
-- `FatalError` — permanent. The world stops retrying the step. The run moves to a failed state.
-- `RetryableError(message, { retryAfter })` — transient. `retryAfter` is a duration string (`'1s'`, `'500ms'`, `'5m'`) that `@workflow/core` interprets; the world then re-runs the step after that delay. `attempt` increments on each retry.
-
-Plain `Error` thrown from a step is treated as retryable by default. Use `FatalError` for known-bad inputs (validation failures, declined cards, missing rows that won't appear) so the world doesn't waste cycles retrying.
-
-Under the hood, a retry is a `world_jobs` row re-scheduled with a delay. worldant's in-process queue worker applies its own exponential backoff (base `1s`, capped at `300s`) and stops after **25 attempts**, dead-lettering the job — so even a step that keeps throwing plain `Error` eventually gives up rather than looping forever.
-
-## Hooks
-
-`createHook` and `await hook` are durable external waits. A hook is a named, typed slot the workflow can wait on; an external caller resumes the workflow by token.
+## Register the world
 
 ```ts
-import { createHook } from 'workflow';
+import { install } from "@midwess/worldant";
 
-export async function waitForApproval(order: Order) {
-  'use workflow';
-  const hook = createHook<{ approvedBy: string; at: number }>();
-  // The hook token is what the external system uses to resume the workflow.
-  await database.recordPendingApproval(order.id, hook.token);
-  const result = await hook; // resumes when someone calls hook.resume(...)
-  return result;
-}
+await install({ id: "orders" });
 ```
 
-Hooks survive process restarts. The world stores the hook's resume state; the next time the workflow replays, the `await hook` sees the recorded result and continues.
+For advanced setups, use `createWorld()` and register manually:
 
-Hook tokens are unique. Registering a second hook with a token that already exists raises a conflict (`HookConflict` in the event log, surfaced to JS as an `EntityConflictError`), so two callers can't race to own the same resume slot.
+```ts
+import { createWorld, setWorld } from "@midwess/worldant";
 
-Sibling to hooks are **waits** — durable timer/correlation slots keyed `<runId>-<correlationId>`, each with an optional `resumeAt` timestamp. The supervisor reads the soonest pending `resumeAt` (via `next_wake`) so it knows when to wake a scaled-to-zero app to fire the timer. See the [Supervisor](/worldant/supervisor) page for that wake path.
+const world = await createWorld({ id: "orders" });
+setWorld(world);
+await world.start?.();
+```
 
 ## Streams
 
-`outputStream<T>` from `@midwess/worldant` is the typed stream API. Writing happens inside a `'use step'` function; the workflow returns `outputStream<T>()` as the return value, declared with a `ReadableStream<T>` return type. Writes are persisted to the world's storage and survive process restarts.
-
-```ts title="src/workflows/track-order.ts"
-import { outputStream } from '@midwess/worldant';
-import type { OrderStatus } from './types.js';
-
-const STAGES = ['received', 'packed', 'shipped', 'out-for-delivery', 'delivered'];
-
-async function track(orderId: string): Promise<void> {
-  'use step';
-  const out = outputStream<OrderStatus>();
-  for (let i = 0; i < STAGES.length; i++) {
-    await out.write({ stage: `${orderId}: ${STAGES[i]}`, pct: Math.round(((i + 1) / STAGES.length) * 100) });
-  }
-  await out.close();
-}
-
-export async function trackOrder(orderId: string): Promise<ReadableStream<OrderStatus>> {
-  'use workflow';
-  await track(orderId);
-  return outputStream<OrderStatus>();
-}
-```
-
-`outputStream<T>()` plays two roles depending on where it is called:
-
-- **In a step**: the real writer — `.write(value)` encodes and persists the typed value to the world's stream storage; `.close()` writes the EOF marker.
-- **In the workflow return**: a by-reference handle. The body does nothing — the `ReadableStream<T>` return annotation is the signal the codegen uses to detect this as a stream endpoint.
-
-Streams are append-only chunks with an EOF marker. They're useful for long-running progress updates, live status feeds, and any case where the consumer wants to see partial output before the workflow completes.
-
-The raw `getWritable` / `getReadable` primitives from `@workflow/core` remain available for direct `Uint8Array` writes.
-
-## Child workflows
-
-A workflow can start another workflow as a child. The child has its own run id, retry policy, and lifecycle; the parent waits for it to complete (or fires it and continues).
+Worldant exports `outputStream()` for streaming workflow results. The source code calls `getWritable()` from `workflow` and writes encoded chunks.
 
 ```ts
-import { start } from 'workflow/api';
-import { processOrder } from './process-order.js';
+import { outputStream } from "@midwess/worldant";
 
-export async function batchOrders(orders: Order[]) {
-  'use workflow';
-  const runs = await Promise.all(
-    orders.map((order) => start(processOrder, [order])),
-  );
-  return runs.map((r) => r.runId);
+async function emit(orderId: string) {
+  "use step";
+  const out = outputStream<{ state: string }>();
+  await out.write({ state: "accepted" });
+  await out.write({ state: "packed" });
+  await out.close();
 }
 ```
 
-Each `start(...)` returns a `Run` object. `await run.returnValue` blocks on completion; `run.status` shows the current state. The world tracks the parent-child relationship in the events log.
+Call `outputStream()` from a step, because it performs I/O.
 
-## How a run reaches the world, and how a job comes back
+## Queues
 
-The transformed workflow calls into worldant through `setWorld()`. Reads and writes (`world.events`, `world.steps`, `world.queue`) cross the napi boundary into `world-core`, which reduces each event to SQL against the `world_*` tables (JSON payloads stored as CBOR blobs). When a step or workflow needs to run, it is enqueued as a `world_jobs` row; an in-process worker claims it under a lease and dispatches it back into your code by **queue-name prefix**:
-
-- `__wkf_step_<...>` → `kind = step`
-- `__wkf_workflow_<...>` → `kind = flow`
-
-The JS dispatcher matches that prefix to a handler registered with `createQueueHandler(prefix, ...)`. On `world.start()`, `reenqueue_active_runs` re-drives every non-terminal run by enqueueing `__wkf_workflow_<name>`, so in-flight work resumes from the log after a restart.
-
-<DChart title="How workflow code reaches the durable world and how a job is dispatched back">
-  <DGroup label="Write path · workflow code → durable SQLite" row>
-    <DBox kind="accent" badge={1} title="@workflow/core" sub={["SWC-transformed", "'use workflow' / 'use step'"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="accent" badge={2} title="worldant shim" sub={["setWorld registry →", "world.events / steps / queue"]} />
-    <DArrow dir="right" kind="info" />
-    <DBox kind="info" badge={3} title="napi WorldApi" sub={["FFI · JSON marshal", "→ world-core"]} />
-    <DArrow dir="right" kind="info" />
-    <DBox kind="info" badge={4} title="reduce → SQL" sub={["world_* tables (SQLite)", "payloads as CBOR blobs"]} />
-  </DGroup>
-  <DNote center kind="muted">napi FFI boundary · JS &lt;-&gt; Rust</DNote>
-  <DGroup label="Dispatch path · job → back into your code" row>
-    <DBox kind="success" title="step / workflow" sub={["body runs", "completed steps skipped"]} />
-    <DArrow dir="left" kind="accent" />
-    <DBox kind="accent" title="JS dispatcher" sub={["prefix → registered", "createQueueHandler"]} />
-    <DArrow dir="left" kind="info" />
-    <DBox kind="info" title="QueueWorker" sub={["claim_next", "15s lease"]} />
-    <DArrow dir="left" kind="info" />
-    <DBox kind="info" mono title="world_jobs" sub={["kind from prefix:", "__wkf_step_ → step", "__wkf_workflow_ → flow"]} />
-  </DGroup>
-  <DNote>On replay a completed step is memoized — terminal status + *_created ON CONFLICT dedup mean the body is never re-run.</DNote>
-  <DNote>A failed dispatch is re-leased and retried (exp backoff, base 1s, cap 300s) up to 25 attempts before dead-letter.</DNote>
-</DChart>
-
-## Retries and the world
-
-The world is responsible for:
-
-- Persisting step results and workflow state to SQLite.
-- Scheduling retries when a step throws `RetryableError`.
-- Replaying the workflow body from the top each time the run resumes, skipping step bodies whose results are already recorded.
-- Resuming `await hook` / `getWritable` / `await child.returnValue` from the recorded state.
-
-A step is memoized because its completed status is **terminal** — `is_terminal()` gates any re-transition — and because `*_created` events dedup via a partial UNIQUE index (the `append_event` insert uses `ON CONFLICT`). So even if the same `StepCreated` event is re-emitted during replay, the world ignores the duplicate and returns the recorded result. The compile-time transform belongs to `@workflow/core`'s SWC plugin; worldant is only the storage target it calls into. You write the steps; the world remembers.
-
-## Build transform
-
-Workflow files need to go through the `@workflow/core` SWC transform. The NestJS example wires this up with `@workflow/nest`, whose CLI generates the `.swcrc` that points `@swc/core` at the workflow plugin:
-
-```json title="package.json"
-{
-  "scripts": {
-    "setup:swcrc": "node ./node_modules/@workflow/nest/dist/cli.js init --force",
-    "prebuild": "pnpm setup:swcrc",
-    "build": "nest build",
-    "predev": "pnpm setup:swcrc",
-    "dev": "nest start --watch"
-  }
-}
-```
-
-`setup:swcrc` writes a `.swcrc` configured with the workflow SWC plugin; the `prebuild` / `predev` hooks run it before the normal `nest build` (or `nest start --watch`) compiles your sources, so every `'use workflow'` / `'use step'` file is transformed as part of your existing build. The end-to-end wiring lives in the NestJS example in the [worldant repo](https://github.com/Midwess/worldant/tree/main/examples/nestjs-checkout-saga).
-
-## Where to go next
-
-- [**Reading runs**](/worldant/reading-runs) — `getRun`, `run.returnValue`, the `world.events` / `steps` / `runs` surface
-- [**Supervisor**](/worldant/supervisor) — the `worldant` CLI for scale-to-zero
-- [**Configuration**](/worldant/configuration) — `WorldConfig`, env vars, paths
-- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model
+The world implements queue creation and dispatch through `@workflow/world`. Queue handlers are registered by prefix. Native dispatch calls back into JS with the queue name, message, attempt, and message id metadata.

@@ -1,46 +1,59 @@
 ---
 title: Remote functions
-description: Call workflows from any frontend as typed, browser-safe functions — no API routes to write
+description: Call workflows over HTTP with generated typed clients.
 ---
 
-# Remote functions
+Remote functions expose workflow entrypoints through `/__worldant/v1`. The workflow still runs in the durable world; the client only starts a run, waits or polls for completion, and decodes the result.
 
-A deployed world serves itself as a **live npm registry**. Any consumer — a React app, a Node service, another world — installs the generated typed package and calls your workflows like local async functions.
+<DChart label="Remote call" title="Typed wrapper to durable run.">
+  <DRow>
+    <DBox kind="accent" title="Generated function" sub="placeOrder(order)" />
+    <DArrow />
+    <DBox kind="info" title="worldant-client" sub="POST /runs?wait=120" />
+    <DArrow />
+    <DBox kind="success" title="Worldant net" sub="resolve workflow alias, start run, return value" />
+  </DRow>
+</DChart>
+
+## Enable endpoint
 
 ```ts
-import { placeOrder, trackOrder } from 'orders';
+import { createWorld } from "@midwess/worldant";
 
-const receipt = await placeOrder(order);
-for await (const status of trackOrder(order.id)) {
-  console.log(status.stage);
-}
+const world = await createWorld({
+  id: "orders",
+  net: true
+});
+await world.start?.();
 ```
 
-No route handler. No `fetch` boilerplate. No JSON schema. The types come from your workflow's TypeScript signatures, and `Uint8Array` / `Date` round-trip cleanly through the codec.
+Use an object for auth, CORS, or a dedicated port:
 
-## What you get
+```ts
+await createWorld({
+  id: "@acme/orders",
+  net: {
+    token: process.env.WORLDANT_TOKEN,
+    cors: ["https://app.example.com"],
+    port: 4001
+  }
+});
+```
 
-| What | Description |
-|---|---|
-| **Typed wrappers** | One function per exported workflow. Types derived from the source. |
-| **`worldant-client`** | The browser-safe transport. Handles `POST /runs`, polling, and SSE. |
-| **`worldant-react`** | Optional React hook (`useWorldant`) for component-level integration. |
-| **`configure(partial)`** | Override `baseUrl`, `token`, or `pollMs` at runtime — no rebuild. |
+## Generated package
 
-## Two HTTP surfaces
+A world can serve an npm package from:
 
-Once `net` is set on the world, two endpoints are active:
+```bash
+npm install <world-id> --registry https://<host>/__worldant/v1/npm
+```
 
-| Endpoint | Purpose |
-|---|---|
-| `/__worldant/v1/npm` | Read-only npm registry. `npm install <id> --registry <host>/__worldant/v1/npm` fetches the contract. |
-| `/__worldant/v1/runs` | Call endpoint. `POST` to start, `GET /:id` to poll, `GET /:id/stream` for SSE. |
+The package includes:
 
-The generated package carries a non-secret `defaultConfiguration` (world id, base URL, poll interval). Auth tokens are never baked in — supply them at runtime via `configure({ token })`.
+- `worldName`
+- `workflows`
+- `defaultConfiguration`
+- one typed wrapper per aliased workflow
+- `configure(config)` for runtime connection overrides
 
-## Where to go next
-
-- [**How it works**](/worldant/remote-functions/how-it-works) — contract extraction, codec, SSE vs polling
-- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — `withWorldant`, generated client, zero CORS
-- [**Cross-origin**](/worldant/remote-functions/cross-origin) — scoped `.npmrc`, CORS, standalone consumer
-- [**React hook**](/worldant/remote-functions/react-hook) — `useWorldant`, auth, SSR safety
+`defaultConfiguration` contains public connection data only: world id, base URL, prefix, and polling interval. Put tokens in runtime config.

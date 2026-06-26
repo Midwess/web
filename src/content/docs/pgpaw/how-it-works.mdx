@@ -1,187 +1,45 @@
 ---
 title: How it works
-description: Architecture, cache invalidation flow, SSE deltas, RLS seam
+description: Request flow, cache versioning, and live delta generation inside PgPaw.
 ---
 
-# How it works
+PgPaw starts from a pglite-rs logical replica. Every accepted query is classified before execution. The classifier returns table names, equality filters, a normalized fingerprint, and original SQL.
 
-PgPaw is a single Rust binary that reads from an embedded [pglite-rs](/pglite-rs) logical replica and serves three things over HTTP: versioned, CDN-cacheable snapshots, live SSE deltas, and a health check. The cache key is content-addressed (`sql-fingerprint + version`) and the version is derived from the replica's LSN watermark — so a relevant upstream write is the only thing that ever re-issues a URL.
-
-This page walks the architecture top-down, then drills into the cache invalidation flow, the SSE stream, and the RLS seam.
-
-## Architecture
-
-Upstream Postgres runs the `wal_level=logical` setup, the publication, and the DDL event trigger. The pglite-rs replica mirrors it through `pgoutput` logical replication. PgPaw sits in front of the replica and serves HTTP.
-
-<DChart label="END-TO-END RUNTIME ARCHITECTURE" title="How upstream, the replica, PgPaw, and HTTP clients fit together at runtime">
-  <DRow gap={18} align="start">
-    <DCol>
-      <DBox kind="muted" title="Upstream Postgres" sub={["wal_level=logical · publication", "DDL event trigger · app writes go here", "superuser required for init · CDC source of truth"]} />
-      <DArrow dir="down" kind="success" label="pgoutput · logical" />
-      <DBox kind="success" title="pglite-rs replica" sub={["embedded Postgres · multi-process", "read-only to PgPaw", "tables · RLS · grants replicated"]} />
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="right" kind="accent" label="SQL + CDC" />
-    </DCol>
-    <DGroup kind="accent" label="PgPaw · single Rust binary · actix-web">
-      <DBox title="ReadClassifier" sub={["parse SQL · accept or reject", "extract table + filter anchors"]} />
-      <DArrow dir="down" />
-      <DBox title="VersionIndex" sub={["LSN per (table, col, value)", "structural floor on TRUNCATE"]} />
-      <DArrow dir="down" />
-      <DBox title="QueryCache (moka)" sub={["key: {hash}:{version}", "→ JSON body + ETag"]} />
-      <DArrow dir="down" />
-      <DBox kind="info" title="CdcBridge" sub={["cache-cdc OS thread · blocking recv", "advance + broadcast(1024)"]} />
-      <DArrow dir="up" kind="info" dashed label="bump → VersionIndex" />
-      <DArrow dir="down" />
-      <DBox kind="info" title="LiveHub" sub={["re-run SQL on each tx", "diff + push SSE deltas"]} />
-      <DArrow dir="down" />
-      <DBox title="JWT verify + RLS seam" />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-    </DCol>
-    <DGroup label="HTTP clients">
-      <DBox kind="muted" title="CDN / browser" sub={["GET /q/{hash}/v", "public · 72h TTL"]} />
-      <DBox kind="info" title="live SSE client" sub={["POST /query?live=true", "SSE deltas"]} />
-      <DBox kind="muted" title="backend / curl" sub={["POST /query", "→ 303 /q/..."]} />
-    </DGroup>
+<DChart label="Query pipeline" title="The same SQL can become a public snapshot, private inline response, or live stream.">
+  <DRow wrap>
+    <DBox badge={1} title="POST /query" sub="JSON body { sql }" />
+    <DArrow />
+    <DBox badge={2} kind="accent" title="ReadClassifier" sub="single safe SELECT over replicated tables" />
+    <DArrow />
+    <DBox badge={3} kind="info" title="Privacy verdict" sub="RLS or no PUBLIC SELECT means private" />
+    <DArrow />
+    <DBox badge={4} kind="success" title="Materialize" sub="hash + VersionIndex LSN + QueryCache" />
   </DRow>
 </DChart>
 
-What each piece does:
+## Versioning
 
-- **ReadClassifier** parses the SQL with `sqlparser`, rejects anything that is not a single read-only `SELECT`, and extracts the table list plus equality filters (anchors). See [SQL classifier](/pgpaw/sql-classifier).
-- **VersionIndex** consumes CDC transactions from the pglite-rs replica and tracks the highest LSN per `(table, column, value)` for anchored queries, and per-table for `TRUNCATE` and unanchored queries. The version of a query is the value-level watermark when it is anchored, otherwise the max table/structural LSN across the tables it touches.
-- **QueryCache** (moka) stores `key = {hash}:{version} → CachedResult { etag, body }`, where `hash` is the SQL fingerprint and `version` is the LSN watermark. The fingerprint is stable for the parsed statement, the version is monotonic with upstream writes — so the cache key only changes when a relevant write actually occurs. The stored `etag` equals the key.
-- **CdcBridge** is a dedicated OS thread (`std::thread` named `cache-cdc`) that does a blocking drain of `Replica::subscribe()`, calls `VersionIndex::advance` for each committed transaction, and re-broadcasts the commit over a tokio `broadcast::channel(1024)` consumed by the LiveHub. It is not an async task; the blocking-recv thread is the deliberate bridge into the tokio runtime.
-- **LiveHub** consumes that broadcast, re-runs the user SQL after each committed transaction that affects a touched table, diffs the new rows against the previous snapshot, and pushes row-level deltas to all subscribers of `?live=true`.
-- **JWT verify + RLS seam** verifies the bearer token, sets the token's role via `SET LOCAL ROLE` inside a pinned transaction, and runs the query as that role. The replica's own RLS policies filter the rows. See [Authorization](/pgpaw/authorization).
+`VersionIndex` consumes committed transactions from the replication bridge. It tracks the highest LSN relevant to a table or keyed row. A query version is the maximum relevant LSN for its tables and equality filters.
 
-### Startup and shutdown
+Snapshot key:
 
-`Di::init` wires the whole pipeline once at boot: it runs `setup::preflight` (validating `wal_level`, the WAL senders/slots, and that the publication exists), opens the multi-process pglite replica, starts the `Replica`, and scans the schema (replicated tables, single-column primary keys, and the `REPLICA IDENTITY FULL` set). It then constructs the `VersionIndex`, `QueryCache`, `ReadClassifier`, and (if a key is configured) the JWT `Verifier`, and wires `CdcBridge::start` into the `VersionIndex` and `LiveHub::start` onto the bridge's broadcast. Shutdown is cooperative: the CDC thread's `AtomicBool` stop flag is set, then `replica.stop()` and `db.shutdown()` drain the replica and the embedded engine.
+```txt
+{hex(DefaultHasher(parsed_statement))}:{version}
+```
 
-## Cache invalidation flow
+When upstream data changes, the same SQL gets a new version. Old snapshot URLs keep serving their cached body until evicted.
 
-The URL is the content. A relevant upstream write is the only thing that ever re-issues it.
+## Live subscriptions
 
-<DChart label="CONTENT-ADDRESSED SNAPSHOT LIFECYCLE" title="A snapshot URL is born, served, and re-issued only when a relevant write lands">
-  <DRow gap={14} align="center">
-    <DBox badge={1} grow={1} title="POST /query" sub={["read-only SELECT", "classify + fingerprint"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox badge={2} grow={1} title="303 redirect" sub={["→ /q/{hash}/v=42", "no-store on redirect"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox badge={3} grow={1} kind="success" title="CDN hit" sub={["public · 72h TTL", "ETag {hash}:{version}"]} />
-  </DRow>
-  <DArrow dir="down" kind="accent" label="a relevant upstream write lands" />
-  <DRow gap={14} align="center">
-    <DBox kind="accent" grow={1} title="new URL ↻" sub={["/q/{hash}/v=43", "fresh snapshot"]} />
-    <DArrow dir="left" kind="warn" />
-    <DBox badge={5} grow={1} kind="warn" title="version bump" sub={["VersionIndex 42 → 43", "old URL still serves v=42"]} />
-    <DArrow dir="left" kind="warn" />
-    <DBox badge={4} grow={1} kind="warn" title="upstream write" sub={["UPDATE commits", "→ pgoutput → CdcBridge"]} />
-  </DRow>
-  <DNote center>A per-row anchor (WHERE pk = literal) means writes to other rows do not bump the version.</DNote>
-  <DNote center>Only the touched row&apos;s LSN changes. Joins and unanchored queries fall back to per-table versioning.</DNote>
-  <DNote center kind="success">The old URL keeps serving its frozen snapshot. Clients see a new URL on the next request.</DNote>
-  <DNote center>The /q resource carries Cache-Control: public, max-age=259200 (72h) + an ETag — no immutable, no 1-year max-age.</DNote>
-</DChart>
+`LiveHub` stores the last result for each subscription. On each committed transaction that touches subscribed tables, it:
 
-The five properties of this flow that matter:
+- re-runs the SQL against the replica;
+- builds row maps using a primary key when known;
+- diffs old and new rows;
+- sends `insert`, `update`, `delete`, and `up-to-date` SSE frames.
 
-- **The URL is the content.** Two clients that fetch `/q/9a4f/v=42` always get the same bytes, even years later, even if every other row in the table has changed.
-- **Only relevant writes invalidate.** A `WHERE id = 7` query is anchored on `(users, id, 7)`. An `UPDATE` to row 12 does not bump the LSN for `7`, so the URL stays valid. Joins and queries without equality filters fall back to per-table versioning.
-- **The snapshot resource is cacheable for a bounded window.** `GET /q/{hash}/{version}` is sent with `Cache-Control: public, max-age=259200` (72 hours) and an `ETag` equal to the cache key `{hash}:{version}` — there is no `immutable` directive and no 1-year `max-age`. The CDN can hold the body for the window or revalidate cheaply against the ETag; the URL itself only changes when a relevant upstream write bumps the version.
-- **Watermark, not wall-clock.** The version is the LSN of the most recent relevant commit, not a timestamp. Two replicas see the same version for the same commit order. Cache invalidation is deterministic.
-- **The `303 See Other` redirect keeps `POST` semantics.** The redirect carries `Cache-Control: no-store`, so the long-lived cache lives on the `/q` resource, not on the redirect. Browsers, fetch, and `curl -L` all follow the `Location` header to the snapshot URL.
+If the internal broadcast channel lags, it sends `{"op":"reset"}` and clears subscriptions.
 
-## Public vs access-controlled
+## Privacy
 
-PgPaw classifies every query against the replicated catalog. The classification decides the cache path, the JWT requirement, and the SSE event shape.
-
-<DChart label="FAIL-CLOSED PRIVACY VERDICT" title="The same query takes the public cache path or the access-controlled path">
-  <DRow gap={18} align="start">
-    <DGroup kind="success" label="Public query · RLS off · SELECT granted to PUBLIC">
-      <DBox title="no Authorization header" sub="anonymous client · curl / browser" />
-      <DArrow dir="down" />
-      <DBox title="is_private(tables) → public" sub="no relrowsecurity · PUBLIC SELECT grant" />
-      <DArrow dir="down" />
-      <DBox kind="success" title={"303 → /q/{hash}/{version}"} sub="Cache-Control: public, max-age=259200" />
-      <DArrow dir="down" />
-      <DBox title="QueryCache hit · 72h CDN TTL + ETag" sub="shared across all clients" />
-      <DArrow dir="down" />
-      <DBox kind="info" title={"?live=true → snapshot{url} event + deltas"} />
-    </DGroup>
-    <DGroup kind="info" label="Access-controlled · RLS on, or not PUBLIC-readable">
-      <DBox title={"Authorization: Bearer <jwt>"} sub="HS256 / RS256 → ES256 fallback" />
-      <DArrow dir="down" />
-      <DBox title={"verify → Principal{role, claims}"} sub="query_as: SET LOCAL ROLE + jwt.claims" />
-      <DArrow dir="down" />
-      <DBox kind="info" title="RLS policies filter rows" sub="the database is the authority" />
-      <DArrow dir="down" />
-      <DBox kind="error" title="200 rows returned inline" sub="Cache-Control: private, no-store · never cached" />
-      <DArrow dir="down" />
-      <DBox kind="info" title={"?live=true → snapshot{rows} + per-token deltas"} />
-    </DGroup>
-  </DRow>
-</DChart>
-
-The split is **fail-closed**. Anything that cannot be proven public is treated as access-controlled, and an unknown table is treated as private. Concretely:
-
-- **Public** — every referenced table has RLS disabled (`relrowsecurity` false) **and** `SELECT` is granted to `PUBLIC` (`has_table_privilege('public', oid, 'SELECT')`). The query is served from the shared cache with `Cache-Control: public, max-age=259200` and an ETag. The `/q/{hash}/{version}` URL stays semantically valid until a relevant upstream write issues a new version — that is content-addressing, not a 1-year HTTP cache lifetime. No token required.
-- **Access-controlled** — anything else (RLS enabled, or not `PUBLIC`-readable). Requires a valid token, executes under the token's role via `query_as`, returns rows inline with `Cache-Control: private, no-store`. Never cached, never CDN-served. The `?live=true` variant streams deltas computed under the token's role.
-
-The verdict itself is cached and invalidated by `Replica::security_version()`, so it is recomputed only when the replicated catalog's security shape changes. The RLS seam uses `SET LOCAL ROLE` (plus the JWT claims as `request.jwt.claims`) inside a pinned `Transaction` on the pglite-rs replica. The replica's own RLS policies filter the rows. PgPaw only verifies tokens; it never issues them. A missing token on a private query returns `401`; a DB denial (sqlstate `42501`/`42704`/`28000`) returns `403`.
-
-## SSE deltas
-
-`POST /query?live=true` opens a Server-Sent Events stream. The first event is a snapshot pointer (public: `{type:snapshot, url, version}`) or, for access-controlled queries, the initial rows inline (`{type:snapshot, rows, version}` — never a CDN pointer). Subsequent events are row-level deltas. Every frame is `data: <json>\n\n`.
-
-<DChart label="LIVE SUBSCRIPTION EVENT SEQUENCE" title="LiveHub turns each replica commit into an ordered stream of SSE frames">
-  <DRow gap={14} align="center">
-    <DBox kind="info" title="client" sub={["EventSource", "?live=true"]} />
-    <DCol align="center">
-      <DArrow dir="left" kind="accent" label="SSE frames" />
-    </DCol>
-    <DGroup kind="accent" label="PgPaw LiveHub">
-      <DNote>re-run SQL + keyed_map + diff</DNote>
-      <DBox kind="accent" mono title={"snapshot {url|rows}"} />
-      <DBox mono title={"insert {key, row, txid}"} />
-      <DBox mono title={"update {key, row, txid}"} />
-      <DBox mono title={"delete {key, txid}"} />
-      <DBox kind="success" mono title={"up-to-date {txid}"} />
-      <DBox kind="error" mono title="reset (on Lagged)" />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="left" kind="success" dashed label="commit" />
-      <DArrow dir="left" kind="error" dashed label="dropped txns" />
-    </DCol>
-    <DBox kind="success" title="pglite-rs replica" sub={["logical replication · pgoutput", "commit → CdcBridge broadcast(1024)", "→ LiveHub recompute per affected sub"]} />
-  </DRow>
-  <DNote center>Each delta carries a txid (low 32 bits of the upstream xid). The terminal up-to-date{"{txid}"} fires after every round — even on an empty diff.</DNote>
-</DChart>
-
-The stream stays open and emits another batch on the next relevant commit. Some details that the wire contract guarantees:
-
-- **Snapshot shape.** The first event is public `{type:snapshot, url:/q/{hash}/{version}, version}` or, for access-controlled queries, `{type:snapshot, rows:[...], version}` with the rows inline — a private result is never CDN-cached, so it never carries a `url` pointer.
-- **Delta shape.** Each delta is `{op:insert|update|delete, key, row?, txid}` (no `row` on a delete), where `txid` is the low 32 bits of the upstream commit xid.
-- **`up-to-date` is unconditional.** After every relevant commit a subscription processes, PgPaw emits a terminal `{op:up-to-date, txid}` — including commits that produce zero row deltas. That guarantees an optimistic-write awaiter on that txid always resolves and can never hang.
-- **`reset` on lag.** If the internal broadcast channel reports `Lagged` (the LiveHub consumer fell behind and transactions were dropped), PgPaw emits a `{op:reset}` control event and drops the subscriptions, so clients re-load the snapshot instead of diverging. It is not emitted for arbitrary errors.
-
-The [`@pgpaw/tanstack-db`](/pgpaw) client consumes exactly this wire — following the snapshot `url` or applying inline `rows`, applying the insert/update/delete/reset frames, and tracking `txid` to confirm optimistic writes.
-
-## Why the replica is the right place to run reads
-
-PgPaw does not parse, plan, or evaluate SQL itself. Every read is `SELECT …` against the pglite-rs replica — the same embedded Postgres engine, with the same types, the same `EXPLAIN` output, the same RLS semantics. The replica is the working set; PgPaw is the cache layer in front of it. That is what makes per-row anchoring, RLS under the token's role, and joins work without a custom evaluator.
-
-The replica is also how PgPaw stays in sync with the upstream: DDL is captured by an event trigger named `pglite_ddl_watch` that fires `ON ddl_command_end` and calls `pg_logical_emit_message(true, 'pglite_ddl', '')` (transactional). The channel name comes from pglite's `DDL_SIGNAL_PREFIX` constant rather than a PgPaw-hardcoded string. The replica re-introspects and applies the delta, and the new shape is what the classifier sees on the next query. No restarts, no manual schema sync.
-
-## What it costs
-
-- **One upstream connection** for the logical replication client. SCRAM auth, `START_REPLICATION`, pgoutput decode — same path as pglite-rs's `Replica`.
-- **One upstream connection** for the optional DDL signal trigger (installed by `pgpaw init`).
-- **In-process memory** for the `moka` cache. Default 256 MiB. Tune via `--cache-size-bytes`.
-- **Replica disk** for the embedded Postgres data dir — a fixed engine footprint plus your data. Same sizing rules as pglite-rs.
-- **No external state.** No Redis, no Memcached, no separate schema service.
-
-For typical web traffic, the cache hit ratio dominates everything else — most reads return the same `(sql-fingerprint, version)` result over and over. The cost is bounded by the upstream's CDC rate, not the read rate.
+PgPaw asks the replica catalog whether any touched table has RLS enabled or lacks `PUBLIC SELECT`. If any table is private, the whole query is private.

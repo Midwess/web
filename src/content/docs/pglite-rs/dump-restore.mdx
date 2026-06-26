@@ -1,87 +1,27 @@
 ---
-title: Dump & restore
-description: dump_data_dir / restore_data_dir — checkpoint + tar, cross-process reopen
+title: Dump and restore
+description: Archive and restore a pglite-rs data directory.
 ---
 
-# Dump & restore
-
-A `PGlite` data dir is a regular Postgres cluster — on disk, the files look exactly like a real `initdb` output. `dump_data_dir` writes a tar of the directory; `restore_data_dir` materializes one into a new path. Cross-process reopen is fully supported.
-
-## Dump
+`dump_data_dir()` checkpoints the database and writes the current data directory into a tar archive.
 
 ```rust
-let db = PGlite::open("./mydata").await?;
-db.dump_data_dir("./mydata.tar").await?;
-```
-
-`dump_data_dir` runs an explicit `CHECKPOINT` first so the on-disk state matches a clean shutdown, then writes a tar of the entire data dir to the destination path. The tar is a `tar::Builder` archive of the directory's contents — no compression, no Postgres-specific format. You can untar it with `tar -xf` and inspect the files with normal Postgres tools (`pg_controldata`, `psql`, etc.) on the same major version.
-
-`dump_data_dir` is `async` and takes `&self` — it holds the instance's `tx_lock` for the duration so the `CHECKPOINT` and the tar see a consistent snapshot. The instance must be open, since the `CHECKPOINT` runs through the live engine. This works in multi-process mode too: the `CHECKPOINT` is routed through the pool to the child postmaster.
-
-## Restore
-
-```rust
-PGlite::restore_data_dir("./mydata.tar", "./mydata-restored")?;
-let db = PGlite::open("./mydata-restored").await?;
-```
-
-`restore_data_dir` extracts the tar into the destination path and removes any stale `postmaster.pid` file (which would prevent a new process from starting on this data dir). It is a synchronous associated function — `PGlite::restore_data_dir(tar, dir)`, not a method on an instance — and boots no engine; it is pure filesystem work.
-
-The restored dir is a fully bootable Postgres cluster. When you `PGlite::open` it (in any mode — in-process or multi-process), the engine **skips `initdb` entirely** — `PG_VERSION` already exists in the restored dir, so the bootstrap step returns early. Instead, the Postgres backend performs its normal **WAL / crash recovery** on start, replaying the write-ahead log up to the consistent point captured by the `CHECKPOINT` done at dump time. `initdb` is never run against an existing data dir.
-
-> **Locale provider must match.** A data dir embeds the locale provider chosen at `initdb` time. A dir created (and dumped) under `LocaleProvider::Libc` cannot be opened under `LocaleProvider::Icu`, and vice versa — the two builds are not interchangeable. Restore into a process whose feature/build matches the one that created the dump.
-
-## Cross-process reopen
-
-```rust
-// process 1
-let db = PGlite::open("./mydata").await?;
-// ... use it ...
+let db = pglite::PGlite::open("./data").await?;
+db.dump_data_dir("./backup.tar").await?;
 db.close().await?;
-
-// process 2 — only after process 1 has closed
-let db = PGlite::open("./mydata").await?;     // works — cross-process reopen
 ```
 
-The in-process engine boots once per process lifetime (the `OPEN` / `BOOTED` guards are process-global atomics that reject a second open inside the *same* process — `Error::AlreadyOpen` / `Error::ReopenUnsupported`). A *different* process can open the same data dir after the first one closes. This sequential cross-process reuse is the right model for:
+Restore into a directory before opening it:
 
-- **Tests.** Each test gets a fresh process. Dump once, restore per test, no shared state.
-- **Serverless handlers.** Each invocation is a new process; the data dir is the persistent artifact.
+```rust
+pglite::PGlite::restore_data_dir("./backup.tar", "./restored")?;
+let db = pglite::PGlite::open("./restored").await?;
+```
 
-> **Not concurrent.** These guards prevent a *second open in one process*; they are not a file lock on the data dir. Two separate processes opening the **same** data dir at the same time would run two in-process Postgres backends against one cluster — which Postgres forbids (single writer per data dir), and against which pglite-rs offers no inter-process lock. For true concurrency, use [multi-process mode](/pglite-rs/multi-process) (one shared child postmaster), not multiple processes sharing a data dir.
+The restore helper removes `postmaster.pid` after unpacking.
 
-The dump + tar flow is one way to move that persistent artifact between processes or machines.
+## Operational notes
 
-## Dump → restore flow
-
-<DChart title="Dump then restore into a new instance, possibly in another process">
-  <DGroup kind="accent" label="Process A — dump" row>
-    <DBox badge={1} kind="accent" mono title="open(dir)" sub={["live engine on the", "\"pglite-engine\" thread · async · &self"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox badge={2} kind="accent" mono title="dump_data_dir(tar)" sub={["holds tx_lock → CHECKPOINT via engine", "async · &self"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="warn" mono title="mydata.tar" sub={["plain tar::Builder · append_dir_all(\".\")", "no compression · no PG format"]} />
-  </DGroup>
-  <DArrow dir="down" kind="warn" dashed label="move the tar across processes / machines" />
-  <DGroup kind="info" label="Process B — restore & open (may be a different process)" row>
-    <DBox badge={3} kind="warn" mono title="restore_data_dir(tar, newdir)" sub={["unpack tar → newdir · remove stale postmaster.pid", "sync · associated fn · no engine boot"]} />
-    <DArrow dir="right" kind="warn" />
-    <DBox badge={4} kind="accent" mono title="open(newdir)" sub={["PG_VERSION present → skips initdb", "async"]} />
-    <DArrow dir="right" kind="success" />
-    <DBox kind="success" title="WAL recovery → ready" sub={["replay to the", "CHECKPOINT point"]} />
-  </DGroup>
-  <DNote center>CHECKPOINT at dump time + postmaster.pid removed at restore time make the new dir boot cleanly — recovery, never re-initdb.</DNote>
-</DChart>
-
-## Use cases
-
-- **Golden fixtures.** Dump a known-good state in CI setup, restore in each test, run the test, drop the dir.
-- **Snapshot tests.** Dump the data dir after a setup, restore in a comparison test, diff the result.
-- **Seeding.** Dump a production-shaped fixture, restore into a local dev environment, run migrations and seeds on top.
-- **Snapshotting before a destructive migration.** `dump_data_dir` before, run the migration, restore on failure.
-
-## What's next
-
-- [**Quickstart**](/pglite-rs/quickstart) — open, exec, query, close
-- [**Multi-process mode**](/pglite-rs/multi-process) — multi-process `PGlite` and tar dumps
-- [**Replication**](/pglite-rs/replication) — `Replica::start` for read-only logical replication
+- Dump while the database handle is open.
+- Close or drop clients before replacing a live data directory.
+- Keep feature compatibility in mind. For example, an ICU-initialized data directory needs an ICU-capable build.

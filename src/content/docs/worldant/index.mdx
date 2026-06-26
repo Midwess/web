@@ -1,116 +1,68 @@
 ---
 title: Worldant
-description: An in-process Vercel Workflow world backed by embedded SQLite, with a scale-to-zero supervisor
+description: Self-hosted durable execution for Vercel Workflow, backed by embedded SQLite and supervised Node processes.
 ---
 
-# Worldant
+Worldant is a durable `@workflow/world` implementation for Node apps. Add `@midwess/worldant`, keep writing `"use workflow"` and `"use step"`, and store runs, events, hooks, queues, and streams in an embedded SQLite world instead of an external service.
 
-Worldant is a [Vercel Workflow](https://github.com/vercel/workflow) world that runs **inside your Node.js process** and persists to embedded SQLite. No external database, no separate service. A supervisor CLI owns the public TCP port, scales the host to zero when idle, and wakes it on the next request.
+It has two parts:
 
-It is built for **agentic and long-running workloads** that need durable execution without standing up Postgres, Redis, or a managed workflow service.
+- `@midwess/worldant` opens the native world, registers it with `@workflow/core`, and optionally serves remote-function endpoints.
+- `@midwess/worldant-cli` supervises the app process, owns public sockets, forwards traffic, restarts, drains redeploys, and can scale the app process to zero.
 
-## How the pieces fit
-
-Worldant ships as two packages around one durable core. The library is the durable World, loaded into your app's own process; the supervisor is a standalone binary that owns the public port and forwards every byte to the app over a private unix socket. The supervisor never opens the World or the database — durability lives entirely in the library.
-
-<DChart label="Architecture" title="Two packages and the durable core, end to end">
-  <DRow gap={18} align="start">
-    <DGroup label="In-process durable path">
-      <DBox kind="accent" title="Your Node app" sub={["\"use workflow\" / \"use step\"", "@workflow/core replay"]} />
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="info" mono title={"@midwess/worldant"} sub={["TS shim · src/world.ts", "install() · codec · @workflow/world"]} />
-      <DArrow dir="down" kind="warn" dashed label="FFI boundary" />
-      <DBox kind="warn" mono title="napi addon" sub={["WorldApi · world-napi", "JSON marshal · tokio at the edge"]} />
-      <DArrow dir="down" kind="success" dashed label="Node ⇄ native" />
-      <DBox kind="success" mono title="world-core" sub={["reduce-to-SQL", "embedded SQLite · WAL · r2d2 pool"]} />
-    </DGroup>
-    <DGroup kind="info" label="Separate supervisor process">
-      <DBox kind="info" title="worldant-cli supervisor" sub={["owns the public TCP port", "scale-to-zero · hot-swap redeploy", "never touches SQLite"]} />
-      <DArrow dir="down" kind="info" />
-      <DRow gap={14} align="center">
-        <DBox kind="success" title="Public TCP :port" sub="inbound traffic" />
-        <DArrow dir="right" kind="info" label="forward" />
-        <DBox kind="info" title="Private .sock" sub={"app's relocated listen()"} />
-      </DRow>
-      <DNote kind="info">copy_bidirectional — every byte forwarded</DNote>
-      <DArrow dir="left" kind="info" dashed label="app binds its listen() onto the private socket when supervised" />
-    </DGroup>
+<DChart label="Runtime shape" title="Durability stays in the app process; supervision stays outside it.">
+  <DRow>
+    <DBox kind="accent" title="Your app" sub={["workflow code", "HTTP framework", "calls install() or createWorld()"]} />
+    <DArrow />
+    <DBox kind="success" title="Worldant library" sub={["implements @workflow/world", "native addon", "embedded SQLite"]} />
+    <DArrow />
+    <DBox kind="info" title="Supervisor CLI" sub={["owns public port", "private socket forwarding", "redeploy + scale-to-zero"]} />
   </DRow>
 </DChart>
-<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>The durable path is entirely in-process; the supervisor sits beside it, owning the port and forwarding bytes — it never reads or writes SQLite.</figcaption>
 
-## Three ways to call a workflow
+## Start here
 
-A durable workflow is only useful once something can reach it. Worldant's goal is to expose one workflow through every calling surface you need — the workflow underneath never changes, only how it is reached.
-
-| Surface | What it means | Status |
-|---|---|---|
-| **API** | Your app's HTTP routes (NestJS / Express / Next) trigger workflows. The supervisor owns the public port and forwards every byte to your app. | **Shipped** |
-| **Remote function** | A deployed world serves itself as a live npm registry, so any consumer installs a generated, typed RPC client and calls your workflows like local functions ([same-origin](/worldant/remote-functions/same-origin) / [cross-origin](/worldant/remote-functions/cross-origin)). | **Shipped** |
-| **MCP** | The same workflows surfaced as [Model Context Protocol](https://modelcontextprotocol.io) tools, so an agent can invoke them. | Roadmap |
-
-## Features
-
-- **Embedded storage.** Runs, steps, events, hooks, queues, and streams in a single SQLite file. WAL mode, single writer, reader pool. No external database.
-- **Drop-in for `@workflow/world`.** Same `runs` / `steps` / `events` / `hooks` / `streams` / `queue` API. Workflows defined with `"use workflow"` and `"use step"` work unchanged.
-- **In-process dispatch.** No worker to run, no separate Node service. The world lives where your app lives.
-- **Scale-to-zero supervisor.** A `worldant` CLI wraps your app, owns the public TCP port, and stops the process when idle. The next request restarts it and resumes the log.
-- **Hooks and streams.** Built-in support for `createHook` / `await hook` (durable external waits) and `getWritable` (durable byte streams).
-- **Retries with `retryAfter`.** `RetryableError` / `FatalError` flow into the world's retry scheduler. The next attempt runs the same step body, with results memoized.
-- **Cross-process exactly-once.** A durable step that already committed is never re-executed, even after a crash. In-flight runs are reenqueued and resumed when `world.start()` runs.
-- **Child workflows.** `start(childWorkflow, args)` from `workflow/api` spawns a parallel run that the world tracks independently.
-- **In-memory test mode.** Omit `dataDir` to get an ephemeral, in-memory database for tests.
-
-## How it fits
-
-Vercel Workflow is a two-part system:
-
-- **`@workflow/core`** owns the workflow model: the `"use workflow"` / `"use step"` compiler transform, the runtime that replays workflow bodies, the determinism guard, the hook / stream / queue primitives that user code calls. It is the part your code interacts with.
-- **`@workflow/world`** owns the storage: every run, step, event, hook, and chunk of stream data is persisted through it. It is the part that talks to a database.
-
-Worldant replaces the **`@workflow/world`** layer. You write code against `@workflow/core` exactly the same way; the only thing that changes is which world you install at boot.
+Install the world in application boot code before workflow handlers run:
 
 ```ts
-// Before (Vercel default)
-import { start } from 'workflow/api';
-// @workflow/core is wired up to the Vercel-hosted world automatically
+import { install } from "@midwess/worldant";
 
-// With worldant — at your app's entry, before it serves
-import { install } from '@midwess/worldant';
-import { start } from 'workflow/api';
-
-await install(); // durable World on embedded SQLite, registered into @workflow/core
+await install();
 ```
 
-`install()` is the entire integration: it calls `createWorld()`, registers the world with `@workflow/core` via `setWorld()`, then runs `world.start()` (which reenqueues any in-flight runs and starts the in-process queue worker). Importing the package alone does **not** wire the world in — the only thing module import does on its own is arm the supervisor's `listen()` hijack (`connectSupervisor`). The rest of your workflow code is unchanged. The world underneath is now a Rust-backed SQLite file instead of a Vercel-hosted service.
+Run the app under the supervisor when you want socket ownership, process restart, redeploy drain, and scale-to-zero:
 
-## Boot order, from import to serving
+```bash
+npm install @midwess/worldant
+npm install -g @midwess/worldant-cli
+worldant run -- npm start
+```
 
-Under the supervisor, the app comes up in a fixed sequence. Importing the library arms the `listen()` hijack; `install()` opens the durable World, announces the app to the supervisor, registers it with `@workflow/core`, and starts the queue worker; then `app.listen()` is transparently relocated onto a private unix socket so the supervisor can own the public port.
+## What Worldant provides
 
-<DChart label="Boot sequence · under the supervisor" title="Boot order from process start to serving durable workflows">
-  <DRow gap={14} align="center">
-    <DBox badge={1} title="import package" sub={["connectSupervisor()", "arms listen() hijack only", "if WORLDANT_CONTROL_FD set"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox badge={2} kind="accent" title="install()" sub={["createWorld()", "open World (dataDir)", "startSupervision: announce id"]} />
-    <DArrow dir="right" kind="accent" />
-    <DBox badge={3} title="setWorld()" sub={["register with @workflow/core", "global world registry"]} />
-  </DRow>
-  <DArrow dir="down" kind="accent" dashed />
-  <DRow gap={14} align="center">
-    <DBox badge={4} kind="success" title="world.start()" sub={["reenqueue active runs", "start native queue worker", "log replays here, not before"]} />
-    <DArrow dir="right" kind="info" />
-    <DBox badge={5} kind="info" title="app.listen()" sub={["relocated to private .sock", "supervisor binds public port"]} />
-  </DRow>
-</DChart>
-<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>In-flight runs replay in step 4 (<code>world.start()</code>), not at <code>startSupervision</code> — which only announces the code-first id and supervision policy.</figcaption>
+- Durable workflow runs on local disk.
+- Step memoization after committed completion, so restart recovery does not repeat completed side effects.
+- Queue dispatch back into your app through `@workflow/core`.
+- Remote functions over `/__worldant/v1`.
+- A live npm registry for generated typed clients.
+- Next.js helper `withWorldant()` for workflow discovery and client generation.
+- Supervisor commands for process lifecycle.
 
-## Where to go next
+## Packages
 
-- [**How it works**](/worldant/how-it-works) — architecture, data flow, supervisor lifecycle
-- [**Installation**](/worldant/installation) — install the package in your app
-- [**Quickstart**](/worldant/quickstart) — install, wire up, run a workflow, read the result
-- [**Guides**](/worldant/workflows) — one page per feature: workflows, remote functions, reading runs, supervisor, configuration
-- [**Remote functions**](/worldant/remote-functions) — overview, how it works, same-origin and cross-origin setup, React hook
-- [**Configuration**](/worldant/configuration) — `WorldConfig`, codec, paths
-- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model
+| Package | Use it for |
+| --- | --- |
+| `@midwess/worldant` | Library entrypoint: `install`, `createWorld`, `getWorld`, `setWorld`, `outputStream`. |
+| `@midwess/worldant/next` | Next.js config wrapper that writes `worldant.catalog.json` and optional `worldant/client.ts`. |
+| `worldant-client` | Browser-safe transport used by generated client packages. |
+| `worldant-react` | `useWorldant(schema, overrides)` helper for generated schema packages. |
+| `@midwess/worldant-cli` | `worldant` process supervisor. |
+
+## Main paths
+
+- [Installation](/worldant/installation)
+- [Quickstart](/worldant/quickstart)
+- [Workflows](/worldant/workflows)
+- [Remote functions](/worldant/remote-functions)
+- [Supervisor](/worldant/supervisor)
+- [Configuration](/worldant/configuration)

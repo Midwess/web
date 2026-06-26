@@ -1,148 +1,44 @@
 ---
 title: SQL classifier
-description: What queries PgPaw serves, what it rejects, and how equality filters become per-row cache anchors
+description: Rules for SQL accepted by PgPaw.
 ---
 
-# SQL classifier
+PgPaw accepts one read-only PostgreSQL `SELECT` statement over replicated tables.
 
-PgPaw serves read-only Postgres SQL against the replicated tables. The classifier parses the input with `sqlparser` and rejects anything that is not a single read-only `SELECT` against tables present in the publication. The classification also extracts the table list and equality filters (anchors) that drive per-row cache versioning.
+## Rejected
 
-<DChart label="classify( sql ) — sequential gates" title="The classify() gate pipeline: raw SQL becomes a CacheableQuery or a RejectedError">
-  <DRow gap={18} align="start">
-    <DGroup label="classify() · sequential gates">
-      <DBox kind="accent" title="raw SQL string" sub="PostgreSqlDialect parse" />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={1} title="single-statement gate" sub={"statements.len() == 1"} />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={2} title="Statement::Query gate" sub="else writes / DDL / TRUNCATE / MERGE" />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={3} title="locks-empty gate" sub="no FOR UPDATE / SHARE / KEY SHARE" />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={4} title="SELECT INTO gate" sub={"select.into.is_some() rejects"} />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={5} title="function scan" sub={"SIDE_EFFECTING (6) · VOLATILE_READ (8)"} />
-      <DArrow dir="down" kind="accent" />
-      <DBox badge={6} title="table-replication gate" sub="visit_relations · CTE names excluded" />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" label="all pass" />
-      <DBox kind="success" title="CacheableQuery" sub={["collect_eq_filters(WHERE)", "+ DefaultHasher fingerprint", "fingerprint · tables · eq_filters"]} />
-      <DArrow dir="right" kind="error" dashed label="any fail" />
-      <DBox kind="error" title="CacheError::Rejected" sub={['name() = "RejectedError"', "HTTP 400 · { name, message }"]} />
-    </DCol>
-  </DRow>
-</DChart>
-<p style={{fontSize:'12px',opacity:0.7,marginTop:'8px',textAlign:'center'}}>Every gate maps to a line in <code>classify()</code>. Any failed gate short-circuits to <code>CacheError::Rejected</code> (HTTP 400, <code>RejectedError</code>).</p>
+- Parse failures.
+- Multiple statements.
+- Writes and DDL.
+- `SELECT INTO`.
+- Locking reads such as `FOR UPDATE` and `FOR SHARE`.
+- References to tables not present in the replica.
+- Side-effecting functions: `nextval`, `setval`, advisory lock/unlock functions.
+- Non-deterministic reads: `now`, `random`, `random_normal`, `clock_timestamp`, `timeofday`, `statement_timestamp`, `gen_random_uuid`, `uuid_generate_v4`.
 
-## What's allowed
+## Extracted metadata
 
-A query is served if **all** of these hold:
+For accepted SQL, `ReadClassifier` returns:
 
-1. It is a single statement. No `select 1; select 2`.
-2. The top-level statement is `SELECT`. Not `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `WITH ... DELETE`, `WITH ... UPDATE`, `VALUES`, `TABLE`, `EXPLAIN`, or DDL.
-3. The `SELECT` does not lock rows. Not `FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, `FOR KEY SHARE`.
-4. The `SELECT` does not write a variable. Not `SELECT ... INTO`.
-5. It does not call a side-effecting or non-deterministic function from the reject list (see below).
-6. Every referenced table is present in the publication. Tables the publication does not cover cannot be queried.
+| Field | Meaning |
+| --- | --- |
+| `fingerprint` | `DefaultHasher` of the parsed statement string. |
+| `tables` | Lowercase table names from relation visits, excluding CTE aliases. |
+| `eq_filters` | Literal equality filters from top-level `AND` expressions. |
+| `sql` | Original SQL string. |
 
-If all of these hold, the query is parsed to extract the table list and equality filters, fingerprinted, versioned against the LSN, and served.
+Equality filters are used to choose narrower version watermarks when possible.
 
-## What's rejected
-
-The classifier rejects (returns `400` with a `RejectedError` envelope):
-
-- **Multi-statement input** — `select 1; select 2`. The body is parsed and the statement count must be exactly one; anything else is a reject.
-- **Writes** — `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`. These are not `Statement::Query`, so the second gate rejects them.
-- **DDL** — `CREATE`, `DROP`, `ALTER`, `COMMENT`, `GRANT`, `REVOKE`. DDL is only allowed inside the upstream, never as a query against PgPaw.
-- **Locking reads** — `SELECT ... FOR UPDATE`, `SELECT ... FOR SHARE`, `SELECT ... FOR NO KEY UPDATE`, `SELECT ... FOR KEY SHARE`.
-- **Variable writes** — `SELECT col INTO var FROM ...` (PL/pgSQL idiom; not a thing in pglite-rs anyway, but rejected up front).
-- **Side-effecting functions** — exactly six, from the `SIDE_EFFECTING` array in `src/classify.rs`: `nextval`, `setval`, `pg_advisory_lock`, `pg_advisory_xact_lock`, `pg_try_advisory_lock`, `pg_advisory_unlock`.
-- **Non-deterministic reads** — exactly eight, from the `VOLATILE_READ` array in `src/classify.rs`: `now`, `random`, `random_normal`, `clock_timestamp`, `timeofday`, `statement_timestamp`, `gen_random_uuid`, `uuid_generate_v4`. This is a fixed list defined in PgPaw's classifier; it is not derived from any pglite-rs list.
-- **References to non-replicated tables** — `select * from secrets` when `secrets` is not in the publication. The error message names the offending table.
-
-Function names are normalized with `bare_lower` (strip the schema qualifier, lowercase) before matching, so `NOW()` and `pg_catalog.now()` both reject as `now`. Both the parse-failure branch and every gate failure produce a `CacheError::Rejected`, so the envelope name is always `RejectedError`.
-
-A rejected query returns `400` with a `RejectedError` envelope:
-
-```json
-{ "name": "RejectedError", "message": "table `secrets` is not available in this cache (not replicated)" }
-```
-
-## Per-row cache anchoring
-
-A `WHERE col = literal` on a single table, where `col` is either the table's single-column primary key or any column on a `REPLICA IDENTITY FULL` table, becomes a per-row anchor. The `VersionIndex` keeps a separate LSN per `(table, column, value)`. Writes to other rows do not bump the anchor's LSN, so the cache entry stays valid.
+## Example accepted query
 
 ```sql
--- Anchored: (orders, id, 7)
-select id, total from orders where id = 7;
-
--- Anchored on REPLICA IDENTITY FULL table: (orders_log, id, 99)
-select * from orders_log where id = 99;
-
--- NOT anchored: no equality filter on PK or REPLICA IDENTITY FULL column
-select * from orders where status = 'paid';
-
--- Joins: per-table fallback (see below)
-select o.id, c.email
-  from orders o
-  join customers c on c.id = o.customer_id
- where o.id = 7;
+select id, email
+from users
+where id = 7
 ```
 
-When the query has no anchor — no equality filter on a PK or `REPLICA IDENTITY FULL` column — the version falls back to the per-table LSN. Any write to the table bumps the version. Joins also fall back to per-table versioning for every table, because `version_of` only anchors when `tables.len() == 1`.
+## Example rejected query
 
-The cache key is conceptually `(sql-fingerprint, version)`. The concrete key — and the `hash` segment of the snapshot URL `/q/{hash}/{version}` — is `{fingerprint:x}:{version}`: the hex fingerprint colon-joined with the LSN version. Per-row anchoring means two queries on the same table with different row filters never invalidate each other.
-
-<DChart label="version_of( tables, eq_filters )" title="How version_of decides per-row anchor versus per-table fallback">
-  <DRow gap={18} align="start">
-    <DGroup label="version_of() · the decision">
-      <DBox kind="accent" title="accepted query" sub="tables · eq_filters" />
-      <DArrow dir="down" kind="accent" />
-      <DBox title="tables.len() == 1" sub={["AND a filter column", "is_anchorable?"]} />
-      <DArrow dir="down" dashed />
-      <DBox kind="muted" title="is_anchorable" sub={["FULL table → any column", "else → column == single PK"]} />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" label="YES" />
-      <DArrow dir="right" kind="info" dashed label="NO · joins · multi-table" />
-    </DCol>
-    <DCol gap={14}>
-      <DBox kind="success" title="per-row anchor" sub={["version = max(", "values[(table,col,value)],", "structural floor )"]} />
-      <DBox kind="info" title="per-table fallback" sub={["version = max over tables of", "tables[t] LSN,", "structural[t] floor"]} />
-      <DArrow dir="down" kind="accent" />
-      <DBox kind="accent" mono title={"{fingerprint:x} : {version}"} sub={["CACHE KEY · SNAPSHOT URL", "two row-filtered queries on the same table get independent versions →", "no cross-invalidation"]} />
-    </DCol>
-  </DRow>
-</DChart>
-<p style={{fontSize:'12px',opacity:0.7,marginTop:'8px',textAlign:'center'}}><code>version_of</code> anchors only for a single table with an <code>is_anchorable</code> filter; everything else (joins, multi-table, non-PK filters) falls back to per-table versioning. The derived version becomes the <code>{`{version}`}</code> segment of the key.</p>
-
-## What "anchorable" means
-
-For a single-table query, an equality filter `col = literal` collected from the `WHERE` clause is anchorable if either:
-
-- the table has `REPLICA IDENTITY FULL` set — then **any** column is anchorable, OR
-- the table has a single-column primary key, AND `col` equals that primary-key column
-
-Anchors come from the `WHERE` selection (`collect_eq_filters` over `select.selection`), not from `USING`/`ON` join clauses. `version_of` only anchors when `tables.len() == 1`, so join queries always fall back to table-level versioning.
-
-`pgpaw init` does not change `REPLICA IDENTITY` — that is the operator's choice on the upstream. Multi-column primary keys are dropped during schema scan, so a table needs either a single-column PK or `REPLICA IDENTITY FULL` to be anchorable; otherwise it gets per-table versioning only.
-
-## Functions in the allow list
-
-The classifier only rejects function names that appear in the two hardcoded arrays (`SIDE_EFFECTING`, six entries; `VOLATILE_READ`, eight entries). Every other function name passes the classifier unconditionally and is left to the replica to execute or permit. There is no `pg_proc` lookup and no volatility marker is consulted — the check is a plain string match on the normalized (`bare_lower`) function name.
-
-`pg_catalog` lookups (`current_database`, `current_user`, `current_schema`, `pg_get_userbyid`, `version()`) and most read-only functions (`count`, `sum`, `avg`, `array_agg`, `string_agg`, `jsonb_agg`, `json_agg`, `coalesce`, `nullif`, `lower`, `upper`, `length`, `substring`, `replace`, `to_char`, `date_trunc`, `date_part`, `extract`, `generate_series` with bounded input) are not in either deny list, so they pass the classifier and run on the replica.
-
-The classifier errs on the side of "let the replica decide" — the replica's permission system is the authority for everything outside the two deny lists.
-
-## Working with the classifier
-
-- If a query is rejected unexpectedly, the error message names the offending construct. The most common cause is a forgotten `in publication` for a referenced table.
-- If a query is served but always returns a per-table version (and the cache invalidates on every write), check that the equality filter is on a single-column PK or `REPLICA IDENTITY FULL` column, that the filter is in the `WHERE` clause, and that the literal is a constant the classifier can extract (number, single-quoted string, or boolean).
-- `EXPLAIN` is not supported — PgPaw does not expose the replica's planner to clients. Use a `psql` connection to the upstream if you need plan inspection.
-
-## What's next
-
-- [**Authorization**](/pgpaw/authorization) — JWT, RLS, public vs access-controlled
-- [**API**](/pgpaw/api) — request/response format, SSE event format, error envelope
-- [**How it works**](/pgpaw/how-it-works) — the per-row anchor that powers cache invalidation
+```sql
+select nextval('orders_id_seq')
+```

@@ -1,147 +1,57 @@
 ---
 title: Configuration
-description: WorldConfig — dataDir, id, deploymentId, identity derivation, codec
+description: Configure the world data directory, id, supervision policy, and network endpoint.
 ---
 
-# Configuration
+Worldant is configured in code.
 
-Worldant's user-facing configuration lives in the `WorldConfig` object you pass to `install()` (or `createWorld()`). The supervisor's scale-to-zero knobs are documented separately on the [Supervisor](/worldant/supervisor) page.
+```ts
+import { createWorld } from "@midwess/worldant";
 
-Configuration is **code-first**: every value flows from the `createWorld({ ... })` call in your app. There are no CLI config flags for any of these — the only supervisor flag that affects binding is `--public-host` on `start`/`run`.
-
-<DChart label="Code-first entry" title="Where each configuration value originates and where it takes effect">
-  <DRow gap={18} align="start">
-    <DCol>
-      <DBox kind="info" mono title={"createWorld({ … })"} sub={["dataDir?", "id?", "config?  (SupervisionConfig)", "deploymentId?  ·  all optional, no CLI flags"]} />
-      <DGroup kind="muted" label="Not user-configurable">
-        <DBox kind="muted" mono title="Internal constants" sub={["queue concurrency 128", "max_attempts 25 · backoff", "r2d2 pool max_size 8", "WAL · busy_timeout 5000  ·  SPEC_VERSION 3"]} />
-        <DNote>Compiled into world-core; not surfaced to JS.</DNote>
-      </DGroup>
-    </DCol>
-    <DCol align="center">
-      <DArrow dir="right" kind="info" />
-    </DCol>
-    <DGroup label="Takes effect at">
-      <DBox kind="success" title="dataDir → native World.open" sub={"set → World::open(file) · omitted → World::open_temp()"} />
-      <DBox kind="success" title="id → resolveWorldId (identity.ts)" sub="control socket · dedup lock · supervisor registry id" />
-      <DBox kind="success" title="config → control pipe → supervisor" sub={"announced as JSON over WORLDANT_CONTROL_FD"} />
-      <DBox kind="success" title="deploymentId → getDeploymentId()" sub="reported back; not stamped onto each event" />
-    </DGroup>
-  </DRow>
-</DChart>
-
-## WorldConfig
-
-`WorldConfig` is what you pass when you boot the world. All fields are optional.
-
-```ts title="src/world.ts"
-import { install } from '@midwess/worldant';
-
-await install({
-  dataDir: './data/world.db',
-  deploymentId: 'prod-2024-11',
-  id: 'checkout-app',
-  config: { /* SupervisionConfig — see the Supervisor page */ },
+const world = await createWorld({
+  id: "orders",
+  dataDir: "./.worldant/orders",
+  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA,
+  config: {
+    graceMs: 30_000,
+    minAliveMs: 10_000,
+    wakeHoldMs: 5_000,
+    restart: {
+      maxRestarts: 5,
+      windowMs: 60_000,
+      delayMs: 1_000
+    }
+  },
+  net: {
+    port: 4001,
+    token: process.env.WORLDANT_TOKEN,
+    cors: ["https://app.example.com"]
+  }
 });
 ```
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `dataDir` | `string` | _none_ | Path of the SQLite database **file**. With it, the world is durable; omit it and the world is in-memory/ephemeral (see [dataDir](#datadir-durable-vs-ephemeral) below) |
-| `deploymentId` | `string` | `dpl_<ULID>` | Deployment id surfaced back through `getDeploymentId()`. Set this from your CI's build id or git SHA |
-| `id` | `string` | derived from `package.json` | The supervision id. Used to name the control socket and dedup lock on disk. See [Identity derivation](#identity-derivation) below |
-| `config` | `SupervisionConfig` | `{}` | Scale-to-zero knobs. See [Supervisor](/worldant/supervisor#supervisionconfig) |
+## `WorldConfig`
 
-A note on `deploymentId`: this field only flows back through `getDeploymentId()`. It is **not** the per-run `deployment_id` stored on each `world_runs` row — that value comes from `@workflow/core`'s `RunCreated` event data, not from `WorldConfig.deploymentId`.
+| Field | Purpose |
+| --- | --- |
+| `id` | Stable world/app identity. Required under supervision when it cannot be derived. |
+| `dataDir` | Directory for persisted world state. |
+| `deploymentId` | Optional deployment marker passed to native world config. |
+| `config.graceMs` | Supervisor drain/shutdown grace. |
+| `config.minAliveMs` | Minimum process lifetime before restart policy counts it as stable. |
+| `config.wakeHoldMs` | Hold window after waking from zero. |
+| `config.restart` | Restart budget: `maxRestarts`, `windowMs`, `delayMs`. |
+| `net` | `false`/omitted disables remote endpoints; `true` uses defaults; object configures endpoint. |
 
-### dataDir: durable vs ephemeral
+## Network mode
 
-`dataDir` is the single biggest correctness decision on this page. It is the path of the SQLite database **file** itself — not a directory — and it is passed straight through to `SqliteConnectionManager::file(data_dir)`.
+`net` accepts:
 
-- **Set `dataDir`** → the native open path calls `World::open(dataDir)`, which opens the file at exactly that path in WAL mode. Two sidecar files appear next to it: `<dataDir>-wal` and `<dataDir>-shm`. This database survives restarts, scale-to-zero, and redeploys.
-- **Omit `dataDir`** → the native open path calls `World::open_temp()`, which creates an **ephemeral in-memory** database (`file:world-mem-<n>?mode=memory&cache=shared`). It is lost the moment the process exits.
+| Field | Purpose |
+| --- | --- |
+| `token` | Required bearer token for `/__worldant/v1` when set. |
+| `useOnPremisePort` | Use the app's own HTTP server for `/__worldant/v1`; defaults to `true`. |
+| `port` | Dedicated world-net port. |
+| `cors` | `true` reflects the request origin; string array allowlists origins. |
 
-There is no `./.world` default, no directory creation, and no `:memory:` string option. The library does not create directories — the parent directory of `dataDir` must already exist (the example app creates its own). Passing the literal string `":memory:"` would be treated as a filename on disk, not as a special in-memory marker; to get an in-memory database you **omit** `dataDir`.
-
-The example app — not the library — supplies its own default of `join(process.cwd(), '.worldant-data')` via the `WORLDANT_DATA_DIR` env var.
-
-<DChart title="dataDir presence decides durable vs ephemeral">
-  <DRow gap={18} align="center">
-    <DBox kind="accent" mono title="dataDir ?" sub={["native open path checks", "presence of the field"]} />
-    <DCol align="center">
-      <DArrow dir="right" kind="success" label="SET" />
-      <DArrow dir="right" kind="warn" label="OMITTED" />
-    </DCol>
-    <DCol>
-      <DBox kind="success" title="Durable" sub={["World::open(dataDir) · WAL", "<dataDir> + -wal + -shm · survives restart"]} />
-      <DBox kind="warn" title="Ephemeral" sub={["World::open_temp()", "file:world-mem-<n>?mode=memory · lost on exit"]} />
-    </DCol>
-  </DRow>
-  <DNote center>No ./.world default · no directory created · no :memory: string option.</DNote>
-</DChart>
-
-### Identity derivation
-
-If you don't set `id`, worldant derives one from the calling app's `package.json`:
-
-```
-<sanitized-package-name>-<sha256("<packageName>:<appRoot>").slice(0, 16)>
-```
-
-The sanitizer replaces only characters **not** in `[a-zA-Z0-9._-]` with `-` — dots, underscores, and existing hyphens in the package name are preserved — then strips leading/trailing dashes (defaulting to `app` if the result is empty). The hash is a 16-character hex prefix. Note that the hash is computed over the **raw** package name (`<packageName>:<appRoot>`), not the sanitized one.
-
-**You must set `id` explicitly when:**
-
-- Your app has no `package.json` (e.g. a one-off script). `resolveWorldId` throws if it can't resolve both a package name and an entry path.
-- You run multiple replicas on the same host. Each needs a unique `id` to avoid colliding on the control socket and dedup lock.
-- You want the socket and lock paths to be stable across deploys. The derived id changes if `appRoot` moves (e.g. across `pnpm` symlinks); an explicit `id` pins it.
-
-### SupervisionConfig defaults
-
-`config` carries the `SupervisionConfig` your app announces to the supervisor over the control pipe. Each field is optional; omitted fields fall back to the supervisor's defaults (from `control.rs`). These defaults are documented on the [Supervisor](/worldant/supervisor#supervisionconfig) page; the diagram below shows them at a glance.
-
-<DChart label="Field · default · effect" title="SupervisionConfig fields and their default values announced to the supervisor">
-  <DRow gap={18} align="start">
-    <DGroup label="Announced from">
-      <DBox kind="info" mono title={"createWorld({config})"} sub={["SupervisionConfig fields,", "serialized to JSON and sent", "over WORLDANT_CONTROL_FD"]} />
-    </DGroup>
-    <DCol align="center">
-      <DArrow dir="right" kind="success" />
-    </DCol>
-    <DCol>
-      <DBox mono title="graceMs · default 30000" sub="idle window before scaling to zero" />
-      <DBox mono title="minAliveMs · default 2000" sub="warmup floor before the app is eligible to sleep" />
-      <DBox mono title="wakeHoldMs · default 15000" sub="how long a held inbound connection waits for the app to wake" />
-      <DBox mono title={"restart { … }"} sub={["maxRestarts 5 · windowMs 60000 · delayMs 500", "crash-restart budget within the window, with delay between attempts"]} />
-      <DArrow dir="down" kind="success" />
-      <DBox kind="success" title="supervisor per-app settings (control.rs)" sub="drives the scale-to-zero + crash-restart state machine" />
-    </DCol>
-  </DRow>
-</DChart>
-
-## Codec
-
-The TS adapter encodes data as JSON across the NAPI boundary, with two extensions:
-
-- `Uint8Array` values are encoded as `{ __u8b64: <base64> }` and decoded back to `Uint8Array`.
-- `Date` values are encoded as `{ __date: <ISO string> }` and decoded back to `Date`.
-
-This is internal — you do not need to think about it unless you are debugging a serialization issue across the FFI boundary. Plain JSON values (strings, numbers, booleans, objects, arrays, null) pass through unchanged.
-
-## Paths on disk
-
-When the world boots, two kinds of paths appear on disk:
-
-| Path | Purpose | Lifecycle |
-|---|---|---|
-| `<dataDir>`, `<dataDir>-wal`, `<dataDir>-shm` | The SQLite database file plus its WAL sidecars. WAL mode, single writer, reader pool | Persistent. Survives restarts. Only present when `dataDir` is set — omit it and everything stays in memory |
-| `$XDG_RUNTIME_DIR/worldant-<idHash>.*` | Control socket, dedup lock, private app socket. See [Supervisor](/worldant/supervisor#on-disk-paths-supervisor) | Created by the supervisor, removed on clean shutdown |
-
-`dataDir` is yours, and it is a single file path — there is no enclosing directory the library creates. The runtime dir is shared with the OS: `$XDG_RUNTIME_DIR` when set (on Linux it is `/run/user/<uid>`), otherwise the library falls back to the OS temp dir (`os.tmpdir()`, usually `/tmp` on macOS).
-
-## Where to go next
-
-- [**Supervisor**](/worldant/supervisor) — `SupervisionConfig`, env vars, on-disk paths, and the only binding flag (`--public-host`); configuration itself stays code-first
-- [**Quickstart**](/worldant/quickstart) — see these options in context
-- [**How it works**](/worldant/how-it-works) — what the supervisor does with this config
-- [**Vercel Workflow docs**](https://github.com/vercel/workflow) — the underlying model
+If `net.port` is missing and `useOnPremisePort` is `false`, `createWorld()` throws.

@@ -1,148 +1,49 @@
 ---
 title: How it works
-description: How worldant turns a workflow into a typed remote function — contract extraction, codec, and the call path
+description: Request flow for Worldant remote functions.
 ---
 
-# How remote functions work
+The network handler is mounted at `/__worldant/v1`.
 
-When `net` is enabled on a world, worldant exposes two HTTP surfaces. The npm registry side answers `npm install`; the runs side answers every call the generated client makes.
+## Value call
 
-## Contract extraction
-
-At build time (`withWorldant` in Next.js, or `gen-contract` for standalone setups), worldant parses your TypeScript source files using the TypeScript compiler API. It finds every exported function annotated with `"use workflow"` or `"use step"` and reads its parameter and return types directly from the AST — no runtime reflection, no decorators.
-
-```ts
-export async function placeOrder(order: Order): Promise<OrderReceipt> {
-  'use workflow';
-  // ...
-}
-```
-
-The extracted signatures are written to `worldant.catalog.json`. The catalog feeds both the code-generated client and the npm package the world serves at `/__worldant/v1/npm`.
-
-<DChart label="Contract extraction" title="How workflow signatures become a typed client package">
-  <DRow gap={14} align="center">
-    <DBox kind="accent" badge={1} title="Source file" sub={['"use workflow"', 'TypeScript signatures']} />
-    <DArrow dir="right" kind="accent" />
-    <DBox kind="info" badge={2} title="withWorldant / gen-contract" sub={['TypeScript compiler API', 'AST traversal']} />
-    <DArrow dir="right" kind="info" />
-    <DBox kind="warn" badge={3} title="worldant.catalog.json" sub={['world id', 'function names + types']} />
-  </DRow>
-  <DArrow dir="down" kind="warn" dashed />
-  <DRow gap={18} align="center">
-    <DBox kind="success" badge={4} title="worldant/client.ts" sub={['generated typed wrappers', 'same-origin Next.js']} />
-    <DBox kind="success" badge={4} title="npm package" sub={['served at /__worldant/v1/npm', 'cross-origin consumers']} />
+<DChart label="Value call" title="`call()` retries network failures but reuses the same run id.">
+  <DRow wrap>
+    <DBox badge={1} title="Generate run id" sub="wrun_<ULID-like>" />
+    <DArrow />
+    <DBox badge={2} kind="accent" title="POST /runs?wait=120" sub="workflowId, args, runId" />
+    <DArrow />
+    <DBox badge={3} kind="success" title="200 or 202" sub="returnValue if done; runId if still running" />
+    <DArrow />
+    <DBox badge={4} kind="info" title="GET /runs/:id" sub="poll until terminal" />
   </DRow>
 </DChart>
-<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>One catalog, two delivery paths — a local generated file for same-origin, or a live npm package for cross-origin.</figcaption>
 
-## The call path
+`worldant-client` generates a run id for every `call()`. If the POST fails because the network drops or the world restarts, it retries with that same id. The server accepts conflicts for the same run id and converges on the existing run.
 
-When a consumer calls a generated wrapper like `placeOrder(order)`, `worldant-client` drives a three-stage sequence:
-
-1. `POST /__worldant/v1/runs?wait=N` — submit the run with a `runId` (auto-generated or supplied) and wait up to `N` seconds for inline completion. If the workflow finishes within that window, the response carries the result and the call resolves immediately — no second request needed.
-2. `GET /__worldant/v1/runs/:id` — if the POST times out without a terminal result, the client polls this endpoint every `pollMs` milliseconds until the run completes.
-3. Network or `5xx` errors on either step are retried with exponential backoff against **the same `runId`** — the run is never submitted twice.
-
-<DChart label="Call path" title="From a typed function call to the completed workflow run">
-  <DRow gap={14} align="center">
-    <DBox kind="accent" mono title="placeOrder(order)" sub="generated typed wrapper" />
-    <DArrow dir="right" kind="accent" />
-    <DBox mono title="worldant-client" sub={['POST /runs?wait=N (inline fast-path)', 'GET /runs/:id (poll fallback)', 'retry same runId on 5xx']} />
-    <DArrow dir="right" kind="info" />
-    <DBox kind="info" mono title="world-net" sub={['HTTP · CORS · auth', 'codec decode/encode']} />
-    <DArrow dir="right" kind="success" />
-    <DBox kind="success" mono title="World" sub={['embedded SQLite', 'durable replay']} />
-  </DRow>
-</DChart>
-<figcaption style={{fontSize:'0.8rem',color:'var(--fd-muted-foreground,#64748b)',marginTop:'0.5rem'}}>Fast workflows resolve on the POST response (the <code>?wait</code> fast path). Slow workflows fall through to polling. The run id stays stable across retries so no run is ever started twice.</figcaption>
-
-## Run IDs and idempotency
-
-Every call is idempotent by default. `worldant-client` auto-generates a conformant `wrun_<ULID>` for each call, in memory, scoped to that call. If the network drops or worldant restarts mid-flight, retrying resumes the **same run** — never a duplicate.
+## Stream call
 
 ```ts
-// Auto-idempotent — no setup required
-const receipt = await placeOrder(order);
-```
-
-The `runId` is valid for any world backend (SQLite, Postgres, or Vercel) because it is a real `wrun_<ULID>` — the same format those worlds expect.
-
-The client generates the id; the world deduplicates on its run primary key. There is no server-side idempotency table.
-
-### Explicit run ID
-
-Pass your own id to control dedup from outside the client:
-
-```ts
-import { generateRunId } from 'worldant-client';
-
-const runId = generateRunId(); // wrun_<ULID>
-const receipt = await placeOrder(order, { runId });
-// Any retry with the same runId resolves the same run
-```
-
-`generateRunId()` is exported from `worldant-client` and from the generated `worldant/client.ts` module.
-
-### `scopeKey` — survive a page reload (opt-in)
-
-The auto-id is in-memory. To survive a full page reload (the user navigates away and back during a long-running order), persist the id with a `scopeKey`:
-
-```ts
-const receipt = await placeOrder(order, { scopeKey: `order:${cartId}` });
-```
-
-The client mints a run id, stores it under `worldant:run:order:<cartId>` in `localStorage` (browser) or an in-memory map (SSR / Node), and on the next call with the same key it resumes the stored id. The key is cleared once the run is terminal.
-
-> **When to opt in.** Most calls do not need `scopeKey` — the auto-id handles connection drops and worldant restarts without any setup. Use `scopeKey` only when the user might leave and return to a page that should pick up a run that is still in progress.
-
-## Codec — `Uint8Array` and `Date`
-
-Plain JSON cannot round-trip `Uint8Array` or `Date`. Worldant's codec handles both:
-
-| Type | Encoding |
-|---|---|
-| `Uint8Array` | Base64-encoded string, decoded back to `Uint8Array` on the client |
-| `Date` | ISO 8601 string, reconstructed as `Date` on the client |
-| Everything else | Standard JSON |
-
-Codec runs on both sides — no manual serialization in workflow code or consumer code.
-
-```ts
-export async function processFile(data: Uint8Array): Promise<{ processedAt: Date }> {
-  'use workflow';
-  // data arrives as Uint8Array in the workflow body
-  // processedAt arrives as Date in the caller
-  return { processedAt: new Date() };
+for await (const item of client.stream("trackOrder", [orderId])) {
+  console.log(item);
 }
 ```
 
-## Streams (SSE)
+The client starts a run, then opens:
 
-When a workflow's return type is `ReadableStream<T>`, the world serves it as an SSE endpoint. No extra configuration is required — the `ReadableStream<T>` annotation is the only signal. The codegen detects it and the client automatically opens `GET /__worldant/v1/runs/:id/stream` instead of the polling path.
-
-The generated wrapper returns an `AsyncIterable<T>`. Consume it with `for await`:
-
-```ts
-for await (const status of trackOrder(order.id)) {
-  console.log(status.stage, status.pct);
-}
+```txt
+GET /__worldant/v1/runs/:runId/stream
 ```
 
-Codec runs on stream chunks — `Uint8Array` and `Date` fields in the payload type round-trip correctly.
+Each SSE data frame is base64 payload encoded by the server and decoded by the client.
 
-## Security
+## Registry endpoints
 
-`defaultConfiguration` (world id, base URL, poll interval) is embedded in the generated package and is safe to expose publicly — it never contains a token. Supply auth at runtime:
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/registry` | Contract JSON with `ETag`. |
+| `GET` | `/registry.d.ts` | Type declarations. |
+| `GET` | `/contract/:etag.tgz` | Generated package tarball. |
+| `GET` | `/npm/:name` | npm packument for the world id. |
 
-```ts
-import { configure } from 'orders';
-configure({ token: process.env.NEXT_PUBLIC_WORLD_TOKEN });
-```
-
-The token is sent as `Authorization: Bearer <token>` on every request. See [Security](/worldant/remote-functions#security) in the overview for the full model.
-
-## What's next
-
-- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — wire `withWorldant` into your Next.js build
-- [**Cross-origin**](/worldant/remote-functions/cross-origin) — consume a world from a separate app
+The handler derives package base URL from forwarded headers or `Host`.

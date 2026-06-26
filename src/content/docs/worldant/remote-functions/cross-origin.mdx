@@ -1,126 +1,53 @@
 ---
-title: Cross-origin
-description: Consume a worldant world from a separate frontend or Node service using scoped .npmrc routing
+title: Cross origin
+description: Serve the generated package from one origin and call it from another.
 ---
 
-# Cross-origin remote functions
+Cross-origin mode is useful when the workflow world and browser app are separate deployments.
 
-When the consumer runs on a different origin from the world — e.g. a Vite app on `:5173` calling a NestJS world on `:3000` — you need two things: CORS on the server, and an `.npmrc` entry that routes the world's npm scope to its registry.
-
-## Installation (consumer)
-
-```sh
-npm install worldant-client
-```
-
-The world's typed package (`@fxdesk/quotes`, `orders`, etc.) is installed from the world's live registry — see step 3 below.
-
-## 1. Start the world with CORS
-
-On the server, pass `cors` with the origins you want to allow and `useOnPremisePort: true` to mount the world's routes on your app's existing HTTP server instead of spinning up a separate port:
+## Server world
 
 ```ts
-// world.bootstrap.ts (NestJS, Express, Fastify, …)
-import { createWorld } from '@midwess/worldant';
+import { createWorld } from "@midwess/worldant";
 
-await createWorld({
-  id: '@fxdesk/quotes',
+const world = await createWorld({
+  id: "@fxdesk/quotes",
   net: {
     useOnPremisePort: true,
-    cors: ['http://localhost:5173', 'https://app.fxdesk.io'],
-  },
+    cors: ["http://localhost:5173"]
+  }
 });
+await world.start?.();
 ```
 
-`useOnPremisePort` registers `/__worldant/v1/*` on the same HTTP server your app already listens on — no extra port to manage.
+Use a scoped package id when you want npm to route only that scope to the world registry.
 
-## 2. Route the npm scope in `.npmrc`
+## Client install
 
-Scope the world id so your package manager routes only that scope to the world's registry. Everything else — `react`, `vite`, etc. — still comes from npm:
+`.npmrc`:
 
 ```ini
-# client/.npmrc
 @fxdesk:registry=http://localhost:3000/__worldant/v1/npm
 ```
 
-For production:
-```ini
-@fxdesk:registry=https://api.fxdesk.io/__worldant/v1/npm
+Install normally:
+
+```bash
+pnpm install @fxdesk/quotes
 ```
 
-## 3. Install the typed package
-
-```sh
-pnpm install   # @fxdesk/quotes fetched from the world, everything else from npm
-```
-
-Or explicitly:
-```sh
-npm install @fxdesk/quotes
-```
-
-## 4. Call from the browser
+## Browser usage
 
 ```ts
-import { quote, watchRate } from '@fxdesk/quotes';
+import { quote, watchRate, configure } from "@fxdesk/quotes";
 
-async function getQuote() {
-  const lines = await quote(100);
-  console.log('Quote lines:', lines);         // typed, Date fields intact
+configure({ token: sessionToken });
 
-  for await (const tick of watchRate('EUR')) {
-    console.log('EUR rate:', tick.rate);       // live SSE stream
-  }
+const q = await quote(100);
+
+for await (const tick of watchRate("EUR")) {
+  console.log(tick);
 }
 ```
 
-`defaultConfiguration.baseUrl` is baked into the generated package from the URL you installed from, so cross-origin fetch works automatically once CORS is enabled.
-
-<DChart label="Cross-origin path" title="Scoped .npmrc routes the install; CORS allows the browser call">
-  <DRow gap={18} align="start">
-    <DGroup label="Build time (npm install)">
-      <DBox kind="info" title="pnpm install" sub={['.npmrc: @fxdesk:registry=:3000', 'fetches @fxdesk/quotes from world']} />
-      <DArrow dir="down" kind="info" />
-      <DBox kind="info" title="@fxdesk/quotes" sub={['typed wrappers', 'defaultConfiguration (baseUrl=:3000)']} />
-    </DGroup>
-    <DGroup label="Runtime (browser fetch)">
-      <DBox kind="accent" title="Browser (:5173)" sub="import { quote } from '@fxdesk/quotes'" />
-      <DArrow dir="right" kind="accent" label="cross-origin fetch (CORS)" />
-      <DBox kind="success" title="world-net (:3000)" sub="CORS allows :5173" />
-    </DGroup>
-  </DRow>
-  <DNote>Two kinds of cross-origin: the npm install (Node fetch, no CORS) and the browser call (CORS, opt-in).</DNote>
-</DChart>
-
-## Auth token
-
-To require authentication, add `token` when creating the world:
-
-```ts
-await createWorld({
-  id: '@fxdesk/quotes',
-  net: {
-    useOnPremisePort: true,
-    cors: ['https://app.fxdesk.io'],
-    token: process.env.WORLD_TOKEN,
-  },
-});
-```
-
-Consumers supply the token at runtime:
-
-```ts
-import { configure } from '@fxdesk/quotes';
-configure({ token: import.meta.env.VITE_WORLD_TOKEN });
-```
-
-The token is sent as `Authorization: Bearer <token>` on every request and is never baked into the generated package.
-
-## Full example
-
-The [`examples/nestjs-vite-cross-origin`](https://github.com/Midwess/worldant/tree/main/examples/nestjs-vite-cross-origin) directory contains a runnable NestJS world + Vite consumer with a `quote` workflow and a `watchRate` SSE stream.
-
-## What's next
-
-- [**Same-origin (Next.js)**](/worldant/remote-functions/same-origin) — zero-CORS setup inside a Next.js project
-- [**React hook**](/worldant/remote-functions/react-hook) — `useWorldant` for ergonomic component-level integration
+The generated package's `defaultConfiguration.baseUrl` is derived from the registry URL used during installation. Override it with `configure({ baseUrl })` when a proxy or environment URL differs.

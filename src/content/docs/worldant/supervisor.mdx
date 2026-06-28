@@ -1,53 +1,27 @@
 ---
 title: Supervisor
-description: Use the Worldant CLI to own sockets, forward traffic, redeploy, and manage app processes.
+description: Planned daemon and execution supervision model.
 ---
 
-The supervisor is `@midwess/worldant-cli`. It is separate from the durable world: it never opens the SQLite data directory. It starts and manages app processes that use `@midwess/worldant`.
+Worldant supervision is being redesigned around the daemon.
 
-## Commands
+The daemon owns:
 
-| Command | Purpose |
-| --- | --- |
-| `worldant run -- <command>` | Start through the daemon. Re-running the same app id performs a managed redeploy. |
-| `worldant start -- <command>` | Foreground single-app supervision. |
-| `worldant up` | Start the daemon. |
-| `worldant ps` | List supervised apps. |
-| `worldant logs <id> -f` | Tail captured app logs. |
-| `worldant stop <id>` | Stop one app. |
-| `worldant down` | Stop daemon/app set. |
-| `worldant install --env-file <path>` | Install as a per-user OS service with optional env file. |
-| `worldant uninstall` | Remove service installation. |
+- build/run requests,
+- `.dist` snapshot activation,
+- PgPaw sessions,
+- JavaScript isolate scheduling,
+- workflow queues,
+- reactive subscriptions,
+- MCP/HTTP endpoints,
+- npm package endpoints,
+- crash recovery.
 
-## Socket ownership
+The daemon should keep memory proportional to active work, not total generated
+apps, total files, or dormant workflow runs.
 
-<DChart label="Traffic path" title="App code still calls listen(); supervisor owns the public port.">
-  <DRow>
-    <DBox kind="muted" title="Client" sub="connects to public host:port" />
-    <DArrow />
-    <DBox kind="info" title="Supervisor" sub="bound socket stays up across process swaps" />
-    <DArrow />
-    <DBox kind="accent" title="App private socket" sub="relocated listen() target" />
-  </DRow>
-</DChart>
-
-When supervised, `http.Server.prototype.listen` is intercepted. The app receives a private Unix socket, and the supervisor forwards public traffic to it.
-
-## Redeploy
-
-Run the same command again with the same world id:
-
-```bash
-worldant run -- npm start
-worldant run -- npm start
+```text
+active calls + workflow replays + subscriptions + warm cache budget
 ```
 
-The daemon can identify the duplicate app, start the replacement, drain the old process, and keep the public endpoint open.
-
-## Public host
-
-```bash
-worldant run --public-host 0.0.0.0 -- npm start
-```
-
-`--public-host` is available on `run` and `start`.
+Idle entries are offloaded to `.dist` and PgPaw metadata.

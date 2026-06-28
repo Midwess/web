@@ -1,49 +1,38 @@
 ---
 title: How it works
-description: Request flow for Worldant remote functions.
+description: Request flow for Worldant remote function calls.
 ---
 
-The network handler is mounted at `/__worldant/v1`.
+The daemon serves a stable protocol:
 
-## Value call
+```text
+GET  /__worldant/v1/registry
+GET  /__worldant/v1/registry.d.ts
+GET  /__worldant/v1/contract/:etag.tgz
+GET  /__worldant/v1/npm/:package
 
-<DChart label="Value call" title="`call()` retries network failures but reuses the same run id.">
-  <DRow wrap>
-    <DBox badge={1} title="Generate run id" sub="wrun_<ULID-like>" />
-    <DArrow />
-    <DBox badge={2} kind="accent" title="POST /runs?wait=120" sub="workflowId, args, runId" />
-    <DArrow />
-    <DBox badge={3} kind="success" title="200 or 202" sub="returnValue if done; runId if still running" />
-    <DArrow />
-    <DBox badge={4} kind="info" title="GET /runs/:id" sub="poll until terminal" />
-  </DRow>
-</DChart>
+POST /__worldant/v1/calls
+GET  /__worldant/v1/calls/:callId
+GET  /__worldant/v1/calls/:callId/stream
 
-`worldant-client` generates a run id for every `call()`. If the POST fails because the network drops or the world restarts, it retries with that same id. The server accepts conflicts for the same run id and converges on the existing run.
+POST /__worldant/v1/runs
+GET  /__worldant/v1/runs/:runId
+GET  /__worldant/v1/runs/:runId/stream
 
-## Stream call
-
-```ts
-for await (const item of client.stream("trackOrder", [orderId])) {
-  console.log(item);
-}
+POST /__worldant/v1/subscriptions
+GET  /__worldant/v1/subscriptions/:subId/stream
 ```
 
-The client starts a run, then opens:
+The registry and contract endpoints describe the active `.dist` snapshot. The
+call and run endpoints execute snapshot-backed artifacts. Subscription streams
+deliver authorized SQL-backed updates.
 
-```txt
-GET /__worldant/v1/runs/:runId/stream
+Idempotency is part of the protocol:
+
+```text
+mutation call + same key + same payload -> existing result
+mutation call + same key + different payload -> conflict
+workflow run + same run id -> existing run
+event subscription + cursor -> resume from cursor
+live query subscription -> reconnect by re-running latest query
 ```
-
-Each SSE data frame is base64 payload encoded by the server and decoded by the client.
-
-## Registry endpoints
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/registry` | Contract JSON with `ETag`. |
-| `GET` | `/registry.d.ts` | Type declarations. |
-| `GET` | `/contract/:etag.tgz` | Generated package tarball. |
-| `GET` | `/npm/:name` | npm packument for the world id. |
-
-The handler derives package base URL from forwarded headers or `Host`.

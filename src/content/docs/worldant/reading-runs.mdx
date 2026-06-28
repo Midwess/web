@@ -1,42 +1,27 @@
 ---
 title: Reading runs
-description: Inspect run status, steps, events, hooks, and streams through the world interface or remote-function API.
+description: Planned workflow run status and stream surfaces.
 ---
 
-Worldant exposes run state through the `@workflow/world` interface and through `/__worldant/v1` when network mode is enabled.
+Workflow runs are read by run id.
 
-## In process
-
-```ts
-import { getWorld } from "@midwess/worldant";
-
-const world = getWorld();
-const run = await world.runs.get("wrun_...");
-const steps = await world.steps.list({ runId: run.id });
-const events = await world.events.list({ runId: run.id });
+```text
+GET /__worldant/v1/runs/:runId
+GET /__worldant/v1/runs/:runId/stream
 ```
 
-The JS layer strips large input/output data when the caller requests `resolveData: "none"`, matching the underlying world contract.
+The status endpoint returns the durable run state. The stream endpoint returns
+encoded chunks for workflows or calls that produce stream output.
 
-## Over HTTP
+Runs are durable because their progress is stored in PgPaw:
 
-Remote function clients use these endpoints:
+```text
+workflow_runs
+workflow_events
+workflow_steps
+workflow_waits
+jobs
+stream_chunks
+```
 
-| Method | Path | Result |
-| --- | --- | --- |
-| `POST` | `/__worldant/v1/runs` | Start a run. Returns `{ runId }` unless `?wait` settles first. |
-| `GET` | `/__worldant/v1/runs/:runId` | Return `{ runId, status }` plus `returnValue` or `failure` when terminal. |
-| `GET` | `/__worldant/v1/runs/:runId/stream` | Return an SSE stream of encoded output chunks. |
-| `POST` | `/__worldant/v1/runs/:runId/hooks/:hookId` | Resume a hook with request body payload. |
-
-`?wait` is accepted on `POST /runs` and `GET /runs/:runId`. Values are seconds, clamped to 300. Empty or invalid values use 120 seconds.
-
-## Terminal states
-
-The network handler treats these statuses as terminal:
-
-- `completed`
-- `failed`
-- `cancelled`
-
-Completed responses include `returnValue`. Failed responses include `failure` when the runtime exposes one.
+The active process is disposable. The database state is not.

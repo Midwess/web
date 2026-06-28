@@ -1,43 +1,41 @@
 ---
 title: How it works
-description: Worldant separates durable workflow state from process supervision.
+description: The target execution model for the Worldant world runtime.
 ---
 
-Worldant keeps the durable state machine inside your Node process and keeps socket/process ownership in the supervisor. The two communicate only when the app is launched under `worldant run`.
+Worldant turns a directory into a running world.
 
-<DChart label="Boot flow" title="From import to serving traffic under supervision.">
-  <DRow wrap>
-    <DBox badge={1} title="Import package" sub="connectSupervisor() installs HTTP listen interception when control fd exists" />
-    <DArrow />
-    <DBox badge={2} kind="accent" title="Create world" sub="native World.open() opens the SQLite-backed world" />
-    <DArrow />
-    <DBox badge={3} kind="success" title="Announce" sub="id, control socket, dedup lock, and supervision config go to native layer" />
-    <DArrow />
-    <DBox badge={4} kind="info" title="Listen" sub="app listen() moves to a private socket; supervisor owns public port" />
-  </DRow>
-</DChart>
+```text
+agent edits files
+  -> worldant build
+  -> validate migrations, artifacts, contracts, tests, and policies
+  -> write .dist/run/<run_snapshot_id>
+  -> record snapshot metadata in PgPaw
+  -> worldant run serves latest valid snapshots
+```
 
-## Durable world
+Execution never runs directly from the working tree. New calls use the newest
+valid snapshot. In-flight workflow runs stay pinned to the snapshot they started
+with.
 
-The library loads a napi addon and exposes the `@workflow/world` interface. Calls such as `runs.get`, `events.create`, `steps.list`, hooks, streams, and queue dispatch go through native bindings. Data is encoded through Worldant's codec before crossing the JS/native boundary.
+## Database truth
 
-When `install()` is used, Worldant also calls `setWorld(world)` and `world.start()`.
+PgPaw/Postgres is the truth.
 
-## Process supervision
+```text
+if it did not commit to PgPaw, it did not happen
+if it committed to PgPaw, subscribers can observe it
+```
 
-The CLI starts your command with a control channel. When the JS package sees that channel, it:
+Postgres row-level policy is the authorization boundary. Worldant can validate
+capability declarations, but database policy remains the final guard.
 
-- installs an HTTP request interceptor for `/__worldant/v1`;
-- intercepts `http.Server.prototype.listen`;
-- asks the app to listen on a private Unix socket;
-- reports the intended host/port and private socket to the supervisor.
+## Execution
 
-The supervisor then binds the public port and forwards bytes to the private socket.
+Worldant plans bounded JavaScript isolate slots using `deno_core::JsRuntime`.
+Commands, mutations, workflow replays, and steps load from `.dist` on demand.
+Idle entries and isolate slots are dropped to keep per-user infrastructure small.
 
-## Recovery model
-
-Workflow progress is stored in the world. On restart, the new process opens the same data directory and starts the world. Completed steps remain completed. Active runs can continue from persisted events.
-
-## Network endpoints
-
-If `createWorld({ net: true })` or `createWorld({ net: { ... } })` is used, Worldant serves `/__worldant/v1` either on the app's own HTTP server or an explicit port. That endpoint handles registry metadata, npm packuments, run creation, run status, streams, and hook resume.
+Durable workflow replay uses a deterministic `node:vm`-style context inside an
+isolate slot. Steps execute outside that deterministic context and persist their
+results before workflow replay continues.

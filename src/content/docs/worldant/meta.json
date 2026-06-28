@@ -1,6 +1,6 @@
 {
   "title": "Worldant",
-  "description": "An in-process Vercel Workflow world backed by embedded SQLite, with a scale-to-zero supervisor",
+  "description": "An actively in-progress world runtime for agents, durable workflows, reactive data, and typed remote functions",
   "pages": [
     "index",
     "how-it-works",

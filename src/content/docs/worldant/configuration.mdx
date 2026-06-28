@@ -1,57 +1,23 @@
 ---
 title: Configuration
-description: Configure the world data directory, id, supervision policy, and network endpoint.
+description: Planned configuration boundaries for Worldant.
 ---
 
-Worldant is configured in code.
+Configuration is intentionally not stable yet.
 
-```ts
-import { createWorld } from "@midwess/worldant";
+The target configuration domains are:
 
-const world = await createWorld({
-  id: "orders",
-  dataDir: "./.worldant/orders",
-  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA,
-  config: {
-    graceMs: 30_000,
-    minAliveMs: 10_000,
-    wakeHoldMs: 5_000,
-    restart: {
-      maxRestarts: 5,
-      windowMs: 60_000,
-      delayMs: 1_000
-    }
-  },
-  net: {
-    port: 4001,
-    token: process.env.WORLDANT_TOKEN,
-    cors: ["https://app.example.com"]
-  }
-});
+```text
+world id / package name
+PgPaw/Postgres connection
+actor sessions and Postgres role mapping
+build validation policy
+isolate slot limits
+workflow concurrency
+npm protocol prefix
+MCP/HTTP exposure
+Ragent/client access policy
 ```
 
-## `WorldConfig`
-
-| Field | Purpose |
-| --- | --- |
-| `id` | Stable world/app identity. Required under supervision when it cannot be derived. |
-| `dataDir` | Directory for persisted world state. |
-| `deploymentId` | Optional deployment marker passed to native world config. |
-| `config.graceMs` | Supervisor drain/shutdown grace. |
-| `config.minAliveMs` | Minimum process lifetime before restart policy counts it as stable. |
-| `config.wakeHoldMs` | Hold window after waking from zero. |
-| `config.restart` | Restart budget: `maxRestarts`, `windowMs`, `delayMs`. |
-| `net` | `false`/omitted disables remote endpoints; `true` uses defaults; object configures endpoint. |
-
-## Network mode
-
-`net` accepts:
-
-| Field | Purpose |
-| --- | --- |
-| `token` | Required bearer token for `/__worldant/v1` when set. |
-| `useOnPremisePort` | Use the app's own HTTP server for `/__worldant/v1`; defaults to `true`. |
-| `port` | Dedicated world-net port. |
-| `cors` | `true` reflects the request origin; string array allowlists origins. |
-
-If `net.port` is missing and `useOnPremisePort` is `false`, `createWorld()` throws.
+Authorization remains in Postgres policy. Worldant configuration may declare
+capabilities, but it does not replace database authorization.

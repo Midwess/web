@@ -1,49 +1,20 @@
 ---
 title: Installation
-description: Install the Worldant runtime package and optional supervisor CLI.
+description: Current installation status for the active Worldant rebuild.
 ---
 
-Install the package that runs inside your Node app:
+Worldant is actively in progress. There is no stable installation path yet.
+
+The intended local shape is:
 
 ```bash
-npm install @midwess/worldant
+worldant build
+worldant run
 ```
 
-Add it to app startup:
+`worldant build` validates the world directory and writes `.dist` snapshots.
+`worldant run` starts the daemon and serves the latest valid snapshots,
+reactive streams, MCP/HTTP surfaces, and npm remote-function protocol.
 
-```ts
-import { install } from "@midwess/worldant";
-
-await install();
-```
-
-`install()` calls `createWorld()`, registers the result with `@workflow/core`, starts the world, and returns the world handle.
-
-## Supervisor CLI
-
-Install the CLI when the app should run under Worldant supervision:
-
-```bash
-npm install -g @midwess/worldant-cli
-```
-
-Then start your app through the supervisor:
-
-```bash
-worldant run -- npm start
-```
-
-Use `start` for single-process foreground supervision. Use `run` for daemon-backed app management.
-
-## Platform notes
-
-The cloned source ships native packages for Node apps on macOS and Linux. The supervisor code uses Unix sockets and Unix process primitives. Deno and Windows are not the current target.
-
-## Verify setup
-
-```bash
-node -e "import('@midwess/worldant').then(m => console.log(typeof m.install))"
-worldant ps
-```
-
-`worldant ps` starts or contacts the daemon and prints active supervised apps when any exist.
+Until the runtime is implemented, treat this repository as a design and
+development workspace.

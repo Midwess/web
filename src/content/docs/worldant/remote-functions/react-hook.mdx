@@ -1,44 +1,28 @@
 ---
-title: React hook
-description: Use worldant-react to bind a generated schema package to a memoized client.
+title: Client adapters
+description: Ragent and other clients consume Worldant through the generated package.
 ---
 
-`worldant-react` exports `useWorldant(schema, overrides)`. It reads the generated package's `defaultConfiguration`, merges runtime overrides, and returns a memoized `worldant-client`.
+Worldant does not define frontend state patterns.
 
-```tsx
-"use client";
+Ragent owns generated UI and can import the generated package or call
+`worldant-client` directly. Other adapters can do the same.
 
-import * as orders from "@acme/orders";
-import { useWorldant } from "worldant-react";
+```text
+Worldant owns:
+  contract generation
+  package endpoint
+  remote function transport
+  PgPaw truth
+  reactive subscriptions
 
-export function CheckoutButton({ order }: { order: orders.Order }) {
-  const client = useWorldant(orders, { token: "session-token" });
-
-  return (
-    <button
-      onClick={async () => {
-        await client.call<typeof orders.placeOrder>("placeOrder", [order]);
-      }}
-    >
-      Place order
-    </button>
-  );
-}
+Ragent/client owns:
+  UI source
+  rendering
+  local component state
+  user interaction ergonomics
 ```
 
-## Override fields
-
-The hook accepts the same connection fields as `createClient()`:
-
-| Field | Purpose |
-| --- | --- |
-| `baseUrl` | Remote world origin. |
-| `prefix` | Endpoint prefix, default `/__worldant/v1`. |
-| `token` | Bearer token. |
-| `pollMs` | Poll interval after a call returns `202`. |
-| `worldId` | Optional client-side label. |
-| `store` | Run id persistence store. |
-| `retryBaseMs` | Initial network retry delay. |
-| `retryMaxMs` | Maximum network retry delay. |
-
-Use generated wrappers for strongest types; use `client.call` or `client.stream` when building a generic UI.
+The shared boundary is committed database truth. A client action calls a
+mutation, PgPaw commits the change, and subscriptions update every authorized
+consumer.

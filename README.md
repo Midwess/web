@@ -1,15 +1,15 @@
-## Midwess website
-This is the website of Midwess
-## Getting Started
+# Worldant Docs
 
-```bash
-git submodule update --init
-```
+This docs workspace is actively in progress.
 
-```bash
-pnpm install
-```
+The Worldant docs now describe the target world-runtime architecture:
 
-```bash
-pnpm dev
-```
+- agent-edited world directories,
+- PgPaw/Postgres as truth,
+- durable workflow replay,
+- reactive SQL streams,
+- npm remote-function packages,
+- Ragent as a client/UI consumer.
+
+The current pages are design and implementation notes, not stable product
+documentation.

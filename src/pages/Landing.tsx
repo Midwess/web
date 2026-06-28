@@ -13,7 +13,7 @@ const Landing = () => (
   <>
     <SeoHead
       title="Durable infrastructure for stateful workloads"
-      description="Midwess builds pglite-rs (embedded Postgres in Rust), worldant (durable Vercel Workflow runtime on SQLite), and pgpaw (Postgres change-data cache) — open source under MIT."
+      description="Midwess builds PgPaw and Worldant: database-first runtime infrastructure for agent-owned worlds, durable workflows, reactive data, and typed remote functions."
       path="/"
       jsonLd={[webSiteLd(), organizationLd()]}
     />

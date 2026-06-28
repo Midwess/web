@@ -35,17 +35,17 @@ const projects: Project[] = [
     name: "Worldant",
     slug: "worldant",
     hasDocs: true,
-    tagline: "Vercel world implementation in Rust for agentic",
+    tagline: "World runtime for agent-owned software",
     sprite: "/pets/capvolt.webp",
     website: "https://github.com/Midwess/worldant",
     repo: "Midwess/worldant",
     progress: 80,
     accent: "rgb(250 204 21 / 0.18)", // pikachu yellow
     features: [
-      "In-process Vercel Workflow world",
-      "Embedded SQLite — no external DB",
-      "Scale-to-zero supervisor",
-      "Cross-process exactly-once",
+      "Directory-first world builds",
+      "Durable workflow replay",
+      "Reactive SQL subscriptions",
+      "Typed npm remote functions",
     ],
   },
   {

@@ -1,63 +1,40 @@
 ---
 title: Workflows
-description: Use Vercel Workflow code unchanged while Worldant stores the world state.
+description: Durable workflow design in the Worldant rebuild.
 ---
 
-Worldant does not replace the Workflow compiler or framework adapters. It provides the world that those packages run against.
+Workflows are for long-running logic that must survive restart, crash, retry,
+or a sleeping wait.
 
-## Define functions
-
-```ts
-async function reserveInventory(sku: string) {
-  "use step";
-  return { sku, reserved: true };
-}
-
-export async function shipOrder(orderId: string, sku: string) {
-  "use workflow";
-  const reservation = await reserveInventory(sku);
-  return { orderId, reservation };
-}
-```
-
-`"use step"` marks side-effecting work that should be memoized by the workflow runtime. `"use workflow"` marks the durable function entrypoint.
-
-## Register the world
+Workflow source is normal TypeScript in `workflows/`. Step source lives in
+`workflows/steps/`.
 
 ```ts
-import { install } from "@midwess/worldant";
+export default async function aiMove(ctx, input) {
+  const board = await ctx.step(
+    "chess.loadBoard",
+    { gameId: input.gameId },
+    { key: `load:${input.gameId}` }
+  );
 
-await install({ id: "orders" });
-```
+  const move = await ctx.step(
+    "chess.chooseMove",
+    { gameId: input.gameId, fen: board.fen },
+    { key: `choose:${input.gameId}:${board.ply}` }
+  );
 
-For advanced setups, use `createWorld()` and register manually:
-
-```ts
-import { createWorld, setWorld } from "@midwess/worldant";
-
-const world = await createWorld({ id: "orders" });
-setWorld(world);
-await world.start?.();
-```
-
-## Streams
-
-Worldant exports `outputStream()` for streaming workflow results. The source code calls `getWritable()` from `workflow` and writes encoded chunks.
-
-```ts
-import { outputStream } from "@midwess/worldant";
-
-async function emit(orderId: string) {
-  "use step";
-  const out = outputStream<{ state: string }>();
-  await out.write({ state: "accepted" });
-  await out.write({ state: "packed" });
-  await out.close();
+  await ctx.step(
+    "chess.commitAiMove",
+    { gameId: input.gameId, from: move.from, to: move.to },
+    { key: `commit:${input.gameId}:${board.ply}` }
+  );
 }
 ```
 
-Call `outputStream()` from a step, because it performs I/O.
+Workflow code is deterministic orchestration. It may branch on recorded values,
+call `ctx.step`, sleep, wait, and receive signals. Direct database writes,
+network calls, file access, provider calls, and random external effects belong
+in steps.
 
-## Queues
-
-The world implements queue creation and dispatch through `@workflow/world`. Queue handlers are registered by prefix. Native dispatch calls back into JS with the queue name, message, attempt, and message id metadata.
+Step keys must be stable domain identities. Reusing the same key with a
+different payload is an idempotency conflict.

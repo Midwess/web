@@ -1,68 +1,63 @@
 ---
 title: Worldant
-description: Self-hosted durable execution for Vercel Workflow, backed by embedded SQLite and supervised Node processes.
+description: Active design and implementation notes for the Worldant world runtime.
 ---
 
-Worldant is a durable `@workflow/world` implementation for Node apps. Add `@midwess/worldant`, keep writing `"use workflow"` and `"use step"`, and store runs, events, hooks, queues, and streams in an embedded SQLite world instead of an external service.
+Worldant is an actively in-progress runtime for AI-owned software worlds.
 
-It has two parts:
+It is being rebuilt around a directory-first model: an agent edits files, the
+daemon validates and builds a `.dist` snapshot, and the running world exposes
+typed commands, mutations, workflows, and reactive streams.
 
-- `@midwess/worldant` opens the native world, registers it with `@workflow/core`, and optionally serves remote-function endpoints.
-- `@midwess/worldant-cli` supervises the app process, owns public sockets, forwards traffic, restarts, drains redeploys, and can scale the app process to zero.
+This documentation describes the target architecture. APIs are not stable yet.
 
-<DChart label="Runtime shape" title="Durability stays in the app process; supervision stays outside it.">
-  <DRow>
-    <DBox kind="accent" title="Your app" sub={["workflow code", "HTTP framework", "calls install() or createWorld()"]} />
-    <DArrow />
-    <DBox kind="success" title="Worldant library" sub={["implements @workflow/world", "native addon", "embedded SQLite"]} />
-    <DArrow />
-    <DBox kind="info" title="Supervisor CLI" sub={["owns public port", "private socket forwarding", "redeploy + scale-to-zero"]} />
-  </DRow>
-</DChart>
+## What Worldant owns
 
-## Start here
+- World directory discovery and validation.
+- SQL migration validation and schema reflection.
+- PgPaw/Postgres as database truth and realtime data plane.
+- Commands for quick read/compute logic.
+- Mutations for committed writes.
+- Durable workflows and replay-safe steps.
+- Reactive SQL subscriptions and cursor-backed event streams.
+- A live npm remote-function protocol.
+- MCP and HTTP surfaces for outside agents.
 
-Install the world in application boot code before workflow handlers run:
+Worldant does not own generated UI. Ragent owns UI generation and consumes
+Worldant through the same typed package/protocol as any other client.
 
-```ts
-import { install } from "@midwess/worldant";
+## Shape
 
-await install();
+```text
+world/
+  migrations/
+  generated/
+  commands/
+  mutations/
+  workflows/
+    steps/
+  reactive/
+  tests/
+
+worldant build
+  -> .dist/run/<run_snapshot_id>
+  -> PgPaw metadata
+  -> generated npm contract
+
+worldant run
+  -> daemon serves latest valid snapshots
+  -> workflow runs pin to their snapshot
 ```
 
-Run the app under the supervisor when you want socket ownership, process restart, redeploy drain, and scale-to-zero:
+## Status
 
-```bash
-npm install @midwess/worldant
-npm install -g @midwess/worldant-cli
-worldant run -- npm start
-```
+Worldant is actively in progress. The current proof target is:
 
-## What Worldant provides
+- A generated chess world with schema, mutation, command, workflow, and reactive
+  board subscription.
+- A live npm package that exposes the world as typed functions.
+- A Ragent UI that imports that package and interacts through committed
+  database truth.
+- A long-running workflow that survives restart and resumes from PgPaw state.
 
-- Durable workflow runs on local disk.
-- Step memoization after committed completion, so restart recovery does not repeat completed side effects.
-- Queue dispatch back into your app through `@workflow/core`.
-- Remote functions over `/__worldant/v1`.
-- A live npm registry for generated typed clients.
-- Next.js helper `withWorldant()` for workflow discovery and client generation.
-- Supervisor commands for process lifecycle.
-
-## Packages
-
-| Package | Use it for |
-| --- | --- |
-| `@midwess/worldant` | Library entrypoint: `install`, `createWorld`, `getWorld`, `setWorld`, `outputStream`. |
-| `@midwess/worldant/next` | Next.js config wrapper that writes `worldant.catalog.json` and optional `worldant/client.ts`. |
-| `worldant-client` | Browser-safe transport used by generated client packages. |
-| `worldant-react` | `useWorldant(schema, overrides)` helper for generated schema packages. |
-| `@midwess/worldant-cli` | `worldant` process supervisor. |
-
-## Main paths
-
-- [Installation](/worldant/installation)
-- [Quickstart](/worldant/quickstart)
-- [Workflows](/worldant/workflows)
-- [Remote functions](/worldant/remote-functions)
-- [Supervisor](/worldant/supervisor)
-- [Configuration](/worldant/configuration)
+See the repository `thesis.md` for the current design details.

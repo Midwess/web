@@ -12,8 +12,8 @@ Shared definitions for this repo. Proposals and specs use these terms exactly.
 
 ## Projects (the real inventory)
 
-- **worldant** — in-process [Vercel Workflow](https://github.com/vercel/workflow) world backed by
-  embedded SQLite, with a scale-to-zero supervisor. Installed as npm `@midwess/worldant`. Docs at `/worldant`.
+- **worldant** — actively in-progress world runtime for agent-owned directories, durable
+  workflows, reactive data, and typed remote-function packages. Docs at `/worldant`.
 - **pglite-rs** — in-process PostgreSQL for Rust (embedded like SQLite, full Postgres SQL, async
   on any runtime). Published crate: `cargo add pglite-rs`. Docs at `/pglite-rs`.
 - **PgPaw** — read-only Postgres cache + realtime (SSE) server. **Built on pglite-rs** (embeds it

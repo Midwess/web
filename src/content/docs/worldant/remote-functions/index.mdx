@@ -1,59 +1,31 @@
 ---
 title: Remote functions
-description: Call workflows over HTTP with generated typed clients.
+description: Worldant's planned npm protocol for generated typed clients.
 ---
 
-Remote functions expose workflow entrypoints through `/__worldant/v1`. The workflow still runs in the durable world; the client only starts a run, waits or polls for completion, and decodes the result.
+Worldant exposes the active world as an installable package.
 
-<DChart label="Remote call" title="Typed wrapper to durable run.">
-  <DRow>
-    <DBox kind="accent" title="Generated function" sub="placeOrder(order)" />
-    <DArrow />
-    <DBox kind="info" title="worldant-client" sub="POST /runs?wait=120" />
-    <DArrow />
-    <DBox kind="success" title="Worldant net" sub="resolve workflow alias, start run, return value" />
-  </DRow>
-</DChart>
+The package contains generated wrappers for:
 
-## Enable endpoint
+- commands,
+- mutations,
+- workflows,
+- reactive subscriptions,
+- streaming calls.
 
-```ts
-import { createWorld } from "@midwess/worldant";
-
-const world = await createWorld({
-  id: "orders",
-  net: true
-});
-await world.start?.();
-```
-
-Use an object for auth, CORS, or a dedicated port:
+Generated packages depend only on `worldant-client`. They do not depend on the
+daemon internals, PgPaw, workflow kernel, source files, or Ragent.
 
 ```ts
-await createWorld({
-  id: "@acme/orders",
-  net: {
-    token: process.env.WORLDANT_TOKEN,
-    cors: ["https://app.example.com"],
-    port: 4001
-  }
-});
+import { chessBoard, move, previewMove } from "@world/chess";
+
+const preview = await previewMove({ gameId, from: "e2", to: "e4" });
+await move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
+
+for await (const board of chessBoard({ gameId })) {
+  console.log(board);
+}
 ```
 
-## Generated package
-
-A world can serve an npm package from:
-
-```bash
-npm install <world-id> --registry https://<host>/__worldant/v1/npm
-```
-
-The package includes:
-
-- `worldName`
-- `workflows`
-- `defaultConfiguration`
-- one typed wrapper per aliased workflow
-- `configure(config)` for runtime connection overrides
-
-`defaultConfiguration` contains public connection data only: world id, base URL, prefix, and polling interval. Put tokens in runtime config.
+Ragent can consume this package. So can a browser app, CLI, service, or external
+agent.

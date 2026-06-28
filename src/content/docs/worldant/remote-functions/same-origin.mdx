@@ -1,51 +1,20 @@
 ---
 title: Same origin
-description: Use a Next rewrite or app route so browser clients call the world from their own origin.
+description: Consume Worldant from the same web origin.
 ---
 
-Same-origin mode avoids CORS. The browser calls `/__worldant/v1` on the web app origin, and the app proxies that path to Worldant.
+Same-origin mode means the browser calls `/__worldant/v1` on the same origin as
+the page. A proxy or router forwards that path to the Worldant daemon.
 
-## Next.js config
+This avoids CORS and lets session cookies or same-origin credentials flow
+through the normal application boundary.
 
-```ts
-import type { NextConfig } from "next";
-import { withWorkflow } from "workflow/next";
-import { withWorldant } from "@midwess/worldant/next";
-
-const nextConfig: NextConfig = {};
-
-export default withWorkflow(withWorldant(nextConfig, { client: true }));
-```
-
-`withWorldant()` discovers workflow files, extracts a contract, writes `worldant.catalog.json`, and with `client: true` writes `worldant/client.ts`.
-
-## Instrumentation
+The generated package still uses `worldant-client`; only the default `baseUrl`
+changes.
 
 ```ts
-export async function register() {
-  if (process.env.NEXT_RUNTIME === "edge") return;
+import { configure, move } from "@world/chess";
 
-  const { createWorld } = await import("@midwess/worldant");
-  const world = await createWorld({
-    id: "orders",
-    net: { port: 4001 }
-  });
-  await world.start?.();
-}
+configure({ baseUrl: "", prefix: "/__worldant/v1" });
+await move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
 ```
-
-## Client usage
-
-```ts
-"use client";
-
-import { placeOrder, trackOrder } from "../worldant/client";
-
-const receipt = await placeOrder(order);
-
-for await (const status of trackOrder(order.id)) {
-  console.log(status);
-}
-```
-
-The generated client uses same-origin defaults. No token is included unless your code calls `configure({ token })`.

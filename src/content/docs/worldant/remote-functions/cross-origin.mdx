@@ -1,53 +1,28 @@
 ---
 title: Cross origin
-description: Serve the generated package from one origin and call it from another.
+description: Consume Worldant from another deployment.
 ---
 
-Cross-origin mode is useful when the workflow world and browser app are separate deployments.
-
-## Server world
-
-```ts
-import { createWorld } from "@midwess/worldant";
-
-const world = await createWorld({
-  id: "@fxdesk/quotes",
-  net: {
-    useOnPremisePort: true,
-    cors: ["http://localhost:5173"]
-  }
-});
-await world.start?.();
-```
-
-Use a scoped package id when you want npm to route only that scope to the world registry.
-
-## Client install
-
-`.npmrc`:
+Cross-origin mode is for clients that install and call a world hosted somewhere
+else.
 
 ```ini
-@fxdesk:registry=http://localhost:3000/__worldant/v1/npm
+@world:registry=https://world.example.com/__worldant/v1/npm
 ```
-
-Install normally:
 
 ```bash
-pnpm install @fxdesk/quotes
+pnpm install @world/chess
 ```
 
-## Browser usage
-
 ```ts
-import { quote, watchRate, configure } from "@fxdesk/quotes";
+import { configure, chessBoard } from "@world/chess";
 
 configure({ token: sessionToken });
 
-const q = await quote(100);
-
-for await (const tick of watchRate("EUR")) {
-  console.log(tick);
+for await (const board of chessBoard({ gameId })) {
+  console.log(board);
 }
 ```
 
-The generated package's `defaultConfiguration.baseUrl` is derived from the registry URL used during installation. Override it with `configure({ baseUrl })` when a proxy or environment URL differs.
+The generated package includes default connection metadata, but callers may
+override `baseUrl`, `prefix`, and `token`.

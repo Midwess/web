@@ -1,64 +1,49 @@
 ---
 title: Quickstart
-description: Add a durable world, define a workflow, and run it under Worldant.
+description: The intended first Worldant flow.
 ---
 
-## 1. Install
+Worldant is not stable yet. This quickstart is the target user flow.
 
-```bash
-npm install @midwess/worldant workflow
-npm install -g @midwess/worldant-cli
+Create a world:
+
+```text
+world/
+  migrations/001_create_chess.sql
+  mutations/chess.move.ts
+  commands/chess.previewMove.ts
+  workflows/chess.aiMove.ts
+  workflows/steps/chess.loadBoard.ts
+  workflows/steps/chess.chooseMove.ts
+  workflows/steps/chess.commitAiMove.ts
+  reactive/chess.board.ts
 ```
 
-## 2. Create the world
+Build and run:
 
-Call `install()` before serving requests:
+```bash
+worldant build
+worldant run
+```
+
+Install the generated package from the live world:
+
+```ini
+@world:registry=http://localhost:3000/__worldant/v1/npm
+```
+
+```bash
+pnpm install @world/chess
+```
+
+Consume it from any client:
 
 ```ts
-import { install } from "@midwess/worldant";
+import { chessBoard, move } from "@world/chess";
 
-await install({
-  id: "orders",
-  dataDir: "./.worldant/orders"
-});
-```
+await move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
 
-`id` is required when the app runs under the supervisor and Worldant cannot derive one from package metadata.
-
-## 3. Write workflow code
-
-```ts
-async function charge(orderId: string) {
-  "use step";
-  return { ok: true, orderId };
+for await (const board of chessBoard({ gameId })) {
+  console.log(board);
 }
-
-export async function checkout(orderId: string) {
-  "use workflow";
-  return charge(orderId);
-}
-```
-
-Worldant implements the world interface. Workflow transforms and framework adapters still come from the Vercel Workflow package stack.
-
-## 4. Run supervised
-
-```bash
-worldant run -- npm start
-```
-
-Run it again after a deploy:
-
-```bash
-worldant run -- npm start
-```
-
-The daemon treats the second run as the same app when the world id matches. It starts the new process, drains the old process, and keeps the public port owned by the supervisor.
-
-## 5. Inspect
-
-```bash
-worldant ps
-worldant logs orders -f
-worldant stop orders
 ```

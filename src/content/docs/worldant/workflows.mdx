@@ -38,3 +38,38 @@ in steps.
 
 Step keys must be stable domain identities. Reusing the same key with a
 different payload is an idempotency conflict.
+
+## Snapshot pinning
+
+Each workflow run records the snapshot it started with.
+
+```text
+workflow run -> run_snapshot_id -> .dist/run/<run_snapshot_id>
+```
+
+New builds can activate new snapshots while old runs continue replaying against
+the code they started with. This avoids downtime and avoids changing workflow
+semantics halfway through a run.
+
+## Durable state
+
+Workflow progress is stored in PgPaw/Postgres:
+
+```text
+workflow_runs
+workflow_events
+workflow_steps
+workflow_waits
+jobs
+stream_chunks
+```
+
+The active JavaScript process is disposable. On restart, the daemon reads
+durable state, reconstructs the workflow context, replays recorded decisions,
+and continues from the next missing step.
+
+## Determinism boundary
+
+The deterministic workflow context is intentionally small. It coordinates steps,
+waits, and signals. Side effects happen in steps, and step results are recorded
+before workflow replay continues.

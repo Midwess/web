@@ -11,6 +11,16 @@ typed commands, mutations, workflows, and reactive streams.
 
 This documentation describes the target architecture. APIs are not stable yet.
 
+## Why it exists
+
+AI should be able to expand its ability by creating real software capability:
+schema, logic, durable jobs, reactive views, and typed interfaces. The result
+must still be normal software. It must have a database truth, authorization,
+crash recovery, deploy safety, and a way for humans and generated UI to use the
+same surface.
+
+Worldant is that runtime boundary.
+
 ## What Worldant owns
 
 - World directory discovery and validation.
@@ -25,6 +35,17 @@ This documentation describes the target architecture. APIs are not stable yet.
 
 Worldant does not own generated UI. Ragent owns UI generation and consumes
 Worldant through the same typed package/protocol as any other client.
+
+## Core rule
+
+```text
+All durable truth enters PgPaw/Postgres.
+All visible clients subscribe back from PgPaw/Postgres.
+```
+
+Commands may compute. Mutations may commit. Workflows may wait and resume.
+Reactive streams may notify UI, agents, and other consumers. None of those paths
+becomes a hidden state system outside the database.
 
 ## Shape
 

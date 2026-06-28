@@ -18,9 +18,19 @@ Execution never runs directly from the working tree. New calls use the newest
 valid snapshot. In-flight workflow runs stay pinned to the snapshot they started
 with.
 
-## Database truth
+## Runtime loop
 
-PgPaw/Postgres is the truth.
+```text
+agent edits files
+  -> build validates the world
+  -> daemon activates latest valid snapshot
+  -> clients call generated package / MCP / HTTP
+  -> commands compute, mutations commit, workflows resume
+  -> PgPaw emits authorized live updates
+  -> UI, agents, and services react
+```
+
+## Database truth
 
 ```text
 if it did not commit to PgPaw, it did not happen
@@ -39,3 +49,13 @@ Idle entries and isolate slots are dropped to keep per-user infrastructure small
 Durable workflow replay uses a deterministic `node:vm`-style context inside an
 isolate slot. Steps execute outside that deterministic context and persist their
 results before workflow replay continues.
+
+## Build safety
+
+The working tree may be broken while an agent edits. Runtime traffic does not
+use it. A build writes a new `.dist/run/<run_snapshot_id>` only after validation
+passes. The daemon chooses the latest valid snapshot per entry.
+
+That gives Worldant the same operational property as deploys without requiring a
+separate external deployment platform: edit, build, activate, and keep the old
+snapshot serving until the new one is valid.

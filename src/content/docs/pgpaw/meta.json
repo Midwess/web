@@ -16,7 +16,8 @@
           "pages": ["api", "api/query", "api/snapshot", "api/live"]
         },
         "sql-classifier",
-        "authorization"
+        "authorization",
+        "cache-control"
       ]
     },
     {

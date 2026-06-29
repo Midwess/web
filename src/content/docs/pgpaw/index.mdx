@@ -40,7 +40,7 @@ uses those changes to invalidate snapshots and push live deltas.
 | Read SQL over HTTP           | `POST /query` accepts one read-only PostgreSQL `SELECT`.                                                   |
 | Shared public snapshots      | Public queries redirect to `/q/{hash}/{version}`.                                                          |
 | Realtime updates             | `POST /query?live=true` streams snapshot and row deltas.                                                   |
-| Postgres-native private data | RLS and table grants decide whether a query is private.                                                    |
+| Postgres-native private data | RLS and table grants decide whether a query is private and never stored in the shared snapshot cache.      |
 | Operator visibility          | PgPaw logs startup, bind port, query decisions, cache events, CDC, health, and errors at `INFO` or higher. |
 
 ## Public vs private queries
@@ -54,13 +54,20 @@ Public queries use the shared snapshot cache. Private queries require a bearer
 token, run under the token's Postgres role, and return inline JSON with
 `Cache-Control: private, no-store`.
 
+HTTP cache behavior is intentionally split:
+
+- public cursor responses use `Cache-Control: public, max-age=259200`;
+- private query responses use `Cache-Control: private, no-store`;
+- live streams use `Cache-Control: no-store`.
+
 ## Start here
 
 1. [Install PgPaw](/pgpaw/installation)
 2. [Run the quickstart](/pgpaw/quickstart)
 3. [Read the HTTP API](/pgpaw/api)
 4. [Configure RLS and JWT auth](/pgpaw/authorization)
-5. [Check logs and operations output](/pgpaw/logging)
+5. [Understand Cache-Control](/pgpaw/cache-control)
+6. [Check logs and operations output](/pgpaw/logging)
 
 ## The important boundary
 

@@ -4,7 +4,7 @@ description: Fetch a cached public query snapshot.
 ---
 
 `GET /q/{hash}/{version}` fetches a public snapshot cursor returned by
-`POST /query`.
+`POST /query`. This endpoint is only for public query results.
 
 ```bash
 curl http://127.0.0.1:8080/q/{hash}/{version}
@@ -51,6 +51,11 @@ The snapshot cursor combines:
 
 When relevant upstream data changes, the same SQL gets a new cursor. Old
 cursors keep serving their cached body until they are evicted.
+
+Private query results never use this endpoint. They are returned inline with
+`Cache-Control: private, no-store`.
+
+For the full header policy, see [Cache-Control](/pgpaw/cache-control).
 
 ## Logs
 

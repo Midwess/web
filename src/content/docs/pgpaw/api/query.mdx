@@ -55,7 +55,11 @@ Cache-Control: private, no-store
 ```
 
 Private rows are returned inline because the result depends on the caller's
-role and claims.
+role and claims. Private rows are not stored in PgPaw's shared query cache and
+do not receive a `/q/{hash}/{version}` cursor URL.
+
+See [Cache-Control](/pgpaw/cache-control) for the complete public/private header
+matrix.
 
 ## Handler gates
 

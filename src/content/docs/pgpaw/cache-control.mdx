@@ -1,0 +1,132 @@
+---
+title: Cache-Control
+description: How PgPaw uses HTTP cache headers for public snapshots, private rows, live streams, and user-specific data.
+---
+
+PgPaw has two different caches:
+
+- PgPaw's internal query cache, used only for public snapshots.
+- HTTP caches, such as browsers, reverse proxies, and CDNs.
+
+The `Cache-Control` header controls HTTP caches. PgPaw's internal cache is
+controlled by query scope, query fingerprint, replication version, and
+`--cache-size-bytes`.
+
+## Header Matrix
+
+| Path                      | Scope             | Status | Cache-Control            | Meaning                                |
+| ------------------------- | ----------------- | ------ | ------------------------ | -------------------------------------- |
+| `POST /query`             | public            | `303`  | `no-store`               | Do not cache the redirect response.    |
+| `GET /q/{hash}/{version}` | public cursor hit | `200`  | `public, max-age=259200` | Shared caches may store the JSON body. |
+| `POST /query`             | private           | `200`  | `private, no-store`      | User-specific rows must not be stored. |
+| `POST /query?live=true`   | public or private | `200`  | `no-store`               | SSE streams are not stored.            |
+
+PgPaw currently sets cache headers on successful query, cursor, and live
+responses. Configure your proxy to avoid caching errors and health responses.
+
+## Public Snapshot Flow
+
+Public queries are safe to share across users. PgPaw materializes the result,
+stores it in the internal query cache, and returns a redirect:
+
+```http
+HTTP/1.1 303 See Other
+Location: /q/{hash}/{version}
+Cache-Control: no-store
+```
+
+The redirect is not cacheable. The target cursor is cacheable:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+ETag: {hash}:{version}
+Cache-Control: public, max-age=259200
+```
+
+`259200` seconds is 72 hours.
+
+The cursor URL contains two opaque parts:
+
+- `hash`, the parsed SQL fingerprint;
+- `version`, the replication-derived data version for the touched rows or
+  tables.
+
+When relevant upstream data changes, PgPaw computes a new version. The same SQL
+then gets a different cursor URL. Existing cursor URLs keep serving the old
+snapshot while it remains in PgPaw's internal cache, and external HTTP caches
+may keep their copy until `max-age` expires.
+
+## Private Data Flow
+
+Private queries are caller-specific. A query is private when any touched table
+has RLS enabled or does not grant `SELECT` to `PUBLIC`.
+
+For private queries, PgPaw verifies the bearer token, extracts the Postgres role,
+passes the role and claims to the local replica, and returns the result inline:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: private, no-store
+```
+
+Private responses do not get `/q/{hash}/{version}` cursor URLs and are not
+stored in PgPaw's shared query cache.
+
+`private` marks the response as user-specific. `no-store` tells HTTP caches not
+to store the response at all. `no-store` is the important directive for user
+data.
+
+## Private Live Streams
+
+Private live streams also avoid shared cache URLs.
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-store
+```
+
+The first private SSE event includes inline rows for that authenticated
+subscription:
+
+```text
+data: {"type":"snapshot","rows":[{"id":1,"title":"Ship"}],"version":42}
+```
+
+PgPaw keeps the last result for each live subscription in process so it can
+compute deltas. For private subscriptions, that state stays attached to the
+subscription's principal and is re-queried under the same role and claims. It is
+not exposed through a shared cursor URL.
+
+## Protecting User-Specific Data
+
+For data that belongs to one user, one team, or one tenant:
+
+1. Enable RLS, or revoke `PUBLIC SELECT`, before serving the table through
+   PgPaw.
+2. Keep the result private by requiring JWT auth and enforcing visibility in
+   Postgres policies.
+3. Expect `Cache-Control: private, no-store` for private `POST /query`
+   responses.
+4. Do not put user-specific rows in tables that PgPaw classifies as public.
+
+If a user-specific table has RLS disabled and `PUBLIC SELECT` granted, PgPaw
+will treat it as public. That means the result can be stored in PgPaw's shared
+cache and in external HTTP caches. Fix the Postgres grants or RLS policy first.
+
+## CDN and Proxy Guidance
+
+Use PgPaw's headers as the source of truth:
+
+- Cache `GET /q/{hash}/{version}` only when the response includes
+  `Cache-Control: public`.
+- Do not cache `POST /query`.
+- Do not cache `POST /query?live=true`.
+- Do not override `private, no-store` for authenticated responses.
+- Avoid adding cookies to public cursor requests if your CDN treats cookie
+  traffic as uncacheable.
+
+The cursor path is content-addressed by SQL fingerprint and version, so it is
+the only PgPaw response intended for shared HTTP caching.

@@ -1,20 +1,53 @@
 ---
 title: Authorization
-description: Configure JWT verification and let Postgres RLS enforce private reads.
+description: How PgPaw decides public vs private queries, verifies JWTs, and keeps user-specific rows out of shared caches.
 ---
 
-PgPaw uses Postgres as the access-control source of truth.
+PgPaw uses Postgres as the access-control source of truth. PgPaw verifies who
+the caller is, then Postgres decides what that caller can read.
 
-JWT verification decides who the caller is. Postgres RLS and grants decide what
-that caller can read.
+That split is important:
 
-## Public and private tables
+- JWT verification maps the request to a Postgres role and claims JSON.
+- Postgres grants and RLS policies decide row visibility.
+- PgPaw uses the same catalog state to decide whether a query is safe for the
+  public shared snapshot cache.
 
-PgPaw checks the replicated catalog:
+## Scope Decision
+
+PgPaw classifies each query as public or private after SQL classification.
+
+<DChart
+  label="Authorization path"
+  title="Catalog security decides whether PgPaw can use the public cache."
+>
+  <DRow wrap>
+    <DBox badge={1} title="Read-only SQL" sub="one accepted SELECT" />
+    <DArrow />
+    <DBox badge={2} kind="info" title="Touched tables" sub="from parser" />
+    <DArrow />
+    <DBox
+      badge={3}
+      kind="accent"
+      title="Catalog verdict"
+      sub="RLS and PUBLIC SELECT"
+    />
+    <DArrow />
+    <DBox
+      badge={4}
+      kind="success"
+      title="Response path"
+      sub="public cursor or private JSON"
+    />
+  </DRow>
+</DChart>
+
+For every touched table, PgPaw reads the replicated Postgres catalog:
 
 - A table is public when RLS is disabled and `PUBLIC` has `SELECT`.
 - A table is private when RLS is enabled or `PUBLIC` lacks `SELECT`.
 - A query is private if any touched table is private.
+- Unknown tables fail closed and are treated as private.
 
 Public queries do not require a token. Private queries require a bearer token.
 
@@ -22,6 +55,52 @@ If an `Authorization` header is present, PgPaw parses it before classifying the
 query. That means a public query with a malformed token still returns `401`.
 For public data, omit the header unless you intentionally want authenticated
 requests.
+
+## Public Query Response
+
+Public means the result is safe to share across users. PgPaw stores the result
+in its shared in-process query cache and returns a cursor:
+
+```http
+HTTP/1.1 303 See Other
+Location: /q/{hash}/{version}
+Cache-Control: no-store
+```
+
+The cursor response is cacheable by browsers, proxies, and CDNs:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+ETag: {hash}:{version}
+Cache-Control: public, max-age=259200
+```
+
+Only make tables public when every row in the query is safe for every caller
+that can reach PgPaw. If a table contains user-specific data, enable RLS or
+revoke `PUBLIC SELECT` before serving it through PgPaw.
+
+See [Cache-Control](/pgpaw/cache-control) for the full header matrix.
+
+## Private Query Response
+
+Private means the result may depend on the caller. PgPaw requires a bearer
+token, executes the SQL under the token's Postgres role, and returns rows inline:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: private, no-store
+```
+
+Private query results are not inserted into PgPaw's shared query cache and do
+not receive `/q/{hash}/{version}` cursor URLs. The `no-store` directive tells
+HTTP caches not to store the response. The `private` directive marks the
+response as user-specific, but `no-store` is the stronger protection.
+
+Private live queries follow the same rule. The first SSE event contains inline
+rows for that authenticated subscription, and the stream response uses
+`Cache-Control: no-store`.
 
 ## Configure JWT verification
 
@@ -64,8 +143,9 @@ PgPaw validates token expiration. Audience validation is disabled.
 
 ## How RLS receives claims
 
-For private queries, PgPaw runs SQL under the token's Postgres role and passes
-the full claims JSON to Postgres as `request.jwt.claims`.
+For private queries, PgPaw passes the token's Postgres role and full claims JSON
+to the local pglite replica. RLS policies can read the claims through
+`request.jwt.claims`.
 
 Example:
 
@@ -98,6 +178,24 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 Cache-Control: private, no-store
 ```
+
+## Securing User Data
+
+Use this checklist for user-specific tables:
+
+- Enable RLS on every table that contains user-specific rows.
+- Revoke `PUBLIC SELECT` from private tables unless the data is truly public.
+- Put the caller's Postgres role in the JWT role claim.
+- Put tenant or user identifiers in JWT claims, then read them from
+  `request.jwt.claims` in RLS policies.
+- Do not rely on application-side filtering after PgPaw. The SQL result must be
+  safe after Postgres applies role and RLS rules.
+- Do not attach malformed or expired tokens to public requests. PgPaw validates
+  any `Authorization` header it receives.
+
+Misconfigured grants are the main danger. If a user-specific table has RLS
+disabled and still grants `SELECT` to `PUBLIC`, PgPaw will classify it as public
+and may serve it through the shared public snapshot cache.
 
 ## Errors
 

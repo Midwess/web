@@ -1,43 +1,124 @@
 ---
 title: Configuration
-description: CLI flags and environment variables for PgPaw.
+description: CLI flags, environment variables, and production settings for PgPaw.
 ---
 
-PgPaw uses CLI flags with environment variable fallbacks.
+PgPaw uses CLI flags with environment variable fallbacks. CLI flags win over
+environment variables.
 
-## Server flags
+Use explicit subcommands in scripts:
 
-| Flag | Env | Default | Purpose |
-| --- | --- | --- | --- |
-| `--host` | `CACHE_HOST` | `127.0.0.1` | HTTP bind host. |
-| `--port` | `CACHE_PORT` | `8080` | HTTP bind port. |
-| `--data-dir` | `CACHE_DATA_DIR` | `./cache-data` | Replica data directory. |
-| `--max-connections` | `CACHE_MAX_CONNECTIONS` | `8` | pglite multi-process pool max. |
-| `--cache-size-bytes` | `CACHE_SIZE_BYTES` | `268435456` | Query result cache budget. |
-| `--cors-origin` | `CORS_ORIGIN` | unset | Origin, comma list, or `*`. |
+```bash
+pgpaw init ...
+pgpaw serve ...
+```
 
-## Upstream flags
+`pgpaw serve` is also the default command when no subcommand is provided, but
+explicit commands are easier to read in production.
 
-| Flag | Env | Default |
-| --- | --- | --- |
-| `--pg-host` | `UPSTREAM_HOST` | `127.0.0.1` |
-| `--pg-port` | `UPSTREAM_PORT` | `5432` |
-| `--pg-user` | `UPSTREAM_USER` | `postgres` |
-| `--pg-password` | `UPSTREAM_PASSWORD` | empty |
-| `--pg-database` | `UPSTREAM_DATABASE` | `postgres` |
-| `--publication` | `UPSTREAM_PUBLICATION` | `cache_server_pub` |
-| `--slot` | `UPSTREAM_SLOT` | `cache_server_slot` |
-| `--sslmode` | `UPSTREAM_SSLMODE` | `disable` |
+## `pgpaw init`
 
-`--sslmode` accepts `disable`, `prefer`, `require`, and `verify-full`.
+`init` prepares upstream Postgres. It does not start the HTTP server.
 
-## JWT flags
+| Flag            | Env                    | Default     | Purpose                          |
+| --------------- | ---------------------- | ----------- | -------------------------------- |
+| `--pg-host`     | `UPSTREAM_HOST`        | `127.0.0.1` | Upstream Postgres host.          |
+| `--pg-port`     | `UPSTREAM_PORT`        | `5432`      | Upstream Postgres port.          |
+| `--pg-user`     | `UPSTREAM_USER`        | `postgres`  | Upstream Postgres user.          |
+| `--pg-password` | `UPSTREAM_PASSWORD`    | empty       | Upstream Postgres password.      |
+| `--pg-database` | `UPSTREAM_DATABASE`    | `postgres`  | Upstream database.               |
+| `--publication` | `UPSTREAM_PUBLICATION` | `pgpaw_pub` | Publication to create or verify. |
 
-| Flag | Env | Default |
-| --- | --- | --- |
-| `--jwt-secret` | `JWT_SECRET` | unset |
-| `--jwt-public-key` | `JWT_PUBLIC_KEY` | unset |
-| `--jwt-jwks-url` | `JWT_JWKS_URL` | unset, not implemented |
-| `--jwt-role-claim` | `JWT_ROLE_CLAIM` | `role` |
+Example:
+
+```bash
+pgpaw init \
+  --pg-host postgres.internal \
+  --pg-user postgres \
+  --pg-password "$POSTGRES_PASSWORD" \
+  --pg-database app \
+  --publication pgpaw_pub
+```
+
+## `pgpaw serve`
+
+`serve` starts the replica, cache, live hub, and HTTP API.
+
+### HTTP and local replica
+
+| Flag                 | Env                      | Default        | Purpose                                          |
+| -------------------- | ------------------------ | -------------- | ------------------------------------------------ |
+| `--host`             | `PGPAW_HOST`             | `127.0.0.1`    | HTTP bind host.                                  |
+| `--port`             | `PGPAW_PORT`             | `8080`         | HTTP bind port.                                  |
+| `--data-dir`         | `PGPAW_DATA_DIR`         | `./cache-data` | Local pglite replica directory.                  |
+| `--max-connections`  | `PGPAW_MAX_CONNECTIONS`  | `8`            | Local replica connection pool size.              |
+| `--cache-size-bytes` | `PGPAW_CACHE_SIZE_BYTES` | `268435456`    | Query cache byte budget.                         |
+| `--cors-origin`      | `CORS_ORIGIN`            | unset          | Browser origin, comma-separated origins, or `*`. |
+
+### Upstream Postgres
+
+| Flag            | Env                    | Default      | Purpose                                           |
+| --------------- | ---------------------- | ------------ | ------------------------------------------------- |
+| `--pg-host`     | `UPSTREAM_HOST`        | `127.0.0.1`  | Upstream Postgres host.                           |
+| `--pg-port`     | `UPSTREAM_PORT`        | `5432`       | Upstream Postgres port.                           |
+| `--pg-user`     | `UPSTREAM_USER`        | `postgres`   | Upstream Postgres user.                           |
+| `--pg-password` | `UPSTREAM_PASSWORD`    | empty        | Upstream Postgres password.                       |
+| `--pg-database` | `UPSTREAM_DATABASE`    | `postgres`   | Upstream database.                                |
+| `--publication` | `UPSTREAM_PUBLICATION` | `pgpaw_pub`  | Publication to replicate.                         |
+| `--slot`        | `UPSTREAM_SLOT`        | `pgpaw_slot` | Logical replication slot.                         |
+| `--sslmode`     | `UPSTREAM_SSLMODE`     | `disable`    | `disable`, `prefer`, `require`, or `verify-full`. |
+
+### JWT
+
+| Flag               | Env              | Default | Purpose                             |
+| ------------------ | ---------------- | ------- | ----------------------------------- |
+| `--jwt-secret`     | `JWT_SECRET`     | unset   | HS256 verification secret.          |
+| `--jwt-public-key` | `JWT_PUBLIC_KEY` | unset   | RS256 or ES256 PEM public key.      |
+| `--jwt-jwks-url`   | `JWT_JWKS_URL`   | unset   | Reserved; not implemented yet.      |
+| `--jwt-role-claim` | `JWT_ROLE_CLAIM` | `role`  | Claim containing the Postgres role. |
 
 Set only one JWT key source.
+
+## Production example
+
+```bash
+pgpaw serve \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --data-dir /var/lib/pgpaw \
+  --pg-host postgres.internal \
+  --pg-port 5432 \
+  --pg-user pgpaw \
+  --pg-password "$PGPAW_POSTGRES_PASSWORD" \
+  --pg-database app \
+  --publication pgpaw_pub \
+  --slot pgpaw_slot \
+  --sslmode require \
+  --jwt-public-key "$JWT_PUBLIC_KEY" \
+  --cors-origin https://app.example.com
+```
+
+## `pgpaw primary`
+
+`primary` runs an embedded writable Postgres over TCP. It is not required for
+normal upstream-replica mode.
+
+| Flag                | Env                     | Default        | Purpose                           |
+| ------------------- | ----------------------- | -------------- | --------------------------------- |
+| `--data-dir`        | `PGPAW_DATA_DIR`        | `./cache-data` | Embedded Postgres data directory. |
+| `--max-connections` | `PGPAW_MAX_CONNECTIONS` | `8`            | Connection pool size.             |
+| `--primary-listen`  | `PRIMARY_LISTEN`        | `127.0.0.1`    | TCP listen address.               |
+| `--primary-port`    | `PRIMARY_PORT`          | `5432`         | TCP port.                         |
+
+## Operational checklist
+
+- Use a persistent `--data-dir`.
+- Run `pgpaw init` before the first `serve`.
+- Restart Postgres when `init` says WAL settings changed.
+- Use a dedicated upstream Postgres user in production.
+- Set `--cors-origin` to exact browser origins.
+- Configure JWT verification before serving private RLS-protected data.
+- Monitor `/healthz`.
+- Watch for `event=http_server_listening` and `event=server_ready` in logs.
+- Restart PgPaw after relevant schema changes if the DDL trigger was not
+  installed.

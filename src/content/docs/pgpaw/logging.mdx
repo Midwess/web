@@ -1,0 +1,118 @@
+---
+title: Logging
+description: PgPaw operational logs, startup readiness, request logs, and troubleshooting signals.
+---
+
+PgPaw writes operational logs to stderr. Logs use logfmt-style fields and are
+emitted at `INFO`, `WARN`, and `ERROR`. You do not need debug logs to know that
+PgPaw is working.
+
+Example:
+
+```text
+ts=2026-06-29T10:00:08.120Z level=INFO pid=65538 target=pgpaw::http::server event=http_server_listening bind_addr=127.0.0.1:8080 url=http://127.0.0.1:8080
+```
+
+## Startup logs
+
+During `pgpaw serve`, expect to see:
+
+```text
+level=INFO target=pgpaw event=command_start command=serve
+level=INFO target=pgpaw event=server_starting bind_addr=127.0.0.1:8080 data_dir="./pgpaw-data" upstream_host=127.0.0.1 upstream_port=5432 upstream_database=myapp publication=pgpaw_pub slot=pgpaw_slot sslmode=disable auth_configured=false cors_origin=None
+level=INFO target=pgpaw::di event=preflight_start upstream_host=127.0.0.1 upstream_port=5432 upstream_database=myapp publication=pgpaw_pub
+level=INFO target=pgpaw::di event=schema_scan_complete tables=4 primary_key_tables=4 replica_identity_full_tables=0
+level=INFO target=pgpaw::http::server event=http_server_listening bind_addr=127.0.0.1:8080 url=http://127.0.0.1:8080
+level=INFO target=pgpaw event=server_ready bind_addr=127.0.0.1:8080 health_path=/healthz query_path=/query
+```
+
+The most important line is `event=http_server_listening`. It includes the port
+and full local URL.
+
+## Request logs
+
+Every HTTP request is logged through Actix middleware:
+
+```text
+level=INFO target=actix_web::middleware::logger event=http_request remote_addr=127.0.0.1 request="POST /query HTTP/1.1" status=303 response_bytes=0 duration_ms=2 user_agent="curl/8.7.1"
+```
+
+## Query logs
+
+PgPaw logs query decisions without logging raw SQL:
+
+```text
+level=INFO target=pgpaw::http::query event=query_classified fingerprint=9a4f tables=users live=false scope=public
+level=INFO target=pgpaw::cache event=query_cache_get_or_compute result=hit key=9a4f:42 bytes=128
+level=INFO target=pgpaw::http::query event=query_snapshot scope=public fingerprint=9a4f tables=users version=42 cursor=/q/9a4f/42 response=redirect snapshot_bytes=128
+```
+
+For private requests:
+
+```text
+level=INFO target=pgpaw::auth event=auth_header_present
+level=INFO target=pgpaw::auth event=auth_verified role=member
+level=INFO target=pgpaw::http::query event=query_snapshot scope=private fingerprint=9a4f tables=documents version=42 role=member response=inline snapshot_bytes=512
+```
+
+## CDC and live logs
+
+```text
+level=INFO target=pgpaw::cdc event=cdc_transaction txid=124 lsn=12345678 changes=1
+level=INFO target=pgpaw::live event=live_commit txid=124 lsn=12345678 changed_tables=orders subscriptions_matched=2
+level=INFO target=pgpaw::live event=live_diff subscription_id=12 txid=124 previous_rows=3 next_rows=3 deltas=1
+```
+
+If live subscriptions fall behind:
+
+```text
+level=WARN target=pgpaw::live event=live_reset subscriptions=4 reason=broadcast_lag
+```
+
+Clients should reconnect and request a fresh snapshot after a reset.
+
+## Warnings and errors
+
+Important warning/error events include:
+
+| Event                                   | Meaning                                                       |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `init_complete result=restart_required` | Restart Postgres before `serve`.                              |
+| `init_setting_manual_required`          | Apply the printed WAL setting manually.                       |
+| `http_server_bind_failed`               | The configured host/port could not be bound.                  |
+| `auth_failed`                           | Token is malformed, invalid, expired, or verifier is missing. |
+| `cursor_miss`                           | Snapshot cursor is unknown or evicted.                        |
+| `health_check status=halted`            | Replica is halted; `/healthz` returns `503`.                  |
+| `http_error status=503`                 | Request failed because the replica is halted.                 |
+
+## Sensitive data policy
+
+PgPaw does not log:
+
+- raw bearer tokens;
+- Postgres passwords;
+- raw SQL text.
+
+Logs use SQL fingerprints, table names, roles, versions, cursor paths, and byte
+counts instead. This keeps logs useful for operators without exposing query
+literals or credentials.
+
+## Capture logs
+
+Shell:
+
+```bash
+pgpaw serve ... 2>&1 | tee pgpaw.log
+```
+
+systemd:
+
+```bash
+journalctl -u pgpaw -f
+```
+
+Docker:
+
+```bash
+docker logs -f <container>
+```

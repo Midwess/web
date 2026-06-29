@@ -1,45 +1,76 @@
 ---
 title: PgPaw
-description: Read-only Postgres cache and realtime server over an embedded pglite-rs logical replica.
+description: Read-only HTTP, cache, and realtime layer for Postgres over a local pglite replica.
 ---
 
-PgPaw is a small HTTP server that accepts read-only PostgreSQL `SELECT` queries, runs them against an embedded pglite-rs logical replica, and returns either a cacheable snapshot URL or a live SSE stream.
+PgPaw lets clients read Postgres through plain SQL without sending every read to
+your upstream database. It runs as a small HTTP service, keeps a local
+pglite-rs logical replica, and serves two read paths from the same query:
 
-<DChart label="Service shape" title="Upstream writes replicate into pglite; clients read from PgPaw.">
-  <DRow>
-    <DBox kind="muted" title="Upstream Postgres" sub="publication + logical slot" />
+- a cacheable JSON snapshot;
+- a live Server-Sent Events stream.
+
+PgPaw does not handle writes. Your application still writes to upstream
+Postgres. Logical replication brings committed changes into PgPaw, and PgPaw
+uses those changes to invalidate snapshots and push live deltas.
+
+<DChart
+  label="Mental model"
+  title="Writes stay in Postgres. Reads come from PgPaw's local replica."
+>
+  <DRow wrap>
+    <DBox
+      kind="muted"
+      title="Application writes"
+      sub="your API, migrations, jobs"
+    />
     <DArrow />
-    <DBox kind="success" title="pglite-rs replica" sub="embedded multi-process database" />
+    <DBox kind="success" title="Upstream Postgres" sub="source of truth" />
     <DArrow />
-    <DBox kind="accent" title="PgPaw" sub="classifier, cache, live hub, HTTP API" />
+    <DBox kind="info" title="pglite replica" sub="logical replication" />
     <DArrow />
-    <DBox kind="info" title="Clients" sub="snapshots or SSE deltas" />
+    <DBox kind="accent" title="PgPaw HTTP" sub="snapshots and SSE" />
   </DRow>
 </DChart>
 
-## Core behavior
+## What PgPaw gives you
 
-- `POST /query` accepts a single read-only `SELECT`.
-- Public queries return `303 See Other` to `/q/{hash}/{version}`.
-- Private queries run under a JWT-derived Postgres role and return inline `200` JSON with `private, no-store`.
-- `POST /query?live=true` streams a snapshot and row deltas.
-- `GET /q/{hash}/{version}` reads from an in-process result cache and is public-cacheable for 72 hours.
-- `GET /healthz` reports replica state and watermark.
+| Need                         | PgPaw behavior                                                                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Read SQL over HTTP           | `POST /query` accepts one read-only PostgreSQL `SELECT`.                                                   |
+| Shared public snapshots      | Public queries redirect to `/q/{hash}/{version}`.                                                          |
+| Realtime updates             | `POST /query?live=true` streams snapshot and row deltas.                                                   |
+| Postgres-native private data | RLS and table grants decide whether a query is private.                                                    |
+| Operator visibility          | PgPaw logs startup, bind port, query decisions, cache events, CDC, health, and errors at `INFO` or higher. |
 
-## Main components
+## Public vs private queries
 
-| Component | Purpose |
-| --- | --- |
-| `ReadClassifier` | Parses SQL, rejects unsafe statements, extracts tables and equality filters. |
-| `VersionIndex` | Tracks LSN watermarks per table/key from committed replication transactions. |
-| `QueryCache` | Stores JSON snapshot bodies keyed by `{hash}:{version}`. |
-| `LiveHub` | Re-runs subscribed queries after commits and emits insert/update/delete/up-to-date events. |
-| `Verifier` | Validates HS256 or RS256/ES256 JWTs and maps a claim to a Postgres role. |
+PgPaw decides whether a query is public from the replicated Postgres catalog.
+
+- Public: every touched table has RLS disabled and `PUBLIC SELECT`.
+- Private: at least one touched table has RLS enabled or lacks `PUBLIC SELECT`.
+
+Public queries use the shared snapshot cache. Private queries require a bearer
+token, run under the token's Postgres role, and return inline JSON with
+`Cache-Control: private, no-store`.
 
 ## Start here
 
-- [Installation](/pgpaw/installation)
-- [Quickstart](/pgpaw/quickstart)
-- [HTTP API](/pgpaw/api)
-- [Authorization](/pgpaw/authorization)
-- [Configuration](/pgpaw/configuration)
+1. [Install PgPaw](/pgpaw/installation)
+2. [Run the quickstart](/pgpaw/quickstart)
+3. [Read the HTTP API](/pgpaw/api)
+4. [Configure RLS and JWT auth](/pgpaw/authorization)
+5. [Check logs and operations output](/pgpaw/logging)
+
+## The important boundary
+
+PgPaw is a read layer. Keep these responsibilities outside PgPaw:
+
+- writes and mutations;
+- migrations;
+- business logic;
+- background jobs;
+- long-term durable truth.
+
+Keep those in your application and upstream Postgres. PgPaw watches committed
+changes and makes reads fast, cacheable, and live.

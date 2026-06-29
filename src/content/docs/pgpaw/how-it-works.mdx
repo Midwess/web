@@ -1,45 +1,139 @@
 ---
-title: How it works
-description: Request flow, cache versioning, and live delta generation inside PgPaw.
+title: How It Works
+description: The request path, replica path, cache versioning, and live delta loop inside PgPaw.
 ---
 
-PgPaw starts from a pglite-rs logical replica. Every accepted query is classified before execution. The classifier returns table names, equality filters, a normalized fingerprint, and original SQL.
+PgPaw has two loops:
 
-<DChart label="Query pipeline" title="The same SQL can become a public snapshot, private inline response, or live stream.">
+- replication keeps the local pglite database current;
+- HTTP requests read from that local database.
+
+<DChart
+  label="Runtime loop"
+  title="Replication updates the local database; HTTP reads never hit upstream Postgres."
+>
   <DRow wrap>
-    <DBox badge={1} title="POST /query" sub="JSON body { sql }" />
+    <DBox
+      badge={1}
+      kind="success"
+      title="Upstream commit"
+      sub="application writes to Postgres"
+    />
     <DArrow />
-    <DBox badge={2} kind="accent" title="ReadClassifier" sub="single safe SELECT over replicated tables" />
+    <DBox
+      badge={2}
+      kind="info"
+      title="Logical replication"
+      sub="publication + slot"
+    />
     <DArrow />
-    <DBox badge={3} kind="info" title="Privacy verdict" sub="RLS or no PUBLIC SELECT means private" />
+    <DBox
+      badge={3}
+      kind="accent"
+      title="pglite replica"
+      sub="local read database"
+    />
     <DArrow />
-    <DBox badge={4} kind="success" title="Materialize" sub="hash + VersionIndex LSN + QueryCache" />
+    <DBox badge={4} title="HTTP clients" sub="snapshots or SSE" />
   </DRow>
 </DChart>
 
+## Startup path
+
+`pgpaw serve` does this in order:
+
+1. Preflights upstream Postgres.
+2. Opens the local pglite replica in `--data-dir`.
+3. Starts logical replication from the configured publication and slot.
+4. Scans the replicated schema.
+5. Builds the SQL classifier, version index, query cache, CDC bridge, and live hub.
+6. Binds the HTTP server and logs the listening address.
+
+The startup logs are intentionally explicit. A healthy boot includes
+`event=http_server_listening` and `event=server_ready`.
+
+## Request path
+
+<DChart
+  label="Query path"
+  title="Every query passes the same gates before PgPaw reads rows."
+>
+  <DRow wrap>
+    <DBox badge={1} title="Replica health" sub="503 if halted" />
+    <DArrow />
+    <DBox
+      badge={2}
+      kind="accent"
+      title="ReadClassifier"
+      sub="one safe SELECT"
+    />
+    <DArrow />
+    <DBox
+      badge={3}
+      kind="info"
+      title="Privacy verdict"
+      sub="public or private"
+    />
+    <DArrow />
+    <DBox
+      badge={4}
+      kind="success"
+      title="Materialize"
+      sub="rows, cursor, or SSE"
+    />
+  </DRow>
+</DChart>
+
+For public queries, PgPaw returns a redirect to a shared snapshot cursor.
+
+For private queries, PgPaw verifies the bearer token, extracts a Postgres role,
+runs the query under that role, and returns inline JSON.
+
 ## Versioning
 
-`VersionIndex` consumes committed transactions from the replication bridge. It tracks the highest LSN relevant to a table or keyed row. A query version is the maximum relevant LSN for its tables and equality filters.
+PgPaw combines a SQL fingerprint with a replication-derived version:
 
-Snapshot key:
-
-```txt
-{hex(DefaultHasher(parsed_statement))}:{version}
+```text
+cache key = {query_fingerprint}:{version}
 ```
 
-When upstream data changes, the same SQL gets a new version. Old snapshot URLs keep serving their cached body until evicted.
+The fingerprint is an implementation detail. Clients should treat it as an
+opaque string from the `Location` header.
 
-## Live subscriptions
+The version comes from `VersionIndex`, which consumes committed replication
+transactions. For broad queries, the version is table-level. For single-table
+queries with an equality filter on a primary key, PgPaw can use a narrower row
+watermark. Tables using `REPLICA IDENTITY FULL` can anchor on other equality
+filtered columns.
 
-`LiveHub` stores the last result for each subscription. On each committed transaction that touches subscribed tables, it:
+## Cache behavior
 
-- re-runs the SQL against the replica;
-- builds row maps using a primary key when known;
-- diffs old and new rows;
-- sends `insert`, `update`, `delete`, and `up-to-date` SSE frames.
+Public snapshots are stored in an in-process cache. The cache is bounded by
+`--cache-size-bytes`.
 
-If the internal broadcast channel lags, it sends `{"op":"reset"}` and clears subscriptions.
+When relevant upstream data changes, PgPaw issues a new snapshot cursor for the
+same SQL. Old cursors keep working while the snapshot remains in the cache. If a
+snapshot is evicted, `GET /q/{hash}/{version}` returns `404`.
 
-## Privacy
+## Live behavior
 
-PgPaw asks the replica catalog whether any touched table has RLS enabled or lacks `PUBLIC SELECT`. If any table is private, the whole query is private.
+`LiveHub` keeps the last result for every live subscription. When CDC reports a
+commit touching a subscribed table, PgPaw:
+
+1. re-runs the SQL against the local replica;
+2. maps rows by primary key when possible, otherwise by row hash;
+3. diffs old rows against new rows;
+4. sends `insert`, `update`, `delete`, then `up-to-date` events.
+
+If the internal broadcast channel falls behind, PgPaw sends `{"op":"reset"}` and
+clears subscriptions. Clients should reconnect and request a fresh snapshot.
+
+## Privacy behavior
+
+PgPaw reads the replicated catalog to classify touched tables:
+
+- RLS enabled means private.
+- Missing `PUBLIC SELECT` means private.
+- Any private table makes the whole query private.
+
+This keeps Postgres as the source of truth for access control.

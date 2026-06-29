@@ -1,32 +1,68 @@
 ---
 title: Installation
-description: Install the PgPaw binary through Cargo or npm.
+description: Install PgPaw with Cargo or npm and verify the CLI.
 ---
 
-Install from crates.io:
+PgPaw is distributed as a single CLI binary named `pgpaw`.
+
+## Install with Cargo
+
+Use Cargo when you want to build from source:
 
 ```bash
 cargo install pgpaw
 ```
 
-Or install the npm package that provides prebuilt binaries for supported platforms:
+## Install with npm
+
+Use npm when a prebuilt binary is available for your platform:
 
 ```bash
 npm install -g pgpaw
 ```
 
-The CLI binary in source is named `cache-server` through Clap metadata, but package usage is `pgpaw`.
+The npm package downloads the native binary during `postinstall`. If your
+platform is not supported by the prebuilt package, install with Cargo instead.
 
-## Requirements
-
-- A reachable upstream PostgreSQL database.
-- Superuser or equivalent privileges for one-time `pgpaw init` when changing `wal_level`, creating the publication, and installing the DDL event trigger.
-- A local data directory for the embedded pglite-rs replica.
-
-## Verify
+## Verify the install
 
 ```bash
 pgpaw --help
-pgpaw serve --help
 pgpaw init --help
+pgpaw serve --help
+pgpaw primary --help
 ```
+
+The CLI should identify itself as `pgpaw`, and the default replication objects
+should be:
+
+| Setting     | Default      |
+| ----------- | ------------ |
+| Publication | `pgpaw_pub`  |
+| Slot        | `pgpaw_slot` |
+
+## Runtime requirements
+
+For normal `pgpaw serve` mode you need:
+
+- Postgres 13 or newer;
+- network access from PgPaw to upstream Postgres;
+- logical replication enabled on upstream Postgres;
+- a publication containing the tables PgPaw should serve;
+- a persistent local `--data-dir` for the pglite replica.
+
+For the one-time `pgpaw init` step, the Postgres user may need elevated
+permissions. It may run `ALTER SYSTEM`, create a publication, and install a DDL
+event trigger. If the user cannot install the DDL trigger, PgPaw still runs, but
+you should restart PgPaw after schema changes that affect served tables.
+
+## Files written by PgPaw
+
+`pgpaw serve` writes the local pglite replica into `--data-dir`.
+
+```bash
+pgpaw serve --data-dir /var/lib/pgpaw ...
+```
+
+Use persistent storage in production. If the data directory is deleted, PgPaw
+must rebuild the local replica from upstream.

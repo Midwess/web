@@ -1,51 +1,123 @@
 ---
 title: Authorization
-description: Configure JWT verification and Postgres RLS enforcement.
+description: Configure JWT verification and let Postgres RLS enforce private reads.
 ---
 
-PgPaw relies on Postgres for row-level security. JWT verification only decides which role and claims are set before running a private query.
+PgPaw uses Postgres as the access-control source of truth.
 
-## Configure verification
+JWT verification decides who the caller is. Postgres RLS and grants decide what
+that caller can read.
 
-Use exactly one key source:
+## Public and private tables
+
+PgPaw checks the replicated catalog:
+
+- A table is public when RLS is disabled and `PUBLIC` has `SELECT`.
+- A table is private when RLS is enabled or `PUBLIC` lacks `SELECT`.
+- A query is private if any touched table is private.
+
+Public queries do not require a token. Private queries require a bearer token.
+
+If an `Authorization` header is present, PgPaw parses it before classifying the
+query. That means a public query with a malformed token still returns `401`.
+For public data, omit the header unless you intentionally want authenticated
+requests.
+
+## Configure JWT verification
+
+Configure exactly one key source.
+
+HS256 shared secret:
 
 ```bash
 pgpaw serve \
   --jwt-secret "$JWT_SECRET" \
-  --jwt-role-claim role
+  --jwt-role-claim role \
+  --pg-database myapp
 ```
 
-or:
+RS256 or ES256 PEM public key:
 
 ```bash
 pgpaw serve \
   --jwt-public-key "$JWT_PUBLIC_KEY" \
-  --jwt-role-claim role
+  --jwt-role-claim role \
+  --pg-database myapp
 ```
 
-`--jwt-jwks-url` exists as a flag, but the cloned code returns a configuration error because JWKS verification is not implemented yet.
+`--jwt-jwks-url` is a reserved flag. Current PgPaw returns a configuration error
+for JWKS because JWKS verification is not implemented yet.
 
-## Supported algorithms
+## Token requirements
 
-- `--jwt-secret`: HS256.
-- `--jwt-public-key`: RS256 when the PEM parses as RSA, otherwise ES256 when it parses as EC.
-
-Audience validation is disabled. Expiration is still validated by `jsonwebtoken`.
-
-## Request header
-
-```http
-Authorization: Bearer <token>
-```
-
-The role claim must be a string. If `--jwt-role-claim org_role` is set, the token must include:
+The role claim must be a string. The default claim name is `role`.
 
 ```json
-{ "org_role": "member" }
+{
+  "role": "member",
+  "org_id": 7,
+  "exp": 1893456000
+}
 ```
 
-## Privacy verdict
+PgPaw validates token expiration. Audience validation is disabled.
 
-A query is private if any touched table has RLS enabled or lacks `PUBLIC SELECT`. Public queries ignore JWT and use the shared snapshot path. Private queries require JWT and are never cached publicly.
+## How RLS receives claims
+
+For private queries, PgPaw runs SQL under the token's Postgres role and passes
+the full claims JSON to Postgres as `request.jwt.claims`.
+
+Example:
+
+```sql
+create role member;
+
+alter table documents enable row level security;
+
+create policy documents_by_org on documents
+  for select
+  to member
+  using (
+    org_id = (current_setting('request.jwt.claims', true)::json->>'org_id')::int
+  );
+```
+
+Request:
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/query \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"sql":"select id, title from documents order by id"}'
+```
+
+Private response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: private, no-store
+```
+
+## Errors
+
+| Case                                  | Status |
+| ------------------------------------- | ------ |
+| Missing token for private query       | `401`  |
+| Malformed `Authorization` header      | `401`  |
+| Token signed with the wrong key       | `401`  |
+| Expired token                         | `401`  |
+| Missing role claim                    | `401`  |
+| Postgres denies access under the role | `403`  |
 
 Database denial SQLSTATEs `42501`, `42704`, and `28000` map to `403`.
+
+## Logs
+
+PgPaw logs auth state without logging tokens:
+
+```text
+level=INFO target=pgpaw::auth event=auth_header_present
+level=INFO target=pgpaw::auth event=auth_verified role=member
+level=WARN target=pgpaw::auth event=auth_failed reason=jwt_verification_not_configured
+```

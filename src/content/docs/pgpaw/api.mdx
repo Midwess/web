@@ -1,16 +1,18 @@
 ---
-title: API
-description: PgPaw HTTP endpoints for snapshots, live streams, and health.
+title: HTTP API
+description: PgPaw endpoints for health, snapshot queries, cached cursors, and live streams.
 ---
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/query` | Accept a read-only SQL query. Public queries redirect to a snapshot. Private queries return inline JSON. |
-| `POST` | `/query?live=true` | Stream initial snapshot plus row deltas. |
-| `GET` | `/q/{hash}/{version}` | Fetch cached public snapshot. |
-| `GET` | `/healthz` | Return replica status and watermark. |
+PgPaw exposes a small HTTP API.
 
-## Request body
+| Method | Path                  | Purpose                                  |
+| ------ | --------------------- | ---------------------------------------- |
+| `GET`  | `/healthz`            | Check replica status and watermark.      |
+| `POST` | `/query`              | Run one read-only SQL query.             |
+| `GET`  | `/q/{hash}/{version}` | Fetch a cached public snapshot.          |
+| `POST` | `/query?live=true`    | Run a query and stream realtime changes. |
+
+All query requests use JSON:
 
 ```json
 {
@@ -18,32 +20,52 @@ description: PgPaw HTTP endpoints for snapshots, live streams, and health.
 }
 ```
 
-## Error envelope
-
-Errors return JSON from `CacheError::envelope()`. Status mapping in code:
-
-| Condition | Status |
-| --- | --- |
-| Rejected SQL or parse error | `400` |
-| Replica halted | `503` |
-| Invalid/missing auth | `401` |
-| RLS/database denial | `403` |
-| Other server error | `500` |
-
 ## Health
 
 ```bash
 curl http://127.0.0.1:8080/healthz
 ```
 
-Healthy response:
+Healthy:
 
 ```json
 { "status": "ok", "watermark": 12345678 }
 ```
 
-Halted response:
+Halted:
 
 ```json
-{ "status": "halted", "reason": "..." }
+{ "status": "halted", "reason": "replication error details" }
 ```
+
+A halted replica returns HTTP `503`.
+
+## Error shape
+
+Errors are JSON:
+
+```json
+{
+  "name": "RejectedError",
+  "message": "only read-only SELECT queries are cacheable; writes and DDL are not supported"
+}
+```
+
+## Status codes
+
+| Status | Meaning                                                                 |
+| ------ | ----------------------------------------------------------------------- |
+| `303`  | Public query accepted; follow `Location` for the snapshot.              |
+| `200`  | Private query response, snapshot cursor hit, live stream, or health OK. |
+| `400`  | SQL parse failure or rejected SQL.                                      |
+| `401`  | Missing, malformed, expired, or unverifiable bearer token.              |
+| `403`  | Postgres denied the query under the caller's role.                      |
+| `404`  | Snapshot cursor is unknown or evicted.                                  |
+| `503`  | Replica is halted.                                                      |
+| `500`  | Unexpected server error.                                                |
+
+## Endpoint guides
+
+- [`POST /query`](/pgpaw/api/query)
+- [`GET /q/{hash}/{version}`](/pgpaw/api/snapshot)
+- [`POST /query?live=true`](/pgpaw/api/live)

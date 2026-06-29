@@ -1,44 +1,97 @@
 ---
-title: SQL classifier
-description: Rules for SQL accepted by PgPaw.
+title: SQL Classifier
+description: The SQL PgPaw accepts, rejects, and uses for cache versioning.
 ---
 
-PgPaw accepts one read-only PostgreSQL `SELECT` statement over replicated tables.
+PgPaw is intentionally read-only. It accepts one PostgreSQL `SELECT` statement
+over tables that exist in the local replica.
 
-## Rejected
-
-- Parse failures.
-- Multiple statements.
-- Writes and DDL.
-- `SELECT INTO`.
-- Locking reads such as `FOR UPDATE` and `FOR SHARE`.
-- References to tables not present in the replica.
-- Side-effecting functions: `nextval`, `setval`, advisory lock/unlock functions.
-- Non-deterministic reads: `now`, `random`, `random_normal`, `clock_timestamp`, `timeofday`, `statement_timestamp`, `gen_random_uuid`, `uuid_generate_v4`.
-
-## Extracted metadata
-
-For accepted SQL, `ReadClassifier` returns:
-
-| Field | Meaning |
-| --- | --- |
-| `fingerprint` | `DefaultHasher` of the parsed statement string. |
-| `tables` | Lowercase table names from relation visits, excluding CTE aliases. |
-| `eq_filters` | Literal equality filters from top-level `AND` expressions. |
-| `sql` | Original SQL string. |
-
-Equality filters are used to choose narrower version watermarks when possible.
-
-## Example accepted query
+## Accepted shape
 
 ```sql
 select id, email
 from users
+where id = 7;
+```
+
+Joins are allowed:
+
+```sql
+select u.id, u.email, count(o.id) as order_count
+from users u
+left join orders o on o.user_id = u.id
+where u.id = 7
+group by u.id, u.email;
+```
+
+## Rejected input
+
+PgPaw rejects:
+
+- SQL parse failures;
+- multiple statements;
+- writes: `insert`, `update`, `delete`, `merge`;
+- DDL: `create`, `alter`, `drop`;
+- `select into`;
+- locking reads: `for update`, `for share`;
+- references to tables outside the replicated publication;
+- side-effecting functions, including `nextval`, `setval`, and advisory lock
+  functions;
+- volatile reads, including `now`, `random`, `random_normal`,
+  `clock_timestamp`, `timeofday`, `statement_timestamp`, `gen_random_uuid`, and
+  `uuid_generate_v4`.
+
+Rejected query example:
+
+```sql
+select nextval('orders_id_seq');
+```
+
+Response:
+
+```json
+{
+  "name": "RejectedError",
+  "message": "function `nextval` has side effects and cannot be cached"
+}
+```
+
+## Extracted metadata
+
+For accepted SQL, PgPaw records:
+
+| Field         | Meaning                                                     |
+| ------------- | ----------------------------------------------------------- |
+| `fingerprint` | Opaque implementation fingerprint for the parsed statement. |
+| `tables`      | Lowercase table names, excluding CTE aliases.               |
+| `eq_filters`  | Literal equality filters from the outer `WHERE` expression. |
+| `sql`         | Original SQL string used for execution.                     |
+
+The fingerprint appears in logs and snapshot URLs, but clients should treat it
+as opaque.
+
+## Equality filters and cache precision
+
+PgPaw can narrow cache invalidation when the query has a literal equality
+filter:
+
+```sql
 where id = 7
 ```
 
-## Example rejected query
+For a single-table query:
 
-```sql
-select nextval('orders_id_seq')
-```
+- equality on the primary key anchors the version to that row;
+- equality on any replicated column can anchor if the table uses
+  `REPLICA IDENTITY FULL`;
+- otherwise the query falls back to table-level invalidation.
+
+Broad queries and joins use table-level invalidation.
+
+## Practical guidance
+
+- Include primary key columns in live queries when possible.
+- Use deterministic SQL. Avoid time and random functions.
+- Keep private data protected with Postgres RLS and grants, not application-side
+  filtering after PgPaw.
+- If a table is missing, check the publication first.

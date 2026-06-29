@@ -1,9 +1,10 @@
 ---
 title: POST /query?live=true
-description: Stream snapshots and row-level deltas over Server-Sent Events.
+description: Stream a snapshot and row-level deltas over Server-Sent Events.
 ---
 
-Open a live stream:
+Use `POST /query?live=true` when the client needs the current result and future
+changes.
 
 ```bash
 curl -N -X POST "http://127.0.0.1:8080/query?live=true" \
@@ -23,33 +24,59 @@ Cache-Control: no-store
 
 Public query:
 
-```txt
+```text
 data: {"type":"snapshot","url":"/q/{hash}/{version}","version":42}
 ```
 
 Private query:
 
-```txt
+```text
 data: {"type":"snapshot","rows":[{"id":1,"title":"Ship"}],"version":42}
 ```
 
+Private live queries require the same bearer token as private `POST /query`.
+
 ## Delta events
 
-```txt
+```text
 data: {"op":"insert","key":"7","row":{"id":7,"title":"New"},"txid":123}
+
 data: {"op":"update","key":"7","row":{"id":7,"title":"Done"},"txid":124}
-data: {"op":"delete","key":"7","txid":125}
+
+data: {"op":"delete","key":"7","row":{"id":7,"title":"Done"},"txid":125}
+
 data: {"op":"up-to-date","txid":125}
 ```
 
-`up-to-date` is sent after each relevant commit round, even when no row changed. Clients can use `txid` to reconcile optimistic writes.
+`up-to-date` marks the end of one transaction's diff cycle. The stream remains
+open for later commits.
+
+Clients can use `txid` to reconcile optimistic writes with the transaction that
+replicated back through PgPaw.
+
+## Row keys
+
+For single-table queries with a primary key, delta keys use the primary key
+value. For joins or queries without a known primary key, PgPaw uses a content
+hash for the row key.
+
+If you need stable delete events, prefer single-table live queries that include
+the primary key column.
 
 ## Reset
 
-If PgPaw falls behind its internal CDC broadcast channel:
+If PgPaw falls behind its internal CDC broadcast channel, it sends:
 
-```txt
+```text
 data: {"op":"reset"}
 ```
 
-Treat `reset` as a command to close the stream and reload the snapshot.
+Treat `reset` as a command to close the stream, reload the snapshot, and open a
+new live subscription.
+
+## Logs
+
+```text
+level=INFO target=pgpaw::http::query event=live_subscribe scope=public fingerprint=9a4f tables=todos version=42 cursor=/q/9a4f/42 snapshot_bytes=256
+level=INFO target=pgpaw::live event=live_diff subscription_id=12 txid=124 previous_rows=3 next_rows=3 deltas=1
+```

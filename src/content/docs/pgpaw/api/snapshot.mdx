@@ -3,13 +3,17 @@ title: GET /q/{hash}/{version}
 description: Fetch a cached public query snapshot.
 ---
 
-Snapshot URLs are only produced by public `POST /query` calls.
+`GET /q/{hash}/{version}` fetches a public snapshot cursor returned by
+`POST /query`.
 
 ```bash
 curl http://127.0.0.1:8080/q/{hash}/{version}
 ```
 
-## Hit
+Do not construct this URL yourself. Treat `hash` and `version` as opaque values
+from the `Location` header.
+
+## Cache hit
 
 ```http
 HTTP/1.1 200 OK
@@ -18,9 +22,13 @@ ETag: {hash}:{version}
 Cache-Control: public, max-age=259200
 ```
 
-Body is the JSON array returned by the replica query.
+The body is a JSON array:
 
-## Miss
+```json
+[{ "id": 7, "email": "ada@example.com" }]
+```
+
+## Cache miss
 
 ```http
 HTTP/1.1 404 Not Found
@@ -31,6 +39,22 @@ Content-Type: application/json
 { "name": "NotFound", "message": "unknown cursor" }
 ```
 
-## Cache semantics
+The snapshot may have been evicted from PgPaw's in-process cache. Repeat the
+original `POST /query` request to get the current cursor.
 
-The code sets `max-age=259200`, which is 72 hours. The URL includes the query fingerprint and version. When relevant upstream data changes, PgPaw issues a new URL for the same SQL.
+## Semantics
+
+The snapshot cursor combines:
+
+- a SQL fingerprint;
+- a replication-derived version.
+
+When relevant upstream data changes, the same SQL gets a new cursor. Old
+cursors keep serving their cached body until they are evicted.
+
+## Logs
+
+```text
+level=INFO target=pgpaw::http::query event=cursor_hit hash=9a4f version=42 bytes=128
+level=WARN target=pgpaw::http::query event=cursor_miss hash=9a4f version=41
+```

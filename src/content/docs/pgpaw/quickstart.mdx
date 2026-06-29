@@ -1,9 +1,22 @@
 ---
 title: Quickstart
-description: Prepare upstream Postgres, start PgPaw, and issue snapshot and live queries.
+description: Prepare Postgres, start PgPaw, run a snapshot query, and open a live stream.
 ---
 
-## 1. Prepare upstream
+This guide starts PgPaw against an existing Postgres database.
+
+## Before you start
+
+You need:
+
+- Postgres 13 or newer;
+- a user that can run the one-time setup in `pgpaw init`;
+- the `pgpaw` binary installed;
+- a table you can safely query, such as `users` or `orders`.
+
+## 1. Prepare upstream Postgres
+
+Run `pgpaw init` once for the database:
 
 ```bash
 pgpaw init \
@@ -14,26 +27,51 @@ pgpaw init \
   --pg-database myapp
 ```
 
-`init` checks logical replication settings, creates the publication when missing, and installs a DDL event trigger when permissions allow it.
+The command explains what it will change and asks for confirmation. It checks
+or creates:
 
-Restart Postgres if `wal_level=logical` or sender/slot settings changed.
+- `wal_level=logical`;
+- `max_wal_senders >= 10`;
+- `max_replication_slots >= 10`;
+- publication `pgpaw_pub`;
+- a DDL event trigger, when permissions allow it.
 
-## 2. Serve
+If PgPaw changes WAL settings, restart Postgres before starting `pgpaw serve`.
+`init` prints this when a restart is required.
+
+## 2. Start PgPaw
 
 ```bash
 pgpaw serve \
   --host 127.0.0.1 \
   --port 8080 \
-  --data-dir ./cache-data \
+  --data-dir ./pgpaw-data \
   --pg-host 127.0.0.1 \
+  --pg-port 5432 \
   --pg-user postgres \
   --pg-password "$POSTGRES_PASSWORD" \
   --pg-database myapp
 ```
 
-`serve` preflights upstream, opens `PGlite::open_multi_process`, starts a logical replica, scans schema, starts CDC, and binds HTTP.
+Watch for the readiness log:
 
-## 3. Query a snapshot
+```text
+level=INFO target=pgpaw::http::server event=http_server_listening bind_addr=127.0.0.1:8080 url=http://127.0.0.1:8080
+```
+
+Check health:
+
+```bash
+curl http://127.0.0.1:8080/healthz
+```
+
+Healthy response:
+
+```json
+{ "status": "ok", "watermark": 12345678 }
+```
+
+## 3. Run a public snapshot query
 
 ```bash
 curl -i -X POST http://127.0.0.1:8080/query \
@@ -41,7 +79,7 @@ curl -i -X POST http://127.0.0.1:8080/query \
   -d '{"sql":"select id, email from users where id = 7"}'
 ```
 
-Public query response:
+If the touched tables are public, PgPaw returns a cursor:
 
 ```http
 HTTP/1.1 303 See Other
@@ -55,10 +93,36 @@ Fetch the snapshot:
 curl http://127.0.0.1:8080/q/{hash}/{version}
 ```
 
-## 4. Subscribe live
+Snapshot response:
+
+```json
+[{ "id": 7, "email": "ada@example.com" }]
+```
+
+## 4. Open a live stream
 
 ```bash
 curl -N -X POST "http://127.0.0.1:8080/query?live=true" \
   -H "content-type: application/json" \
-  -d '{"sql":"select id, status from orders"}'
+  -d '{"sql":"select id, status from orders order by id"}'
 ```
+
+The first event is a snapshot pointer for public queries:
+
+```text
+data: {"type":"snapshot","url":"/q/{hash}/{version}","version":42}
+```
+
+Then PgPaw sends row changes after relevant upstream commits:
+
+```text
+data: {"op":"update","key":"7","row":{"id":7,"status":"paid"},"txid":124}
+
+data: {"op":"up-to-date","txid":124}
+```
+
+## 5. Next steps
+
+- Use [Authorization](/pgpaw/authorization) for RLS-protected tables.
+- Use [Configuration](/pgpaw/configuration) for production flags.
+- Use [Logging](/pgpaw/logging) to understand startup, health, query, cache, and CDC output.

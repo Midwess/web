@@ -1,9 +1,17 @@
 ---
 title: POST /query
-description: Run a read-only SELECT and receive a redirect or private inline JSON.
+description: Run one read-only SELECT and receive either a public snapshot cursor or private inline JSON.
 ---
 
-`POST /query` accepts:
+`POST /query` is the main PgPaw endpoint.
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/query \
+  -H "content-type: application/json" \
+  -d '{"sql":"select id, email from users where id = 7"}'
+```
+
+## Request
 
 ```json
 {
@@ -11,9 +19,13 @@ description: Run a read-only SELECT and receive a redirect or private inline JSO
 }
 ```
 
+The SQL must be one read-only PostgreSQL `SELECT` over replicated tables. See
+[SQL classifier](/pgpaw/sql-classifier).
+
 ## Public response
 
-When every touched table is public, PgPaw materializes the query and returns:
+When every touched table is public, PgPaw materializes the query and returns a
+snapshot cursor:
 
 ```http
 HTTP/1.1 303 See Other
@@ -21,11 +33,20 @@ Location: /q/{hash}/{version}
 Cache-Control: no-store
 ```
 
-The response body is empty. Follow `Location` to fetch the JSON snapshot.
+The response body is empty. Follow `Location` with `GET` to read the JSON body.
 
 ## Private response
 
-When any table has RLS enabled or lacks `PUBLIC SELECT`, PgPaw requires a bearer token. It verifies the token, extracts the configured role claim, runs the query through `query_json_as`, and returns:
+When any touched table is private, PgPaw requires a bearer token.
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/query \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer $TOKEN" \
+  -d '{"sql":"select id, title from documents order by id"}'
+```
+
+Response:
 
 ```http
 HTTP/1.1 200 OK
@@ -33,20 +54,52 @@ Content-Type: application/json
 Cache-Control: private, no-store
 ```
 
-## Gates
+Private rows are returned inline because the result depends on the caller's
+role and claims.
 
-<DChart label="Handler gates" title="Request is rejected before query execution when any gate fails.">
+## Handler gates
+
+<DChart
+  label="Handler gates"
+  title="PgPaw rejects unsafe requests before returning rows."
+>
   <DRow wrap>
-    <DBox badge={1} title="Replica halt check" sub="503 if halted" />
+    <DBox badge={1} title="Replica health" sub="503 if halted" />
     <DArrow />
-    <DBox badge={2} title="Auth parse" sub="401 for malformed token" />
+    <DBox
+      badge={2}
+      kind="accent"
+      title="SQL classifier"
+      sub="400 for unsafe SQL"
+    />
     <DArrow />
-    <DBox badge={3} kind="accent" title="ReadClassifier" sub="400 for unsafe SQL" />
+    <DBox
+      badge={3}
+      kind="info"
+      title="Privacy verdict"
+      sub="public or private"
+    />
     <DArrow />
-    <DBox badge={4} kind="info" title="Privacy" sub="public redirect or private inline rows" />
+    <DBox
+      badge={4}
+      kind="success"
+      title="Materialize"
+      sub="redirect or inline JSON"
+    />
   </DRow>
 </DChart>
 
-## Snapshot identity
+If an `Authorization` header is present, PgPaw parses it before the query is
+classified. Public queries do not require a token, but a malformed token still
+causes `401`.
 
-`hash` is the hexadecimal `DefaultHasher` of the parsed statement string. `version` is the `VersionIndex` LSN for touched tables and equality filters.
+## Logs
+
+Accepted queries emit logs like:
+
+```text
+level=INFO target=pgpaw::http::query event=query_classified fingerprint=9a4f tables=users live=false scope=public
+level=INFO target=pgpaw::http::query event=query_snapshot scope=public fingerprint=9a4f tables=users version=42 cursor=/q/9a4f/42 response=redirect snapshot_bytes=128
+```
+
+PgPaw logs the SQL fingerprint and tables, not raw SQL text.

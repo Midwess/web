@@ -45,7 +45,7 @@ const projects: Project[] = [
       "Directory-first world builds",
       "Durable workflow replay",
       "Reactive SQL subscriptions",
-      "Typed npm remote functions",
+      "Typed az-wire calls",
     ],
   },
   {

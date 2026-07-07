@@ -30,11 +30,11 @@ Worldant is that runtime boundary.
 - Mutations for committed writes.
 - Durable workflows and replay-safe steps.
 - Reactive SQL subscriptions and cursor-backed event streams.
-- A live npm remote-function protocol.
+- The az-wire frame protocol and knowledge surface.
 - MCP and HTTP surfaces for outside agents.
 
 Worldant does not own generated UI. Ragent owns UI generation and consumes
-Worldant through the same typed package/protocol as any other client.
+Worldant through the same `worldant-client` protocol as any other client.
 
 ## Core rule
 
@@ -63,7 +63,7 @@ world/
 worldant build
   -> .dist/run/<run_snapshot_id>
   -> PgPaw metadata
-  -> generated npm contract
+  -> az-wire catalog + knowledge text
 
 worldant run
   -> daemon serves latest valid snapshots
@@ -76,8 +76,8 @@ Worldant is actively in progress. The current proof target is:
 
 - A generated chess world with schema, mutation, command, workflow, and reactive
   board subscription.
-- A live npm package that exposes the world as typed functions.
-- A Ragent UI that imports that package and interacts through committed
+- A live az-wire endpoint that exposes the world as typed functions.
+- A Ragent UI that imports `worldant-client` and interacts through committed
   database truth.
 - A long-running workflow that survives restart and resumes from PgPaw state.
 

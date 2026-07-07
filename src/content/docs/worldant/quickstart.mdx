@@ -26,24 +26,16 @@ worldant build
 worldant run
 ```
 
-Install the generated package from the live world:
-
-```ini
-@world:registry=http://localhost:3000/__worldant/v1/npm
-```
-
-```bash
-pnpm install @world/chess
-```
-
 Consume it from any client:
 
 ```ts
-import { chessBoard, move } from "@world/chess";
+import { createWorld } from "worldant-client";
 
-await move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
+const world = createWorld({ url: "ws://127.0.0.1:8787/__worldant/v1/ws" });
 
-for await (const board of chessBoard({ gameId })) {
+await world.chess.move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
+
+for await (const board of world.chess.board({ gameId })) {
   console.log(board);
 }
 ```

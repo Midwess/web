@@ -1,63 +1,75 @@
 ---
 title: World protocol
-description: The MCP, HTTP, and npm surfaces that expose a running world.
+description: The az-wire frame and knowledge surfaces that expose a running world.
 ---
 
-Worldant exposes a running world through one contract with multiple surfaces.
+Worldant exposes a running world through the az-wire Worldant profile.
 
 ```text
-npm package -> typed app/client calls
-MCP server  -> external agent tools and subscriptions
-HTTP        -> direct protocol and integration surface
+WebSocket   -> az-wire frames: calls, runs, subscriptions, catalog, knowledge
+HTTP text   -> generated .d.ts and llms.txt for agents and editors
+MCP         -> external agent tools later
 ```
 
 All surfaces call the same daemon and reach the same PgPaw/Postgres truth.
 
-## Generated package
+## Frame Endpoint
 
-The daemon serves generated package metadata from the active snapshot.
+The daemon serves one WebSocket upgrade for the active world:
 
 ```text
-GET /__worldant/v1/registry
-GET /__worldant/v1/registry.d.ts
-GET /__worldant/v1/contract/:etag.tgz
-GET /__worldant/v1/npm/:package
+GET /__worldant/v1/ws
 ```
 
-Clients install a typed package and call the world as functions:
+The client connects to one reachable home node and discovers the runtime catalog.
+Generated artifacts do not carry deployment URLs.
 
 ```ts
-import { chessBoard, move, previewMove } from "@world/chess";
+import { createWorld } from "worldant-client";
 
-const preview = await previewMove({ gameId, from: "e2", to: "e4" });
-await move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
+const world = createWorld();
 
-for await (const board of chessBoard({ gameId })) {
+const preview = await world.chess.previewMove({ gameId, from: "e2", to: "e4" });
+await world.chess.move({ gameId, from: "e2", to: "e4" }, { key: "move:e2:e4" });
+
+for await (const board of world.chess.board({ gameId })) {
   console.log(board);
 }
 ```
 
-## Calls, runs, and subscriptions
+Outside a browser, the edge can choose the home node explicitly:
 
-The protocol separates fast calls, durable runs, and reactive subscriptions.
+```ts
+const world = createWorld({ url: "ws://127.0.0.1:8787/__worldant/v1/ws" });
+```
+
+## Knowledge Text
+
+The active snapshot also exposes generated knowledge as plain text:
 
 ```text
-POST /__worldant/v1/calls
-GET  /__worldant/v1/calls/:callId
-GET  /__worldant/v1/calls/:callId/stream
-
-POST /__worldant/v1/runs
-GET  /__worldant/v1/runs/:runId
-GET  /__worldant/v1/runs/:runId/stream
-
-POST /__worldant/v1/subscriptions
-GET  /__worldant/v1/subscriptions/:subId/stream
+GET /__worldant/v1/knowledge/:app.d.ts
+GET /__worldant/v1/llms.txt
 ```
+
+Agents can project these files into their workspace and generate UI against the
+same typed surface the runtime enforces.
+
+## What Frames Carry
+
+The Worldant profile uses az-wire frames for:
+
+- Calls to queries, commands, and mutations.
+- Durable workflow scheduling and `run.handle` completion.
+- Live query, signal, run-status, and sync subscriptions.
+- Runtime catalog discovery.
+- Knowledge payloads and teaching errors.
 
 ## Agent access
 
 External AI systems do not have to live inside Worldant. They can connect
-through MCP/HTTP, read schema and generated contracts, call functions, subscribe
-to reactive streams, and edit files through the host environment.
+through az-wire and, later, MCP. They can read catalog/knowledge, call
+functions, subscribe to reactive streams, and edit files through the host
+environment.
 
-In-app AI features can use the same package and protocol as the UI.
+In-app AI features use the same `worldant-client` protocol as the UI.

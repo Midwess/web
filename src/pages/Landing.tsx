@@ -13,7 +13,7 @@ const Landing = () => (
   <>
     <SeoHead
       title="Durable infrastructure for stateful workloads"
-      description="Midwess builds PgPaw and Worldant: database-first runtime infrastructure for agent-owned worlds, durable workflows, reactive data, and typed remote functions."
+      description="Midwess builds PgPaw and Worldant: database-first runtime infrastructure for agent-owned worlds, durable workflows, reactive data, and typed frame calls."
       path="/"
       jsonLd={[webSiteLd(), organizationLd()]}
     />

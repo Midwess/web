@@ -44,13 +44,13 @@ export const posts: BlogPost[] = [
         <h2>The boundary</h2>
         <p>
           Worldant owns the runtime, database truth, durable workflow replay,
-          reactive subscriptions, and npm remote-function protocol. Ragent owns
+          reactive subscriptions, and az-wire client protocol. Ragent owns
           generated UI and consumes Worldant through that protocol.
         </p>
         <h2>The proof</h2>
         <p>
           The design is proven when an agent can create a small application
-          world, expose typed functions through the live package endpoint,
+          world, expose typed functions through the live frame endpoint,
           subscribe to data changes, run long workflow jobs durably, and let a
           generated UI participate through the same committed database truth.
         </p>

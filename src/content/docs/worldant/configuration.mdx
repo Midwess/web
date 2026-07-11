@@ -1,23 +1,40 @@
 ---
 title: Configuration
-description: Planned configuration boundaries for Worldant.
+description: The proposed open node configuration boundary for Worldant.
 ---
 
-Configuration is intentionally not stable yet.
+Configuration is intentionally not stable yet. The active proposal replaces Worldant's
+built-in token and actor model with a snapshot-pinned TypeScript configuration module.
 
-The target configuration domains are:
+The proposed root configuration is executable middleware:
 
-```text
-world id / package name
-PgPaw/Postgres connection
-actor sessions and Postgres role mapping
-build validation policy
-isolate slot limits
-workflow concurrency
-az-wire home node / peer routes
-MCP/HTTP exposure
-Ragent/client access policy
+```ts
+// worldant.config.ts
+import { middleware } from "@midwess/worldant"
+import type { NodeConfig } from "worldant"
+
+export default {
+  middleware: [
+    middleware(),
+    async function inspect(request, context, next) {
+      return next(request, {
+        ...context,
+        requestId: crypto.randomUUID(),
+      })
+    },
+  ],
+} satisfies NodeConfig
 ```
 
-Authorization remains in Postgres policy. Worldant configuration may declare
-capabilities, but it does not replace database authorization.
+`worldant build` captures the module and its dependencies in the immutable `.dist`
+snapshot. `worldant run` loads middleware only from that snapshot.
+
+Worldant assigns no authentication or authorization meaning to middleware, headers, or
+request context. az-wire custom headers remain unchanged. For request-bound application
+SQL, Worldant makes the original header object available as transaction-local
+`request.headers`; application-authored PostgreSQL functions and RLS policies decide how,
+or whether, to use it.
+
+The proposal removes predefined actors, caller roles, token formats, claims, and
+public/private judgments. Third-party libraries can export middleware factories without
+requiring changes to Worldant or az-wire.

@@ -5,9 +5,9 @@
     "index",
     "how-it-works",
     "database",
-    "commands-mutations",
+    "commands",
     "workflows",
-    "reactive",
+    "adr-command-transactions",
     "protocol",
     {
       "name": "Operations",

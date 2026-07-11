@@ -1,0 +1,39 @@
+---
+title: "ADR: Command transactions"
+description: Why Commands use explicit transactions while Workflow Steps retain kernel atomicity.
+---
+
+**Status:** Accepted proposal; implementation pending.
+
+## Context
+
+The previous model selected transaction behavior by artifact kind: Commands were
+read-only, Mutations owned an implicit write transaction, and Workflow Steps
+committed database effects with durable completion. The simplified model removes
+Mutation and makes Command the one immediate execution primitive.
+
+Wrapping every Command in an implicit transaction would hold a database
+connection across arbitrary computation and external IO. Ambiently joining plain
+`db` calls would also make transaction participation difficult to see.
+
+## Decision
+
+- Each standalone Command database operation commits independently.
+- `db.transaction(callback)` creates one explicit transaction.
+- Only operations performed through the callback's `tx` handle participate.
+- Callback success commits; callback failure rolls back.
+- Nested transactions and savepoints are not supported.
+- A transaction handle is valid only during its callback.
+- Workflow Steps retain a kernel-owned transaction joining database effects and
+  durable Step completion.
+- `db.transaction` is unavailable inside a Step.
+
+## Consequences
+
+A failed Command may leave earlier standalone effects committed. Atomicity is
+visible in source through `tx`, and external calls do not accidentally extend a
+hidden database transaction.
+
+Workflow Step database effects remain replay-safe. External Step effects still
+cross an unavoidable external-system/database commit gap and should use an
+idempotency key when the external API supports one.

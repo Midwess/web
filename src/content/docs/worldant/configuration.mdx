@@ -10,12 +10,16 @@ An optional root `worldant.ts` exports static node settings and executable middl
 import type { NodeConfig } from "worldant"
 
 export default {
+  listen: "127.0.0.1:8787",
+  dataDir: ".worldant/data",
+  poolMaxConnections: 2,
+  maxWorkflowWorkers: 2,
   middleware: [
     async function inspect(request, context, next) {
       if (request.headers.authorization !== "allowed") {
         throw new Error("unauthorized")
       }
-      return next(request, {
+      return next(request.payload, {
         ...context,
         authenticated: true,
       })
@@ -23,6 +27,10 @@ export default {
   ],
 } satisfies NodeConfig
 ```
+
+Runtime configuration belongs in this file. The CLI does not duplicate `listen`, `dsn`,
+`dataDir`, pool, scheduler, mailbox, replica, warm-set, or Workflow worker settings as flags.
+It retains only command inputs such as the world location and one-off `run` arguments.
 
 `worldant build` captures the module and its local dependencies in the immutable `.dist`
 snapshot. `worldant serve` evaluates the pinned module once for its startup node. Middleware runs

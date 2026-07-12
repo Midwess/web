@@ -17,8 +17,13 @@ type MdxModule = {
   frontmatter?: { title?: string; description?: string };
 };
 
-const mdxModules = import.meta.glob<MdxModule>(
+const localMdxModules = import.meta.glob<MdxModule>(
   "/src/content/docs/*/**/*.mdx",
+  { eager: true },
+);
+
+const vendorWorldantMdxModules = import.meta.glob<MdxModule>(
+  "/src/content/vendor/worldant/docs/worldant/**/*.mdx",
   { eager: true },
 );
 
@@ -30,10 +35,38 @@ type MetaJson = {
   github?: string;
 };
 
-const metaModules = import.meta.glob<MetaJson>(
+const localMetaModules = import.meta.glob<MetaJson>(
   "/src/content/docs/*/meta.json",
   { eager: true },
 );
+
+const vendorWorldantMetaModules = import.meta.glob<MetaJson>(
+  "/src/content/vendor/worldant/docs/worldant/meta.json",
+  { eager: true },
+);
+
+const toDocsPath = (path: string) =>
+  path.replace("/src/content/vendor/worldant/docs/", "/src/content/docs/");
+
+const mdxModules: Record<string, MdxModule> = {
+  ...localMdxModules,
+  ...Object.fromEntries(
+    Object.entries(vendorWorldantMdxModules).map(([path, mod]) => [
+      toDocsPath(path),
+      mod,
+    ]),
+  ),
+};
+
+const metaModules: Record<string, MetaJson> = {
+  ...localMetaModules,
+  ...Object.fromEntries(
+    Object.entries(vendorWorldantMetaModules).map(([path, meta]) => [
+      toDocsPath(path),
+      meta,
+    ]),
+  ),
+};
 
 export type PageNode = {
   type: "page";

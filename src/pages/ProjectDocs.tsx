@@ -44,9 +44,27 @@ type MdxModule = {
   toc?: TocItem[];
 };
 
-const modules = import.meta.glob<MdxModule>("/src/content/docs/*/**/*.mdx", {
+const localModules = import.meta.glob<MdxModule>("/src/content/docs/*/**/*.mdx", {
   eager: true,
 });
+
+const vendorWorldantModules = import.meta.glob<MdxModule>(
+  "/src/content/vendor/worldant/docs/worldant/**/*.mdx",
+  { eager: true },
+);
+
+const toDocsPath = (path: string) =>
+  path.replace("/src/content/vendor/worldant/docs/", "/src/content/docs/");
+
+const modules: Record<string, MdxModule> = {
+  ...localModules,
+  ...Object.fromEntries(
+    Object.entries(vendorWorldantModules).map(([path, mod]) => [
+      toDocsPath(path),
+      mod,
+    ]),
+  ),
+};
 
 /** MDX tag/components map — fumadocs defaults + Midwess diagram primitives. */
 const mdxComponents = {

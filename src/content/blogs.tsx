@@ -17,7 +17,7 @@ export const posts: BlogPost[] = [
     slug: "worldant-active-development",
     title: "Worldant is being rebuilt as a world runtime",
     description:
-      "Worldant is an actively in-progress runtime for agent-owned software worlds, durable workflows, reactive data, and typed remote functions.",
+      "Worldant is a filesystem-authored runtime for immediate Commands, durable Workflows, and PostgreSQL-backed runtime state.",
     date: "2026-06-28",
     readTime: "4 min read",
     author: "Midwess",
@@ -26,8 +26,8 @@ export const posts: BlogPost[] = [
       <>
         <p>
           Worldant is being rebuilt around one idea: a world is a directory that
-          can grow into database schema, callable logic, durable workflow,
-          reactive streams, and generated client contracts.
+          can grow into database schema, immediate Commands, durable Workflows,
+          internal Steps, event streams, and generated runtime knowledge.
         </p>
         <p>
           The project is actively in progress. The current documentation
@@ -36,23 +36,23 @@ export const posts: BlogPost[] = [
         </p>
         <h2>The goal</h2>
         <p>
-          Agents should be able to add capability by editing files, running a
-          validated build, and receiving a typed world interface. Humans,
-          agents, generated UI, and services should all call the same commands,
-          mutations, workflows, and subscriptions.
+          Developers and AI tools should be able to add capability by editing
+          files, running a validated build, and receiving a stable world
+          interface. Clients call Commands for immediate work and run Workflows
+          for durable orchestration.
         </p>
         <h2>The boundary</h2>
         <p>
-          Worldant owns the runtime, database truth, durable workflow replay,
-          reactive subscriptions, and az-wire client protocol. Ragent owns
-          generated UI and consumes Worldant through that protocol.
+          Worldant owns the runtime, PostgreSQL truth, build snapshots,
+          durable Workflow replay, event streams, and the client protocol. UI
+          and application services remain separate consumers.
         </p>
         <h2>The proof</h2>
         <p>
-          The design is proven when an agent can create a small application
-          world, expose typed functions through the live frame endpoint,
-          subscribe to data changes, run long workflow jobs durably, and let a
-          generated UI participate through the same committed database truth.
+          The design is proven when a small application world can publish a
+          snapshot, call Commands, run long Workflow jobs durably, subscribe to
+          data changes, and keep every participant on the same committed
+          PostgreSQL truth.
         </p>
       </>
     ),

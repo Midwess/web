@@ -62,12 +62,42 @@ function flattenPages(pages: MetaJson["pages"] = []): string[] {
 }
 
 function buildIndex(): Entry[] {
-  const metas = import.meta.glob<MetaJson>("/src/content/docs/*/meta.json", {
+  const localMetas = import.meta.glob<MetaJson>("/src/content/docs/*/meta.json", {
     eager: true,
   });
-  const mdx = import.meta.glob<MdxModule>("/src/content/docs/*/*.mdx", {
+  const vendorWorldantMetas = import.meta.glob<MetaJson>(
+    "/src/content/vendor/worldant/docs/worldant/meta.json",
+    { eager: true },
+  );
+  const localMdx = import.meta.glob<MdxModule>("/src/content/docs/*/**/*.mdx", {
     eager: true,
   });
+  const vendorWorldantMdx = import.meta.glob<MdxModule>(
+    "/src/content/vendor/worldant/docs/worldant/**/*.mdx",
+    { eager: true },
+  );
+
+  const toDocsPath = (path: string) =>
+    path.replace("/src/content/vendor/worldant/docs/", "/src/content/docs/");
+
+  const metas: Record<string, MetaJson> = {
+    ...localMetas,
+    ...Object.fromEntries(
+      Object.entries(vendorWorldantMetas).map(([path, meta]) => [
+        toDocsPath(path),
+        meta,
+      ]),
+    ),
+  };
+  const mdx: Record<string, MdxModule> = {
+    ...localMdx,
+    ...Object.fromEntries(
+      Object.entries(vendorWorldantMdx).map(([path, mod]) => [
+        toDocsPath(path),
+        mod,
+      ]),
+    ),
+  };
 
   const entries: Entry[] = [];
   for (const [path, meta] of Object.entries(metas)) {

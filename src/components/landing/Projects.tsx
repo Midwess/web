@@ -25,8 +25,7 @@ type Project = {
   progress: number;
   /** Avatar backdrop tint, matched to each pet's own color. */
   accent: string;
-  /** 2–4 factual capability points, sourced from the project's own docs
-   *  (`src/content/docs/<slug>/index.mdx`). Omitted for projects without docs. */
+  /** 2–4 factual capability points sourced from the project's docs. */
   features?: string[];
 };
 
@@ -35,17 +34,17 @@ const projects: Project[] = [
     name: "Worldant",
     slug: "worldant",
     hasDocs: true,
-    tagline: "World runtime for agent-owned software",
+    tagline: "Filesystem-authored runtime for Commands and Workflows",
     sprite: "/pets/capvolt.webp",
     website: "https://github.com/Midwess/worldant",
     repo: "Midwess/worldant",
     progress: 80,
     accent: "rgb(250 204 21 / 0.18)", // pikachu yellow
     features: [
-      "Directory-first world builds",
-      "Durable workflow replay",
-      "Reactive SQL subscriptions",
-      "Typed az-wire calls",
+      "Immutable build snapshots",
+      "PostgreSQL-backed truth",
+      "Command and Workflow calls",
+      "Event and collection streams",
     ],
   },
   {

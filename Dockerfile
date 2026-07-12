@@ -7,6 +7,7 @@ FROM node:22-alpine AS build
 
 # pnpm via corepack (no global install)
 RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN apk add --no-cache git
 
 WORKDIR /app
 

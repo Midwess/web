@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "deno run --allow-all npm:vite --port 8080",
-    "build": "vite-react-ssg build && node scripts/post-build.mjs",
-    "build:dev": "vite-react-ssg build --mode development && node scripts/post-build.mjs",
+    "build": "node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build && node scripts/post-build.mjs",
+    "build:dev": "node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build --mode development && node scripts/post-build.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

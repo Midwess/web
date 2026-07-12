@@ -1,33 +1,38 @@
 ---
 title: Configuration
-description: The proposed open node configuration boundary for Worldant.
+description: Snapshot-pinned node middleware, request headers, and SQL policy.
 ---
 
-Configuration is intentionally not stable yet. The active proposal replaces Worldant's
-built-in token and actor model with a snapshot-pinned TypeScript configuration module.
-
-The proposed root configuration is executable middleware:
+An optional root `worldant.ts` exports static node settings and executable middleware:
 
 ```ts
 // worldant.ts
-import { middleware } from "@midwess/worldant"
 import type { NodeConfig } from "worldant"
 
 export default {
   middleware: [
-    middleware(),
     async function inspect(request, context, next) {
+      if (request.headers.authorization !== "allowed") {
+        throw new Error("unauthorized")
+      }
       return next(request, {
         ...context,
-        requestId: crypto.randomUUID(),
+        authenticated: true,
       })
     },
   ],
 } satisfies NodeConfig
 ```
 
-`worldant build` captures the module and its dependencies in the immutable `.dist`
-snapshot. `worldant run` loads middleware only from that snapshot.
+`worldant build` captures the module and its local dependencies in the immutable `.dist`
+snapshot. `worldant serve` evaluates the pinned module once for its startup node. Middleware runs
+in order before unary decoding and once when a subscription is established. It does not rerun for
+stream polling. A unary middleware may continue, reject, transform payload/context, or return a
+response; a streaming middleware cannot return a unary response.
+
+Subject, operation, origin, and original headers are immutable. Middleware may replace only the
+payload passed downstream and opaque request context. If declared middleware cannot run, the
+request fails closed. Configuration failure aborts startup, and running nodes are not hot-swapped.
 
 Worldant assigns no authentication or authorization meaning to middleware, headers, or
 request context. az-wire custom headers remain unchanged. For request-bound application
@@ -35,6 +40,25 @@ SQL, Worldant makes the original header object available as transaction-local
 `request.headers`; application-authored PostgreSQL functions and RLS policies decide how,
 or whether, to use it.
 
-The proposal removes predefined actors, caller roles, token formats, claims, and
-public/private judgments. Third-party libraries can export middleware factories without
-requiring changes to Worldant or az-wire.
+Worldant defines no actors, caller roles, token formats, claims, or public/private judgments.
+Third-party libraries can export middleware factories without requiring changes to Worldant or
+az-wire.
+
+An optional root `worldant.policy.sql` is also pinned into the snapshot and applied during
+activation. It can define `worldant_owner(headers jsonb)` and alter kernel-table policies. For
+example:
+
+```sql
+CREATE OR REPLACE FUNCTION worldant_owner(headers jsonb) RETURNS text
+LANGUAGE sql STABLE SECURITY INVOKER
+AS $$ SELECT headers->>'authorization' $$;
+
+ALTER POLICY events_runtime_visibility ON events
+USING (
+  owner_id IS NULL OR
+  owner_id = worldant_owner(nullif(current_setting('request.headers', true), '')::jsonb)
+);
+```
+
+Application table RLS remains in app migrations. `worldant.policy.sql` is limited to the validated
+deployment-policy statement set and kernel tables.

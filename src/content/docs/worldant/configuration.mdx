@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Snapshot-pinned node middleware, request headers, and SQL policy.
+description: Snapshot-pinned node middleware, request headers, and declarative policy.
 ---
 
 An optional root `worldant.ts` exports static node settings and executable middleware:
@@ -44,21 +44,17 @@ Worldant defines no actors, caller roles, token formats, claims, or public/priva
 Third-party libraries can export middleware factories without requiring changes to Worldant or
 az-wire.
 
-An optional root `worldant.policy.sql` is also pinned into the snapshot and applied during
-activation. It can define `worldant_owner(headers jsonb)` and alter kernel-table policies. For
-example:
+An optional root `worldant.policy.json` is also pinned into the snapshot:
 
-```sql
-CREATE OR REPLACE FUNCTION worldant_owner(headers jsonb) RETURNS text
-LANGUAGE sql STABLE SECURITY INVOKER
-AS $$ SELECT headers->>'authorization' $$;
-
-ALTER POLICY events_runtime_visibility ON events
-USING (
-  owner_id IS NULL OR
-  owner_id = worldant_owner(nullif(current_setting('request.headers', true), '')::jsonb)
-);
+```json
+{
+  "ownerHeader": "authorization",
+  "events": "ownerOrPublic"
+}
 ```
 
-Application table RLS remains in app migrations. `worldant.policy.sql` is limited to the validated
-deployment-policy statement set and kernel tables.
+`events` accepts `hidden`, `public`, `owner`, or `ownerOrPublic` and defaults to `hidden`. The owner
+modes require `ownerHeader`, which may contain only ASCII letters, digits, `-`, or `_`. Unknown
+fields and authored SQL are rejected. During activation Worldant converts the contract to fixed
+generated kernel SQL; deployments never supply privileged SQL. Application-table RLS remains in app
+migrations.

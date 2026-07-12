@@ -1,20 +1,46 @@
 ---
 title: Installation
-description: Current installation status for the active Worldant rebuild.
+description: How Worldant is installed from its public distribution repository.
 ---
 
-Worldant is actively in progress. There is no stable installation path yet.
+The canonical public repository is
+[github.com/Midwess/worldant](https://github.com/Midwess/worldant) — it owns the
+installer, verification code, examples, policies, changelog, and `llms.txt`. The
+Rust runtime itself is proprietary and built separately; the public repository
+consumes only signed, immutable release artifacts.
 
-The intended local shape is:
+## CLI install
+
+The Worldant CLI ships as a thin, verifying npm installer:
 
 ```bash
-worldant build
-worldant run
+npm install --global worldant
+worldant --version
 ```
 
-`worldant build` validates the world directory and writes `.dist` snapshots.
-`worldant run` starts the daemon and serves the latest valid snapshots,
-reactive streams, the az-wire frame endpoint, knowledge text, and later MCP.
+On install it fetches a signed release manifest, verifies its Sigstore signature
+against a pinned trust policy, downloads the exact binary for your platform,
+verifies its SHA-256, safely extracts it, and runs only the verified binary. It
+fails closed on unsupported platforms, invalid signatures, digest mismatches,
+path-traversal archives, and disallowed redirects. Supported platforms: macOS
+(arm64, x64) and Linux (arm64, x64).
 
-Until the runtime is implemented, treat this repository as a design and
-development workspace.
+See
+[INSTALL.md](https://github.com/Midwess/worldant/blob/main/INSTALL.md) and
+[SECURITY.md](https://github.com/Midwess/worldant/blob/main/SECURITY.md) for the
+full verification and signing model.
+
+> **Status:** the public repository is live. The first signed release under the new
+> distribution model is being prepared; until it is published the `npm install`
+> command above is not yet available.
+
+## Local world commands
+
+```bash
+worldant init my-world --app todo
+worldant build
+worldant serve
+```
+
+`worldant build` validates the world directory and writes an immutable `.dist`
+snapshot. `worldant serve` runs compatible published snapshots.

@@ -7,9 +7,11 @@ Worldant is an actively in-progress runtime for AI-owned software worlds.
 
 It is being rebuilt around a directory-first model: an agent edits files, the
 daemon validates and builds a `.dist` snapshot, and the running world exposes
-typed commands, mutations, workflows, and reactive streams.
+Commands and durable Workflows.
 
 This documentation describes the target architecture. APIs are not stable yet.
+The public distribution, installer, and packaging live at
+[github.com/Midwess/worldant](https://github.com/Midwess/worldant).
 
 ## Why it exists
 
@@ -26,15 +28,10 @@ Worldant is that runtime boundary.
 - World directory discovery and validation.
 - SQL migration validation and schema reflection.
 - PgPaw/Postgres as database truth and realtime data plane.
-- Commands for quick read/compute logic.
-- Mutations for committed writes.
-- Durable workflows and replay-safe steps.
-- Reactive SQL subscriptions and cursor-backed event streams.
-- The az-wire frame protocol and knowledge surface.
-- MCP and HTTP surfaces for outside agents.
-
-Worldant does not own generated UI. Ragent owns UI generation and consumes
-Worldant through the same `worldant-client` protocol as any other client.
+- Commands for immediate reads and writes (there is no separate Mutation kind).
+- Durable Workflows with internal, replay-safe Steps.
+- Collection synchronization and event streams as protocol facilities.
+- HTTP surfaces for outside agents.
 
 ## Core rule
 
@@ -51,19 +48,20 @@ becomes a hidden state system outside the database.
 
 ```text
 world/
-  migrations/
+  worldant.ts
+  apps/
+    <app>/
+      migrations/
+      commands/
+      workflows/
+        steps/
+      tests/
   generated/
-  commands/
-  mutations/
-  workflows/
-    steps/
-  reactive/
-  tests/
 
 worldant build
   -> .dist/run/<run_snapshot_id>
   -> PgPaw metadata
-  -> az-wire catalog + knowledge text
+  -> public catalog metadata
 
 worldant run
   -> daemon serves latest valid snapshots

@@ -17,13 +17,6 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Resolve the exact Worldant and Orbit UI commits pinned by this repository.
-# Both submodules are public, so the build needs no GitHub credentials.
-COPY .git ./.git
-COPY .gitmodules ./
-RUN git submodule update --init --recursive \
-    && npm ci --prefix vendor/orbit-ui --ignore-scripts
-
 # Cache layer 2: copy source and build
 COPY index.html ./
 COPY public ./public
@@ -31,6 +24,25 @@ COPY src ./src
 COPY scripts ./scripts
 COPY tsconfig*.json vite.config.ts eslint.config.js vitest.config.ts ./
 COPY components.json ./
+COPY .gitmodules ./
+
+# Remote Docker builders do not include the parent repository's .git directory.
+# Fetch the exact public submodule revisions instead of relying on local Git
+# metadata being present in the build context. Keep these defaults aligned with
+# the gitlinks committed in this repository; build args allow deliberate testing
+# of another revision without editing the Dockerfile.
+ARG WORLDANT_REF=3a4727370a0f79b14c363e91e577265f7d35c813
+ARG ORBIT_UI_REF=c469f3670b4affdad3f548b5bd6ff11831e4e5e0
+RUN rm -rf src/content/vendor/worldant vendor/orbit-ui \
+    && git init -q src/content/vendor/worldant \
+    && git -C src/content/vendor/worldant remote add origin https://github.com/Midwess/worldant.git \
+    && git -C src/content/vendor/worldant fetch --depth 1 origin "$WORLDANT_REF" \
+    && git -C src/content/vendor/worldant checkout -q --detach FETCH_HEAD \
+    && git init -q vendor/orbit-ui \
+    && git -C vendor/orbit-ui remote add origin https://github.com/Midwess/orbit-ui.git \
+    && git -C vendor/orbit-ui fetch --depth 1 origin "$ORBIT_UI_REF" \
+    && git -C vendor/orbit-ui checkout -q --detach FETCH_HEAD \
+    && npm ci --prefix vendor/orbit-ui --ignore-scripts
 
 # pnpm build runs vite build (via the npm script "build" → "vite build")
 RUN pnpm run build

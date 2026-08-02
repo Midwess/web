@@ -33,3 +33,7 @@ pnpm preview
 Open `http://localhost:4173/ui/` for Orbit UI. Component and block deep links,
 such as `/ui/components/select` and `/ui/blocks/work-os`, are served by the
 nginx `/ui/` fallback in production.
+
+The Docker build does not require the parent checkout's `.git` directory. It
+fetches the pinned public Worldant and Orbit UI revisions itself, which keeps
+remote builders reproducible even when their source context omits Git metadata.

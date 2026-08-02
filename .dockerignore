@@ -9,8 +9,9 @@ dist
 .idea
 .vscode
 
-# VCS metadata is included because the build resolves the pinned public
-# submodule commit. The final nginx image never receives it.
+# VCS metadata is unavailable on many remote builders and is not needed: the
+# Dockerfile fetches the pinned public submodule revisions explicitly.
+.git
 .gitignore
 
 # Local config

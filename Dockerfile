@@ -32,7 +32,7 @@ COPY .gitmodules ./
 # the gitlinks committed in this repository; build args allow deliberate testing
 # of another revision without editing the Dockerfile.
 ARG WORLDANT_REF=3a4727370a0f79b14c363e91e577265f7d35c813
-ARG ORBIT_UI_REF=ad8d21225e3bbca18a65b9110c211d48ad4004c1
+ARG ORBIT_UI_REF=6bf5ef63bdb2f654df0786fad37f0760b1b227b8
 RUN rm -rf src/content/vendor/worldant vendor/orbit-ui \
     && git init -q src/content/vendor/worldant \
     && git -C src/content/vendor/worldant remote add origin https://github.com/Midwess/worldant.git \

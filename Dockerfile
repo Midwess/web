@@ -5,15 +5,24 @@
 # ---- Stage 1: build ----
 FROM node:22-alpine AS build
 
-# pnpm via corepack (no global install)
-RUN corepack enable && corepack prepare pnpm@10 --activate
-RUN apk add --no-cache git
+# Git resolves the public submodules pinned by this repository. Pinning pnpm
+# keeps local and container builds on the same package-manager release.
+RUN apk add --no-cache git \
+    && corepack enable \
+    && corepack prepare pnpm@10.28.2 --activate
 
 WORKDIR /app
 
 # Cache layer 1: copy lockfile first and install deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
+
+# Resolve the exact Worldant and Orbit UI commits pinned by this repository.
+# Both submodules are public, so the build needs no GitHub credentials.
+COPY .git ./.git
+COPY .gitmodules ./
+RUN git submodule update --init --recursive \
+    && npm ci --prefix vendor/orbit-ui --ignore-scripts
 
 # Cache layer 2: copy source and build
 COPY index.html ./
@@ -70,6 +79,16 @@ server {
     # HTML — short cache, must revalidate
     location ~* \.html$ {
         add_header Cache-Control "public, max-age=0, must-revalidate";
+    }
+
+    # Orbit UI is built as a separate Vite SPA under /ui/. Keep deep component
+    # and block URLs inside that app instead of falling through to Midwess.
+    location = /ui {
+        return 308 /ui/;
+    }
+
+    location /ui/ {
+        try_files $uri $uri/index.html /ui/index.html;
     }
 
     # SPA fallback: any other path is a client-side route

@@ -9,8 +9,8 @@ dist
 .idea
 .vscode
 
-# VCS
-.git
+# VCS metadata is included because the build resolves the pinned public
+# submodule commit. The final nginx image never receives it.
 .gitignore
 
 # Local config

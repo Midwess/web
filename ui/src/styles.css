@@ -1,0 +1,26 @@
+* { box-sizing: border-box; }
+
+html { background: #20211f; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #20211f;
+  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+  font-synthesis: none;
+}
+
+button,
+input,
+select,
+textarea { font: inherit; }
+
+button { border: 0; cursor: pointer; }
+
+h1,
+h2,
+h3,
+p { margin: 0; }
+
+.icon { flex: 0 0 auto; }

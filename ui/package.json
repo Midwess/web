@@ -1,0 +1,133 @@
+{
+  "name": "@midwess/orbit-ui",
+  "version": "0.4.1",
+  "description": "Composable React components and product blocks for the Orbit design language.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "dist",
+    "registry.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./alert": {
+      "types": "./dist/types/components/ui/alert.d.ts",
+      "import": "./dist/alert.js",
+      "require": "./dist/alert.cjs"
+    },
+    "./avatar": {
+      "types": "./dist/types/components/ui/avatar.d.ts",
+      "import": "./dist/avatar.js",
+      "require": "./dist/avatar.cjs"
+    },
+    "./badge": {
+      "types": "./dist/types/components/ui/badge.d.ts",
+      "import": "./dist/badge.js",
+      "require": "./dist/badge.cjs"
+    },
+    "./button": {
+      "types": "./dist/types/components/ui/button.d.ts",
+      "import": "./dist/button.js",
+      "require": "./dist/button.cjs"
+    },
+    "./icon": {
+      "types": "./dist/types/components/ui/icon.d.ts",
+      "import": "./dist/icon.js",
+      "require": "./dist/icon.cjs"
+    },
+    "./icon-action": {
+      "types": "./dist/types/components/ui/icon-action.d.ts",
+      "import": "./dist/icon-action.js",
+      "require": "./dist/icon-action.cjs"
+    },
+    "./progress": {
+      "types": "./dist/types/components/ui/progress.d.ts",
+      "import": "./dist/progress.js",
+      "require": "./dist/progress.cjs"
+    },
+    "./section-title": {
+      "types": "./dist/types/components/ui/section-title.d.ts",
+      "import": "./dist/section-title.js",
+      "require": "./dist/section-title.cjs"
+    },
+    "./surface": {
+      "types": "./dist/types/components/ui/surface.d.ts",
+      "import": "./dist/surface.js",
+      "require": "./dist/surface.cjs"
+    },
+    "./view-heading": {
+      "types": "./dist/types/components/ui/view-heading.d.ts",
+      "import": "./dist/view-heading.js",
+      "require": "./dist/view-heading.cjs"
+    },
+    "./cn": {
+      "types": "./dist/types/lib/cn.d.ts",
+      "import": "./dist/cn.js",
+      "require": "./dist/cn.cjs"
+    },
+    "./docs": {
+      "types": "./dist/types/docs.d.ts",
+      "import": "./dist/docs.js",
+      "require": "./dist/docs.cjs"
+    },
+    "./docs.css": "./dist/docs.css",
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "dev": "vite",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "build:lib": "vite build --config vite.lib.config.ts && vite build --config vite.docs-lib.config.ts && tsc -p tsconfig.lib.json",
+    "build:docs": "vite build",
+    "build": "npm run typecheck && npm run build:lib && npm run build:docs",
+    "preview": "vite preview --outDir docs-dist",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18.2.0",
+    "react-dom": ">=18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/midwess/orbit-ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/midwess/orbit-ui/issues"
+  },
+  "homepage": "https://github.com/midwess/orbit-ui#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "design-system",
+    "ui-components",
+    "component-library"
+  ]
+}

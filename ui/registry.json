@@ -1,0 +1,187 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "orbit-ui",
+  "homepage": "https://midwess.com/ui/",
+  "items": [
+    {
+      "name": "orbit-theme",
+      "type": "registry:style",
+      "title": "Orbit theme",
+      "description": "Orbit design tokens, continuous corner geometry, dark and light themes, and component styles.",
+      "files": [
+        {
+          "path": "src/styles/tokens.css",
+          "type": "registry:style",
+          "target": "@components/orbit/tokens.css"
+        },
+        {
+          "path": "src/styles/components.css",
+          "type": "registry:style",
+          "target": "@components/orbit/components.css"
+        },
+        {
+          "path": "src/styles/index.css",
+          "type": "registry:style",
+          "target": "@components/orbit/index.css"
+        }
+      ]
+    },
+    {
+      "name": "cn",
+      "type": "registry:lib",
+      "title": "Class name utility",
+      "description": "A dependency-free class name composer used by Orbit components.",
+      "files": [
+        {
+          "path": "src/lib/cn.ts",
+          "type": "registry:lib",
+          "target": "@lib/cn.ts"
+        }
+      ]
+    },
+    {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "description": "Composable semantic feedback with shared Orbit continuous-corner geometry.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/alert.tsx",
+          "type": "registry:ui",
+          "target": "@ui/alert.tsx"
+        }
+      ]
+    },
+    {
+      "name": "icon",
+      "type": "registry:ui",
+      "title": "Icon",
+      "description": "The small, typed Orbit interface icon set.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme"],
+      "files": [
+        {
+          "path": "src/components/ui/icon.tsx",
+          "type": "registry:ui",
+          "target": "@ui/icon.tsx"
+        }
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "Composable Orbit actions with explicit tone and size variants.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/button.tsx",
+          "type": "registry:ui",
+          "target": "@ui/button.tsx"
+        }
+      ]
+    },
+    {
+      "name": "icon-action",
+      "type": "registry:ui",
+      "title": "Icon action",
+      "description": "Accessible icon-only actions with required labels.",
+      "registryDependencies": [
+        "Midwess/orbit-ui/orbit-theme",
+        "Midwess/orbit-ui/cn",
+        "Midwess/orbit-ui/icon"
+      ],
+      "files": [
+        {
+          "path": "src/components/ui/icon-action.tsx",
+          "type": "registry:ui",
+          "target": "@ui/icon-action.tsx"
+        }
+      ]
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "Compact semantic status labels in the Orbit visual language.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/badge.tsx",
+          "type": "registry:ui",
+          "target": "@ui/badge.tsx"
+        }
+      ]
+    },
+    {
+      "name": "avatar",
+      "type": "registry:ui",
+      "title": "Avatar",
+      "description": "Initial avatars and a child-composed avatar group.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/avatar.tsx",
+          "type": "registry:ui",
+          "target": "@ui/avatar.tsx"
+        }
+      ]
+    },
+    {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "description": "A labeled, accessible progress indicator.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/progress.tsx",
+          "type": "registry:ui",
+          "target": "@ui/progress.tsx"
+        }
+      ]
+    },
+    {
+      "name": "surface",
+      "type": "registry:ui",
+      "title": "Surface",
+      "description": "A composable content surface with explicit semantic tones.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/surface.tsx",
+          "type": "registry:ui",
+          "target": "@ui/surface.tsx"
+        }
+      ]
+    },
+    {
+      "name": "section-title",
+      "type": "registry:ui",
+      "title": "Section title",
+      "description": "A reusable section heading with metadata and an optional action slot.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/section-title.tsx",
+          "type": "registry:ui",
+          "target": "@ui/section-title.tsx"
+        }
+      ]
+    },
+    {
+      "name": "view-heading",
+      "type": "registry:ui",
+      "title": "View heading",
+      "description": "An editorial page heading with eyebrow, description, and action slots.",
+      "registryDependencies": ["Midwess/orbit-ui/orbit-theme", "Midwess/orbit-ui/cn"],
+      "files": [
+        {
+          "path": "src/components/ui/view-heading.tsx",
+          "type": "registry:ui",
+          "target": "@ui/view-heading.tsx"
+        }
+      ]
+    }
+  ]
+}

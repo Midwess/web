@@ -1,0 +1,16 @@
+# Worldant AI Entrypoint
+
+Read [`ai/worldant.llms.txt`](ai/worldant.llms.txt) first. It is the canonical AI documentation for
+Worldant.
+
+Use [`ai/llms-full.txt`](ai/llms-full.txt) when a larger context window is available.
+
+Core invariants:
+
+- Commands and Workflows are the public callable concepts.
+- Steps are internal Workflow checkpoints and are never public callables.
+- Query, Mutation, Reactive/Rule, Goal, and generic Action are not current concepts.
+- Authentication is bring-your-own. Worldant exposes custom request headers to PostgreSQL as
+  transaction-local `request.headers`.
+- App authorization is normal PostgreSQL row-level security in migrations.
+

@@ -1,0 +1,165 @@
+# Worldant
+
+Worldant is a filesystem-authored runtime for immediate application functions and durable
+processes. A build freezes source into an immutable run snapshot. The host runs snapshots, not the
+working tree.
+
+## Read First
+
+- Human docs: `docs/worldant/index.mdx`
+- Quickstart: `docs/worldant/quickstart.mdx`
+- Commands: `docs/worldant/commands.mdx`
+- Workflows: `docs/worldant/workflows.mdx`
+- Database and auth: `docs/worldant/database.mdx`
+- Configuration and middleware: `docs/worldant/configuration.mdx`
+- Serve lifecycle: `docs/worldant/serve.mdx`
+
+## Current Model
+
+Worldant has two public callable concepts:
+
+- Command: immediate, non-durable function under `commands/` or `apps/<app>/commands/`.
+- Workflow: durable deterministic orchestration under `workflows/` or `apps/<app>/workflows/`.
+
+Steps live under `workflows/steps/` or `apps/<app>/workflows/steps/`. They are internal Workflow IO
+checkpoints and are not public callables.
+
+Removed concepts are not available: Query, Mutation, Reactive/Rule, Goal, generic Action, and
+public Step APIs.
+
+## Client Use
+
+Use the generic client handle:
+
+```ts
+import { createWorld, start } from "worldant-client"
+
+const world = createWorld({ url: "ws://127.0.0.1:8787/__worldant/v1/ws" })
+const result = await world.todo.add({ title: "Buy milk" })
+```
+
+Commands return one result immediately. Use an idempotency key when retrying a write:
+
+```ts
+await world.todo.add(input, { key: "todo:add:buy-milk" })
+```
+
+Workflows are references and cannot be called directly:
+
+```ts
+const run = await start(world.todo.remind, input)
+const output = await run.result
+```
+
+## Authoring
+
+Commands import runtime capabilities from `worldant` and reach application data by subject over
+the activation-bound session from `worldant-client`:
+
+```ts
+import { session } from "worldant-client"
+
+async function add(input) {
+  "worldant::command"
+  const reply = await session.request("pgpaw.sql", {
+    sql: "insert into todo_items (title) values ($1) returning id, title, done, created_at",
+    params: [input.title],
+  })
+  return reply.rows[0]
+}
+```
+
+`session.request("pgpaw.sql", { sql, params })` executes exactly one parameterized statement on the
+PgPaw data node and answers `{ command, rows, rowsAffected }`; applications supply their own row
+types. Every call commits independently; there is no handler-wide or multi-statement transaction.
+Group effects that must commit together into one SQL statement (a data-modifying CTE) or make the
+mutations idempotent. The activation's ingress headers are projected onto every outgoing request,
+so RLS policies keyed on `request.headers` hold across the wire. `session.subscribe` throws inside
+an activation; realtime is a client-session subscription to `pgpaw.live`.
+
+Workflow bodies orchestrate deterministic work. They call Steps, child Workflows, and durable wait
+primitives. They do not directly access database, network, filesystem, ambient timers, randomness,
+or other nondeterministic APIs.
+
+Steps perform supported IO for Workflows. Step output and durable completion commit atomically in
+the private kernel transition, but application SQL commits independently — a retried Step may
+re-issue committed writes, so mutations must be idempotent.
+
+## Database Configuration
+
+The root `worldant.ts` uses `pgpaw` as the single source of truth for database configuration. It is
+a strict union:
+
+```ts
+type PgPawConfig =
+  | {
+      builtin: true
+      dataDir: string
+      databaseName: string
+      minConnections: number
+      maxConnections: number
+    }
+  | {
+      builtin: false
+      remoteAddress: string
+      minConnections: number
+      maxConnections: number
+    }
+```
+
+`databaseName` applies to embedded PostgreSQL. In remote mode, `remoteAddress` is the DSN and its
+database component selects the remote database. Do not use top-level `dsn`, `dataDir`, or
+`poolMaxConnections` fields.
+
+In builtin mode, PgPaw owns the one embedded primary. Worldant obtains its DSN through PgPaw's public
+API and opens a direct SQLx PostgreSQL pool for all application and kernel database work. A
+listenerless PgPaw child separately joins the Worldant node over a private Unix socket and registers
+the `pgpaw.sql` and `pgpaw.live` services — the application data path activations and clients reach
+by subject. There is no replica or public PgPaw listener; the kernel keeps its direct pool.
+
+Serve completes private child establishment and route synchronization before public Worldant
+hosting, starts Workflow workers after public binding succeeds, and reports readiness last.
+
+## Auth and RLS
+
+Worldant does not define users, JWT formats, claims, tenants, roles, or token validation.
+
+Custom request headers are preserved and projected into request-bound PostgreSQL transactions as:
+
+```sql
+current_setting('request.headers', true)::jsonb
+```
+
+Application authorization is normal PostgreSQL row-level security in migrations:
+
+```sql
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notes FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY notes_owner ON notes
+TO worldant_runtime
+USING (
+  owner_id = current_setting('request.headers', true)::jsonb->>'authorization'
+)
+WITH CHECK (
+  owner_id = current_setting('request.headers', true)::jsonb->>'authorization'
+);
+```
+
+Do not trust raw client headers in production unless a trusted gateway, middleware, or SQL function
+has validated them. Root `worldant.policy.json` can select kernel event visibility with `events`
+and `ownerHeader`; application-table RLS belongs in app migrations.
+
+## Common Mistakes
+
+- Do not create `queries/`, `mutations/`, `reactive/`, or `goals.ts`.
+- Do not call Steps directly from clients.
+- Do not assume a Command has one implicit handler-wide transaction.
+- Do not put nondeterministic IO in a Workflow body.
+- Do not treat middleware context as SQL identity; SQL sees original request headers.
+- Do not hard-code deployment URLs into generated packages or declarations.
+- Do not bind non-JSON types directly; bind text and cast, e.g. `($1::text)::uuid`.
+- Do not use `= any($1)` on a JS array; it binds as jsonb — unnest with
+  `jsonb_array_elements_text($1)`.
+- Do not expect a row when `rows` is empty; check `reply.rows.length` when absence is a normal
+  outcome, and alias duplicate output columns to unique names.

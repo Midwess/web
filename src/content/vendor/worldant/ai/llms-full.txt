@@ -1,0 +1,185 @@
+# Worldant Full AI Context
+
+This file expands the canonical AI entrypoint in `worldant.llms.txt`.
+
+## Concepts
+
+Worldant worlds are ordinary directories. The single-app layout uses root `commands/`,
+`workflows/`, `workflows/steps/`, `migrations/`, `lib/`, and `tests/`. Existing multi-app worlds can
+use `apps/<app>/...`.
+
+Single-app worlds use `worldant.ts` `name` as the app namespace when set. Without it, Worldant
+normalizes the world directory name into a valid identifier. In multi-app worlds, the app directory
+name is the app namespace.
+
+Identity comes from paths:
+
+```text
+commands/add.ts                         -> Command <world>.add
+workflows/sendReminder.ts               -> Workflow <world>.sendReminder
+workflows/steps/loadRecipients.ts       -> Step <world>.loadRecipients (internal)
+apps/todo/commands/add.ts               -> Command todo.add
+```
+
+## Runtime Boundaries
+
+Commands are immediate and non-durable. Application SQL goes by subject over the activation-bound
+session: `session.request("pgpaw.sql", { sql, params })` (import `session` from
+`worldant-client`) executes exactly one parameterized statement and answers
+`{ command, rows, rowsAffected }`.
+Every call commits independently; there is no handler-wide or multi-statement transaction.
+
+Workflows are durable deterministic orchestration. They replay from the top against a PostgreSQL
+journal. Durable calls are correlated by position and replay returns recorded values.
+
+Steps are internal Workflow IO checkpoints. Step output, emitted signals, scheduling, and job
+disposition commit atomically in the private fenced kernel transition; application SQL commits
+independently and must be idempotent across retries.
+
+A Workflow imports Steps by their authored bindings and awaits them as durable checkpoints.
+Workflows may only import deterministic orchestration capabilities from `worldant`; database access
+belongs in Steps:
+
+```ts
+// workflows/remind.ts
+import { sleep } from "worldant"
+import { loadItem } from "./steps/loadItem.ts"
+import { sendReminder } from "./steps/sendReminder.ts"
+
+async function remind(input: { id: number; delayMs: number }) {
+  "worldant::workflow"
+  await sleep(input.delayMs)
+  const item = await loadItem({ id: input.id })
+  if (item.done) return { reminded: false }
+  return sendReminder({ id: item.id, title: item.title })
+}
+```
+
+```ts
+// workflows/steps/loadItem.ts
+import { session } from "worldant-client"
+
+type SqlReply<Row> = { command: string; rows: Row[]; rowsAffected: number }
+
+async function loadItem(input: { id: number }) {
+  "worldant::step"
+  const reply = (await session.request("pgpaw.sql", {
+    sql: "select id, title, done from todo_items where id = $1",
+    params: [input.id],
+  })) as SqlReply<{ id: number; title: string; done: boolean }>
+  return reply.rows[0]
+}
+```
+
+```ts
+// workflows/steps/sendReminder.ts
+import { emit } from "worldant"
+
+async function sendReminder(input: { id: number; title: string }) {
+  "worldant::step"
+  await emit("reminder", { id: input.id, title: input.title })
+  return { reminded: true }
+}
+```
+
+The runtime prefixes the app onto emitted kinds: `emit("reminder")` in app `todo` stores kind
+`todo.reminder`, which is what event waits and client filters match against.
+
+On replay a committed Step returns its stored output without repeating database effects.
+
+## Configuration
+
+The root `worldant.ts` exports static settings and middleware. Build and direct run may omit it,
+but serve requires complete wire settings:
+
+```ts
+import type { NodeConfig } from "worldant"
+
+export default {
+  name: "todo",
+  wire: {
+    nodeName: "todo_local",
+    bindAddress: "127.0.0.1",
+    port: 8787,
+    webTransport: true,
+    webSocket: true,
+  },
+  pgpaw: {
+    builtin: true,
+    dataDir: ".worldant/data",
+    databaseName: "postgres",
+    minConnections: 0,
+    maxConnections: 2,
+  },
+  middleware: [],
+} satisfies NodeConfig
+```
+
+`name` is the stable world subject and callable namespace. `wire.nodeName` is an independent
+deployment topology identity. The bind address must be an IP literal, both transport booleans must
+be explicit, and at least one transport must be enabled. WebSocket controls the complete TCP
+surface, including `/__worldant/v1/ws`, `/__worldant/v1/llms.txt`, and HTTP knowledge routes.
+WebTransport carries the wire profile, including knowledge, without enabling those HTTP routes.
+
+`pgpaw` is the only database configuration surface and is a strict union. For embedded PostgreSQL,
+use `builtin: true` with `dataDir`, `databaseName`, `minConnections`, and `maxConnections`;
+`databaseName` selects the embedded database. For remote PostgreSQL, use `builtin: false` with
+`remoteAddress`, `minConnections`, and `maxConnections`; `remoteAddress` is the DSN and selects the
+remote database. Do not mix fields from the two variants.
+
+Serve publishes a snapshot, loads final settings and middleware from that snapshot, and atomically
+binds all enabled transports on one shared port before starting workers or reporting readiness.
+Editing `worldant.ts` does not change a running node; stop and rerun serve to publish and apply new
+configuration. A bind failure releases partial listeners and starts no workers, but does not remove
+the newly published immutable snapshot. Shutdown awaits the node's transports and background work.
+
+In builtin mode, PgPaw owns the one embedded primary. Worldant obtains its DSN through PgPaw's public
+API and opens a direct SQLx PostgreSQL pool for application and kernel reads, writes, transactions,
+migrations, and notifications. A listenerless PgPaw child also joins the Worldant node over an
+owner-only private Unix socket and registers the read-only `pgpaw.read`, `pgpaw.cursor`, and
+`pgpaw.live` subjects. This creates no replica or public PgPaw listener. Serve completes child route
+synchronization before public hosting, starts Workflow workers after public binding, and reports
+readiness last.
+
+Middleware runs on served ingress before unary decoding and once when a subscription is
+established. It may replace payload and opaque context, reject, or return a unary response.
+Streaming middleware cannot return a unary response. Subject, operation, origin, and original
+headers are immutable.
+
+## Database and Auth
+
+PostgreSQL is the source of truth and the authorization boundary. Request-bound SQL runs through
+the fixed `worldant_runtime` role and can read custom headers through transaction-local
+`request.headers`.
+
+Worldant does not generate or validate JWTs. If a project wants JWT auth, the project validates the
+token before trusting it. RLS can read a trusted header or call SQL functions that interpret the
+token in `request.headers`.
+
+Parameters bind as JSON values against the statement's described types:
+
+- Non-JSON types need a text cast on the parameter: `where id = ($1::text)::uuid`.
+- A JS array binds as jsonb, not a Postgres array; `= any($1)` fails. Unnest instead:
+  `where id in (select jsonb_array_elements_text($1)::uuid)`.
+- Absence is an empty `rows` array; check `reply.rows.length`, and alias duplicate output columns
+  to unique names.
+
+## AI Integration Checklist
+
+When integrating a running world:
+
+1. Fetch `/__worldant/v1/llms.txt`.
+2. Fetch `/__worldant/v1/knowledge/<app>.d.ts` for exact callable types.
+3. Use `createWorld()` from `worldant-client`.
+4. Call Commands through `world.<app>.<command>()`.
+5. Run Workflows with two awaits.
+6. Respect app RLS and pass the required headers.
+
+When authoring a world:
+
+1. Use Commands for immediate reads and writes.
+2. Use explicit Command transactions when multiple operations must be atomic.
+3. Use Workflows for durable orchestration and waits.
+4. Put IO checkpoints in internal Steps.
+5. Put application RLS in migrations.
+6. Put kernel event visibility policy in `worldant.policy.json` only when needed.

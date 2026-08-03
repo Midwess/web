@@ -1,0 +1,218 @@
+name: Build and release Worldant
+
+# Builds the worldant CLI from private source on every supported platform, bootstrapping the
+# embedded Bun engine (vendor/bun C++ objects) and running the engine test suite per platform
+# before packaging. The release job (sign + npm + GitHub Release) runs only when run_release is
+# true, so platform bring-up can iterate on build+test without publishing anything.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version
+        required: true
+        default: 1.1.0
+      source_ref:
+        description: Private source branch, tag, or SHA
+        required: true
+        default: release/1.0.0-source
+      run_release:
+        description: Sign, publish to npm, and create the GitHub Release (leave false to only build+test)
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: build-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test ${{ matrix.key }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            key: darwin-arm64
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            key: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            key: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out private release source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Midwess/worldant-internal
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: source
+
+      - name: Check out engine and data-plane sources
+        env:
+          SUBMODULE_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global url."https://x-access-token:${SUBMODULE_TOKEN}@github.com/".insteadOf "git@github.com:"
+          # Embedded Bun engine submodule (public).
+          git -C source submodule update --init --recursive vendor/bun
+          # The workspace resolves its data-plane path deps from a sibling
+          # ../PgPaw checkout (root Cargo.toml). Its URL and commit come from
+          # source so no private identifiers live in this public workflow; the
+          # pinned commit's nested submodule pins match source's (tree alignment).
+          pgpaw_url="$(git -C source config -f .gitmodules submodule.pgpaw.url)"
+          pgpaw_sha="$(git -C source rev-parse HEAD:pgpaw)"
+          git clone "$pgpaw_url" PgPaw
+          git -C PgPaw checkout "$pgpaw_sha"
+          git -C PgPaw config -f .gitmodules --get-regexp 'submodule\..*\.path' | awk '{print $2}' | while read -r sub; do
+            [ "$sub" = "docs" ] && continue
+            git -C PgPaw submodule update --init --recursive "$sub"
+          done
+
+      - name: Install toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: brew install llvm@21 ninja
+
+      - name: Install toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3 lld
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          {
+            echo "CC=clang-21"
+            echo "CXX=clang++-21"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang-21"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=clang-21"
+          } >> "$GITHUB_ENV"
+
+      - name: Install bun (runs bun's own C++ codegen)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Rust toolchain from rust-toolchain.toml
+        working-directory: source
+        run: rustup show
+
+      - name: Resolve bun submodule commit for cache key
+        id: bun
+        working-directory: source
+        run: echo "sha=$(git -C vendor/bun rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the bun engine build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            source/vendor/bun/build
+            source/vendor/bun/vendor
+            ~/.bun/build-cache
+          key: bun-v2-${{ matrix.key }}-${{ steps.bun.outputs.sha }}
+
+      - name: Bootstrap the embedded Bun engine
+        working-directory: source
+        env:
+          WORLDANT_BUN_TARGET: ${{ matrix.target }}
+        run: scripts/bun/bootstrap.sh
+
+      - name: Build CLI
+        working-directory: source
+        env:
+          CARGO_INCREMENTAL: "0"
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo build --release --target "$TARGET" -p worldant-cli --bin worldant
+
+      - name: Test the engine on this platform
+        working-directory: source
+        env:
+          CARGO_INCREMENTAL: "0"
+          TARGET: ${{ matrix.target }}
+        run: cargo test --release --target "$TARGET" -p world-host -p world-share -p world-build
+
+      - name: Package binary
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          KEY: ${{ matrix.key }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p package/bin
+          cp "source/target/$TARGET/release/worldant" package/bin/worldant
+          chmod +x package/bin/worldant
+          tar -C package -czf "worldant-$VERSION-$KEY.tar.gz" bin/worldant
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: worldant-${{ matrix.key }}
+          path: worldant-${{ inputs.version }}-${{ matrix.key }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Sign, publish, and verify
+    needs: build
+    if: ${{ inputs.run_release == true }}
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: worldant-*
+          merge-multiple: true
+          path: release-assets
+      - name: Assemble release evidence and manifest
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: node scripts/assemble-release.mjs
+      - name: Sign manifest with sigstore-js
+        run: node scripts/sign-release.mjs
+      - name: Create draft release and upload every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --draft --title "Worldant v$VERSION" --notes-file CHANGELOG.md
+          gh release upload "v$VERSION" release-assets/* --clobber
+      - name: Publish scoped npm installer
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET_KEY }}
+        run: npm publish --access public --provenance
+      - name: Verify npm publication
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            published="$(npm view @midwess/worldant@"$VERSION" version 2>/dev/null || true)"
+            [ "$published" = "$VERSION" ] && exit 0
+            sleep 5
+          done
+          exit 1
+      - name: Finalize GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "v$VERSION" --draft=false --latest

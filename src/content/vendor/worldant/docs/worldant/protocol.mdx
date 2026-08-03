@@ -1,0 +1,46 @@
+---
+title: Protocol
+description: Worldant client calls, runs, subscriptions, catalog, and knowledge text.
+---
+
+With `wire.webSocket: true`, Worldant exposes the TCP wire surface at:
+
+```text
+GET /__worldant/v1/ws
+```
+
+The public profile exposes:
+
+- `Call` for Commands.
+- `Run` for Workflows.
+- Subscription streams for events, synced collections, and run status.
+- Catalog and AI knowledge payloads.
+
+In builtin mode, the same Worldant node privately parents a listenerless PgPaw child. Route
+synchronization makes the child subjects `pgpaw.read`, `pgpaw.cursor`, and `pgpaw.live` reachable
+through the node graph. They provide read-only query, cached-cursor, and live-query behavior;
+mutating SQL remains rejected. The private Unix parent endpoint is neither a browser endpoint nor a
+separate public PgPaw listener.
+
+The same TCP surface provides plain text knowledge:
+
+```text
+GET /__worldant/v1/llms.txt
+GET /__worldant/v1/knowledge/:app.d.ts
+```
+
+With `wire.webTransport: true`, the Worldant wire profile is also available over WebTransport on
+the configured shared address and port. It carries calls, runs, subscriptions, catalog, and
+knowledge. When both transports are enabled they bind the same resolved port atomically. When
+WebSocket is disabled there is no TCP listener and the HTTP paths above are unavailable; knowledge
+remains available through the wire profile over WebTransport.
+
+Use the generic client:
+
+```ts
+import { createWorld } from "worldant-client"
+
+const world = createWorld({ url: "ws://127.0.0.1:8787/__worldant/v1/ws" })
+```
+
+Generated artifacts do not bake deployment addresses.

@@ -12,6 +12,7 @@
  * end up as on-disk files.
  */
 import type { RouteRecord } from "vite-react-ssg";
+import { documentationPaths } from "@midwess/orbit-ui/docs";
 import slugs from "@/content/slugs.json";
 import { posts } from "@/content/blogs";
 import { getTree, flattenPages } from "@/lib/docs/tree";
@@ -23,6 +24,7 @@ import Policy from "@/pages/Policy";
 import BlogPost from "@/pages/BlogPost";
 import ProjectDocs from "@/pages/ProjectDocs";
 import NotFound from "@/pages/NotFound";
+import OrbitUI from "@/pages/OrbitUI";
 
 /** Pre-render every known docs page across every project. */
 const projectDocPaths = (): string[] => {
@@ -41,11 +43,22 @@ const projectDocPaths = (): string[] => {
 const blogPostPaths = (): string[] =>
   posts.map((p) => `/blog/${p.slug}`);
 
+/** Pre-render the exact Orbit documentation shell at every public UI route. */
+const orbitPaths = (): string[] => [
+  "/ui/",
+  ...documentationPaths.map((path) => `/ui${path}`),
+];
+
 export const routes: RouteRecord[] = [
   { path: "/", element: <Landing /> },
   { path: "/about", element: <About /> },
   { path: "/pricing", element: <Pricing /> },
   { path: "/policy", element: <Policy /> },
+  {
+    path: "/ui/*",
+    element: <OrbitUI />,
+    getStaticPaths: orbitPaths,
+  },
   {
     path: "/blog/:slug",
     element: <BlogPost />,

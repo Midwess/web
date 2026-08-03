@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "deno run --allow-all npm:vite --port 8080",
-    "build": "npm run build:orbit && node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build && npm run build:ui && node scripts/post-build.mjs",
-    "build:dev": "npm run build:orbit && node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build --mode development && npm run build:ui && node scripts/post-build.mjs",
+    "build": "npm run build:orbit && node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build && npm run copy:ui-assets && node scripts/post-build.mjs",
+    "build:dev": "npm run build:orbit && node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build --mode development && npm run copy:ui-assets && node scripts/post-build.mjs",
     "build:orbit": "npm --prefix ui run build:lib",
-    "build:ui": "npm --prefix ui run build:docs -- --base /ui/ --outDir ../dist/ui --emptyOutDir",
+    "copy:ui-assets": "node scripts/copy-orbit-assets.mjs",
     "preview": "vite preview",
     "test": "npm run build:orbit && vitest run"
   },

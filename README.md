@@ -7,10 +7,12 @@ The Worldant documentation is actively in progress. It is sourced from the
 pinned public Worldant submodule and currently describes the target runtime
 architecture rather than a stable product surface.
 
-Reusable interface primitives belong exclusively to the Orbit design-language
-repository mounted at `ui/`. The website does not maintain a second
-`src/components/ui` implementation or a local shadcn registry configuration;
-`src/components/landing` contains only website-specific composition.
+Reusable interface primitives and the `/ui/*` documentation shell belong
+exclusively to the Orbit design-language repository mounted at `ui/`. The web
+SSG renders Orbit's exported `UnifiedSession` directly, so there is no iframe,
+second client-only UI application, duplicated `src/components/ui`
+implementation, or local shadcn registry configuration. The
+`src/components/landing` directory contains only website-specific composition.
 
 ## Getting started
 
@@ -36,8 +38,8 @@ pnpm preview
 ```
 
 Open `http://localhost:4173/ui/` for Orbit UI. Component and block deep links,
-such as `/ui/components/select` and `/ui/blocks/work-os`, are served by the
-nginx `/ui/` fallback in production.
+such as `/ui/components/select` and `/ui/blocks/work-os`, are pre-rendered as
+dedicated pages by the same `vite-react-ssg` build as the main website.
 
 `main` keeps Worldant and the Orbit design language as pinned submodules. The
 design-language repository is mounted directly at `ui/`, matching its public

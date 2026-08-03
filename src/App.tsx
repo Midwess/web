@@ -6,6 +6,7 @@ import Policy from "./pages/Policy";
 import BlogPost from "./pages/BlogPost";
 import ProjectDocs from "./pages/ProjectDocs";
 import NotFound from "./pages/NotFound";
+import OrbitUI from "./pages/OrbitUI";
 
 const App = () => (
   <BrowserRouter>
@@ -15,6 +16,7 @@ const App = () => (
       <Route path="/blog/:slug" element={<BlogPost />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/policy" element={<Policy />} />
+      <Route path="/ui/*" element={<OrbitUI />} />
       <Route path="/:slug/*" element={<ProjectDocs />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

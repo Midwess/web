@@ -79,17 +79,8 @@ server {
         add_header Cache-Control "public, max-age=0, must-revalidate";
     }
 
-    # Orbit UI is built as a separate Vite SPA under /ui/. Keep deep component
-    # and block URLs inside that app instead of falling through to Midwess.
-    location = /ui {
-        return 308 /ui/;
-    }
-
-    location /ui/ {
-        try_files $uri $uri/index.html /ui/index.html;
-    }
-
-    # SPA fallback: any other path is a client-side route
+    # SPA fallback for client navigation. Orbit UI routes are pre-rendered by
+    # the same SSG application and resolve through their nested index.html.
     # $uri/index.html (not $uri/) avoids nginx's directory-detection redirect
     # that would 301 /worldant -> /worldant/. merge_slashes on (default) lets
     # the trailing-slash variant still resolve to the same index.html.

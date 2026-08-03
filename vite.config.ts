@@ -60,6 +60,7 @@ export default defineConfig(() => ({
     react(),
   ],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@midwess/schema": path.resolve(__dirname, "../libs/schema/typescript/dist/bundle.esm.js"),

@@ -19,15 +19,15 @@ RUN pnpm install --frozen-lockfile
 
 # Install design-language dependencies from its materialized lockfile while
 # retaining an independent cache layer for the UI library.
-COPY vendor/design-language/package.json vendor/design-language/package-lock.json ./vendor/design-language/
-RUN npm ci --prefix vendor/design-language --ignore-scripts
+COPY ui/package.json ui/package-lock.json ./ui/
+RUN npm ci --prefix ui --ignore-scripts
 
 # Cache layer 2: copy source and build
 COPY index.html ./
 COPY public ./public
 COPY src ./src
 COPY scripts ./scripts
-COPY vendor/design-language ./vendor/design-language
+COPY ui ./ui
 COPY tsconfig*.json vite.config.ts eslint.config.js vitest.config.ts ./
 COPY components.json ./
 

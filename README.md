@@ -14,7 +14,7 @@ Initialize both public submodules before installing dependencies:
 ```bash
 git submodule update --init --recursive
 pnpm install
-npm ci --prefix vendor/design-language
+npm ci --prefix ui
 ```
 
 Run the main website during development:
@@ -34,7 +34,9 @@ Open `http://localhost:4173/ui/` for Orbit UI. Component and block deep links,
 such as `/ui/components/select` and `/ui/blocks/work-os`, are served by the
 nginx `/ui/` fallback in production.
 
-`main` keeps Worldant and the Orbit design language as pinned submodules. Every
+`main` keeps Worldant and the Orbit design language as pinned submodules. The
+design-language repository is mounted directly at `ui/`, matching its public
+`/ui/*` route. Every
 push to `main` runs `materialize-production.yml`, checks out all submodules
 recursively, converts them to regular files, and force-updates the generated
 `deploy-production` branch. Railway builds from that branch, so Docker receives

@@ -1,6 +1,6 @@
 [submodule "src/content/vendor/worldant"]
 	path = src/content/vendor/worldant
 	url = https://github.com/Midwess/worldant.git
-[submodule "vendor/design-language"]
-	path = vendor/design-language
+[submodule "ui"]
+	path = ui
 	url = https://github.com/Midwess/orbit-ui.git

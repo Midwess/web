@@ -7,6 +7,11 @@ The Worldant documentation is actively in progress. It is sourced from the
 pinned public Worldant submodule and currently describes the target runtime
 architecture rather than a stable product surface.
 
+Reusable interface primitives belong exclusively to the Orbit design-language
+repository mounted at `ui/`. The website does not maintain a second
+`src/components/ui` implementation or a local shadcn registry configuration;
+`src/components/landing` contains only website-specific composition.
+
 ## Getting started
 
 Initialize both public submodules before installing dependencies:

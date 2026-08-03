@@ -13,13 +13,14 @@ RUN corepack enable \
 
 WORKDIR /app
 
-# Cache layer 1: copy lockfile first and install deps
+# Cache layer 1: copy lockfiles and package manifests first, then install deps.
+# The root package links Orbit from ui/, so its manifest must exist first.
 COPY package.json pnpm-lock.yaml ./
+COPY ui/package.json ui/package-lock.json ./ui/
 RUN pnpm install --frozen-lockfile
 
 # Install design-language dependencies from its materialized lockfile while
 # retaining an independent cache layer for the UI library.
-COPY ui/package.json ui/package-lock.json ./ui/
 RUN npm ci --prefix ui --ignore-scripts
 
 # Cache layer 2: copy source and build
@@ -29,8 +30,6 @@ COPY src ./src
 COPY scripts ./scripts
 COPY ui ./ui
 COPY tsconfig*.json vite.config.ts eslint.config.js vitest.config.ts ./
-COPY components.json ./
-
 # pnpm build runs vite build (via the npm script "build" → "vite build")
 RUN pnpm run build
 

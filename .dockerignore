@@ -9,8 +9,8 @@ dist
 .idea
 .vscode
 
-# VCS metadata is unavailable on many remote builders and is not needed: the
-# Dockerfile fetches the pinned public submodule revisions explicitly.
+# VCS metadata is not part of the deploy-production build context. That branch
+# contains materialized submodule files, so the image never needs Git metadata.
 .git
 .gitignore
 

@@ -7,7 +7,7 @@
     "dev": "deno run --allow-all npm:vite --port 8080",
     "build": "node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build && npm run build:ui && node scripts/post-build.mjs",
     "build:dev": "node scripts/ensure-worldant-vendor.mjs && vite-react-ssg build --mode development && npm run build:ui && node scripts/post-build.mjs",
-    "build:ui": "npm --prefix vendor/orbit-ui run build:docs -- --base /ui/ && node scripts/copy-ui.mjs",
+    "build:ui": "npm --prefix vendor/design-language run build:docs -- --base /ui/ && node scripts/copy-ui.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

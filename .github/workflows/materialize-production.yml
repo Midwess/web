@@ -1,0 +1,46 @@
+name: Materialize production branch
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out main with pinned submodules
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify submodule checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule status --recursive
+          if git submodule status --recursive | grep -qE '^[+-]'; then
+            echo "::error::one or more submodules are missing or do not match the gitlinks on main"
+            exit 1
+          fi
+
+      - name: Materialize deploy-production
+        shell: bash
+        env:
+          DEPLOY_BRANCH: deploy-production
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          scripts/materialize-production.sh
+          git push origin "HEAD:${DEPLOY_BRANCH}" --force

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { access, cp, rm } from "node:fs/promises";
 
-const source = new URL("../vendor/orbit-ui/docs-dist/", import.meta.url);
+const source = new URL("../vendor/design-language/docs-dist/", import.meta.url);
 const target = new URL("../dist/ui/", import.meta.url);
 
 try {

@@ -17,6 +17,7 @@ import slugs from "@/content/slugs.json";
 import { posts } from "@/content/blogs";
 import { getTree, flattenPages } from "@/lib/docs/tree";
 
+import Landing from "@/pages/Landing";
 import About from "@/pages/About";
 import Pricing from "@/pages/Pricing";
 import Policy from "@/pages/Policy";
@@ -49,10 +50,11 @@ const orbitPaths = (): string[] => [
 ];
 
 export const routes: RouteRecord[] = [
-  { path: "/", element: <ReactPlayground /> },
+  { path: "/", element: <Landing /> },
   { path: "/about", element: <About /> },
   { path: "/pricing", element: <Pricing /> },
   { path: "/policy", element: <Policy /> },
+  { path: "/react-playground", element: <ReactPlayground /> },
   {
     path: "/ui/*",
     element: <OrbitUI />,

@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentType } from "react";
 
 import { CloudOff, Code2, Cpu, Github, ShieldCheck } from "lucide-react";
 
-import { SeoHead, SITE, organizationLd, webSiteLd } from "@/lib/seo";
+import { SeoHead, SITE, breadcrumbListLd } from "@/lib/seo";
 
 const playgroundLd = {
   "@context": "https://schema.org",
@@ -10,7 +10,7 @@ const playgroundLd = {
   name: "Worldant React Playground",
   description:
     "A private, browser-only React and TypeScript playground powered by the published @midwess/worldant package.",
-  url: `${SITE.url}/`,
+  url: `${SITE.url}/react-playground`,
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Any modern web browser",
   browserRequirements:
@@ -111,8 +111,14 @@ const ReactPlayground = () => (
     <SeoHead
       title="Private React & TypeScript Playground"
       description="Write, type-check, compile, and render React with TypeScript and Tailwind CSS entirely in your browser. Your source stays on your device and is never uploaded."
-      path="/"
-      jsonLd={[playgroundLd, webSiteLd(), organizationLd()]}
+      path="/react-playground"
+      jsonLd={[
+        playgroundLd,
+        breadcrumbListLd([
+          { name: "Home", path: "/" },
+          { name: "React Playground", path: "/react-playground" },
+        ]),
+      ]}
     />
 
     <main className="bg-olive-950">

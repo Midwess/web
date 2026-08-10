@@ -3,6 +3,7 @@ import { Logo } from "./Logo";
 import { Link } from "./_link";
 
 const navLinks = [
+  { label: "Playground", href: "/react-playground" },
   { label: "Projects", href: "#projects" },
   { label: "Blog", href: "#writing" },
   { label: "Shipping", href: "#shipping" },

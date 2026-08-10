@@ -53,7 +53,10 @@ export const Hero = () => (
         transition={{ duration: 0.6, delay: 0.3 }}
         className="mt-8 flex flex-wrap items-center justify-center gap-3"
       >
-        <Button as="a" href="/pglite-rs" variant="primary">
+        <Button as="a" href="/react-playground" variant="primary">
+          Try React Playground
+        </Button>
+        <Button as="a" href="/pglite-rs" variant="secondary">
           Read the docs
         </Button>
         <Button

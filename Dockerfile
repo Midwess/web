@@ -54,11 +54,23 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    location = /worldant-sw.js {
+        try_files $uri =404;
+        access_log off;
+        add_header Cache-Control "no-store";
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
+    }
+
     # Cache hashed asset bundles aggressively
     location ~* \.(?:css|js|woff2?|ttf|otf|eot|ico|svg|png|jpe?g|webp|avif|gif|map)$ {
         try_files $uri =404;
         access_log off;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
         expires 1y;
     }
 
@@ -66,17 +78,26 @@ server {
     location /assets/ {
         access_log off;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
     }
 
     # Hashed pet / illustration images
     location ~* \.(webp|png|jpg|jpeg)$ {
         access_log off;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
     }
 
     # HTML — short cache, must revalidate
     location ~* \.html$ {
         add_header Cache-Control "public, max-age=0, must-revalidate";
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Resource-Policy "same-origin" always;
     }
 
     # SPA fallback for client navigation. Orbit UI routes are pre-rendered by
@@ -92,6 +113,9 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
 }
 EOF
 

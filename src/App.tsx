@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Landing from "./pages/Landing";
+import ReactPlayground from "./pages/ReactPlayground";
 import About from "./pages/About";
 import Pricing from "./pages/Pricing";
 import Policy from "./pages/Policy";
@@ -11,7 +11,7 @@ import OrbitUI from "./pages/OrbitUI";
 const App = () => (
   <BrowserRouter>
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<ReactPlayground />} />
       <Route path="/about" element={<About />} />
       <Route path="/blog/:slug" element={<BlogPost />} />
       <Route path="/pricing" element={<Pricing />} />

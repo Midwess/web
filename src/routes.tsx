@@ -17,7 +17,6 @@ import slugs from "@/content/slugs.json";
 import { posts } from "@/content/blogs";
 import { getTree, flattenPages } from "@/lib/docs/tree";
 
-import Landing from "@/pages/Landing";
 import About from "@/pages/About";
 import Pricing from "@/pages/Pricing";
 import Policy from "@/pages/Policy";
@@ -25,6 +24,7 @@ import BlogPost from "@/pages/BlogPost";
 import ProjectDocs from "@/pages/ProjectDocs";
 import NotFound from "@/pages/NotFound";
 import OrbitUI from "@/pages/OrbitUI";
+import ReactPlayground from "@/pages/ReactPlayground";
 
 /** Pre-render every known docs page across every project. */
 const projectDocPaths = (): string[] => {
@@ -40,8 +40,7 @@ const projectDocPaths = (): string[] => {
 };
 
 /** Pre-render every blog post. */
-const blogPostPaths = (): string[] =>
-  posts.map((p) => `/blog/${p.slug}`);
+const blogPostPaths = (): string[] => posts.map((p) => `/blog/${p.slug}`);
 
 /** Pre-render the exact Orbit documentation shell at every public UI route. */
 const orbitPaths = (): string[] => [
@@ -50,7 +49,7 @@ const orbitPaths = (): string[] => [
 ];
 
 export const routes: RouteRecord[] = [
-  { path: "/", element: <Landing /> },
+  { path: "/", element: <ReactPlayground /> },
   { path: "/about", element: <About /> },
   { path: "/pricing", element: <Pricing /> },
   { path: "/policy", element: <Policy /> },

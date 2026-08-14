@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 0 664 580" role="img" aria-labelledby="title description">
+  <title id="title">Midwess golden-ratio 2.5D circular-boundary signal</title>
+  <desc id="description">A restrained curved edition of the faithful Midwess signal. Every front-face side is a true circular arc, the terminal circles have radius 44, and the three centerline radii advance by the golden ratio.</desc>
+  <metadata>
+    phi=1.61803398875; cap radius r=44; centerline radii=r*phi^5,r*phi^6,r*phi^7; R5=487.967477525; R6=789.547964040; R7=1277.515441565; extrusion dx=r/phi^2=16.806504495; extrusion dy=r/phi=27.193495505; slices=13.
+  </metadata>
+
+  <defs>
+    <g id="signal" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+    <linearGradient id="face" x1="42" y1="28" x2="610" y2="548" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb46f"/>
+      <stop offset=".382" stop-color="#ff9d52"/>
+      <stop offset=".618" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Thirteen translated circular silhouettes form the golden-partition extrusion. -->
+  <g>
+    <use href="#signal" transform="translate(16.806504 27.193496)" stroke="#76200e"/>
+    <use href="#signal" transform="translate(15.513696 25.101688)" stroke="#7f230f"/>
+    <use href="#signal" transform="translate(14.220888 23.009881)" stroke="#882610"/>
+    <use href="#signal" transform="translate(12.928080 20.918073)" stroke="#912911"/>
+    <use href="#signal" transform="translate(11.635272 18.826266)" stroke="#9a2c12"/>
+    <use href="#signal" transform="translate(10.342464 16.734459)" stroke="#a33013"/>
+    <use href="#signal" transform="translate(9.049656 14.642651)" stroke="#ac3314"/>
+    <use href="#signal" transform="translate(7.756848 12.550844)" stroke="#b53715"/>
+    <use href="#signal" transform="translate(6.464040 10.459037)" stroke="#be3a16"/>
+    <use href="#signal" transform="translate(5.171232 8.367229)" stroke="#c73e17"/>
+    <use href="#signal" transform="translate(3.878424 6.275422)" stroke="#d04118"/>
+    <use href="#signal" transform="translate(2.585616 4.183615)" stroke="#d94519"/>
+    <use href="#signal" transform="translate(1.292808 2.091807)" stroke="#e2491a"/>
+  </g>
+
+  <use href="#signal" stroke="url(#face)"/>
+</svg>

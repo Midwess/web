@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" role="img" aria-labelledby="title description">
+  <title id="title">Midwess 2.5D dark lockup</title>
+  <desc id="description">The golden-ratio 2.5D Midwess signal followed by an off-white wordmark.</desc>
+  <defs>
+    <g id="signal" fill="none" stroke-width="88" stroke-linecap="round">
+      <path d="M72.806504 77.904805V482.095195"/>
+      <path d="M191.209757 172.763348 218.403252 387.236652"/>
+      <path d="M320 230V330"/>
+      <path d="M448.790243 172.763348 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805V482.095195"/>
+    </g>
+    <linearGradient id="face" x1="48" y1="28" x2="600" y2="534" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb46f"/><stop offset=".382" stop-color="#ff9d52"/>
+      <stop offset=".618" stop-color="#ff8a3d"/><stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4 36) scale(.48)">
+    <use href="#signal" transform="translate(16.806504 27.193496)" stroke="#76200e"/>
+    <use href="#signal" transform="translate(14.220888 23.009881)" stroke="#882610"/>
+    <use href="#signal" transform="translate(11.635272 18.826266)" stroke="#9a2c12"/>
+    <use href="#signal" transform="translate(9.049656 14.642651)" stroke="#ac3314"/>
+    <use href="#signal" transform="translate(6.464040 10.459037)" stroke="#be3a16"/>
+    <use href="#signal" transform="translate(3.878424 6.275422)" stroke="#d04118"/>
+    <use href="#signal" transform="translate(1.292808 2.091807)" stroke="#e2491a"/>
+    <use href="#signal" stroke="url(#face)"/>
+  </g>
+  <text x="348" y="238" fill="#f7f7fa" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="180" font-weight="750" letter-spacing="-9">Midwess</text>
+</svg>

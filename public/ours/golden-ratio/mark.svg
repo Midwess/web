@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" role="img" aria-labelledby="title description">
+  <title id="title">Midwess faithful golden signal</title>
+  <desc id="description">The original five-bar Midwess waveform rebuilt with exact golden-ratio heights, spacing, and circular terminals.</desc>
+  <metadata>phi=1.61803398875; cap radius=44; heights=188,304.190389885,492.190389885; inner gap=44/phi; outer gap=44.</metadata>
+  <g fill="none" stroke="#ff8a3d" stroke-width="88" stroke-linecap="round">
+    <path d="M72.806504 77.904805V482.095195"/>
+    <path d="M191.209757 172.763348 218.403252 387.236652"/>
+    <path d="M320 230V330"/>
+    <path d="M448.790243 172.763348 421.596748 387.236652"/>
+    <path d="M567.193496 77.904805V482.095195"/>
+  </g>
+</svg>

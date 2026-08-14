@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" role="img" aria-labelledby="title description">
+  <title id="title">Midwess advanced golden feather signal</title>
+  <desc id="description">The five-beat Midwess waveform rebuilt as tapered feathers whose edges come from intersecting circles.</desc>
+  <metadata>phi=1.61803398875; heights=188,304.190389885,492.190389885; each feather is made from two equal-radius circles.</metadata>
+  <g fill="#ff8a3d">
+    <path d="M72.806504 33.904805 A492.190390 492.190390 0 0 0 72.806504 526.095195 A492.190390 492.190390 0 0 0 72.806504 33.904805Z"/>
+    <path d="M191.209757 128.513774 A304.190390 304.190390 0 0 0 218.403252 431.486226 A304.190390 304.190390 0 0 0 191.209757 128.513774Z"/>
+    <path d="M320 186 A188 188 0 0 0 320 374 A188 188 0 0 0 320 186Z"/>
+    <path d="M421.596748 431.486226 A304.190390 304.190390 0 0 0 448.790243 128.513774 A304.190390 304.190390 0 0 0 421.596748 431.486226Z"/>
+    <path d="M567.193496 526.095195 A492.190390 492.190390 0 0 0 567.193496 33.904805 A492.190390 492.190390 0 0 0 567.193496 526.095195Z"/>
+  </g>
+</svg>

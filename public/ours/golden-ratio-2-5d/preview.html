@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Midwess — Golden-ratio 2.5D circular-boundary draft</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0d0d14; color: #f7f7fa; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      img { display: block; max-width: 100%; }
+      main { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 72px 0 96px; }
+      header { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end; padding-bottom: 28px; border-bottom: 1px solid #2c2b35; }
+      h1, h2, p { margin: 0; }
+      h1 { max-width: 800px; font-size: clamp(38px, 6vw, 72px); line-height: .98; letter-spacing: -.055em; }
+      h2 { font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: #aaa8b3; }
+      .lede { max-width: 760px; margin-top: 22px; color: #aaa8b3; font-size: 17px; line-height: 1.65; }
+      .pill { padding: 8px 12px; border: 1px solid #4c3629; border-radius: 999px; color: #ffb37c; background: #241711; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+      section { margin-top: 64px; }
+      .section-head { display: flex; justify-content: space-between; gap: 20px; align-items: baseline; margin-bottom: 18px; }
+      .section-head p { color: #777483; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .card { min-height: 440px; border: 1px solid #2c2b35; border-radius: 24px; overflow: hidden; position: relative; background-color: #111118; background-image: linear-gradient(45deg,#171720 25%,transparent 25%),linear-gradient(-45deg,#171720 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#171720 75%),linear-gradient(-45deg,transparent 75%,#171720 75%); background-size:32px 32px; background-position:0 0,0 16px,16px -16px,-16px 0; }
+      .card-label { position: absolute; top: 18px; left: 20px; z-index: 1; color: #aaa8b3; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .mark-wrap { height: 100%; min-height: 440px; display: grid; place-items: center; padding: 58px; }
+      .mark-wrap img { width: min(100%, 420px); max-height: 330px; }
+      .construction { width: 100%; border-radius: 24px; }
+      .lockups { display: grid; gap: 14px; }
+      .lockup { min-height: 240px; display: grid; place-items: center; padding: 44px; border: 1px solid #2c2b35; border-radius: 24px; }
+      .lockup img { width: min(100%, 930px); }
+      .lockup.dark { background:#141420; } .lockup.light { background:#f2f0e8; }
+      .applications { display:grid; grid-template-columns:1.1fr .9fr; gap:14px; }
+      .icon-stage { min-height:540px; display:grid; place-items:center; background:#191821; border:1px solid #2c2b35; border-radius:24px; padding:54px; }
+      .icon-stage img { width:min(100%,390px); border-radius:22.5%; box-shadow:0 32px 80px rgba(0,0,0,.42); }
+      .sizes { display:grid; place-items:center; border:1px solid #2c2b35; border-radius:24px; background:#f2f0e8; padding:48px; }
+      .size-row { display:flex; align-items:end; gap:28px; }
+      .sizes img:nth-child(1){width:32px}.sizes img:nth-child(2){width:64px}.sizes img:nth-child(3){width:128px}
+      .sizes p { margin-top:26px; color:#65616a; font:12px ui-monospace,SFMono-Regular,Menlo,monospace; text-align:center; }
+      .formula { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+      .formula div { padding:24px; border:1px solid #2c2b35; border-radius:18px; background:#141420; }
+      .formula b { display:block; color:#ffb37c; font:16px ui-monospace,SFMono-Regular,Menlo,monospace; }
+      .formula span { display:block; margin-top:8px; color:#8d8b99; font-size:13px; line-height:1.5; }
+      footer { margin-top:64px; padding-top:24px; border-top:1px solid #2c2b35; display:flex; justify-content:space-between; gap:24px; color:#777483; font-size:13px; }
+      footer a { color:#ffb37c; text-decoration:none; }
+      @media(max-width:760px){main{width:min(100% - 24px,1180px);padding-top:42px}header{grid-template-columns:1fr}.pill{justify-self:start}.comparison,.applications,.formula{grid-template-columns:1fr}.card,.mark-wrap{min-height:340px}.lockup{min-height:180px;padding:28px}footer{flex-direction:column}}
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Golden depth.<br />Circular discipline.</h1>
+          <p class="lede">The original 2.5D draft remains intact. This page adds a stricter alternative: its five front faces follow true circle arcs whose centerline radii advance by φ, while preserving the faithful signal, its weight, and its golden depth.</p>
+        </div>
+        <span class="pill">Draft only</span>
+      </header>
+
+      <section>
+        <div class="section-head"><h2>Original / circular-boundary</h2><p>same proportions · stricter edges</p></div>
+        <div class="comparison">
+          <div class="card"><span class="card-label">Original 2.5D draft</span><div class="mark-wrap"><img src="mark.svg" alt="Original golden-ratio 2.5D signal" /></div></div>
+          <div class="card"><span class="card-label">Circular-boundary alternative</span><div class="mark-wrap"><img src="mark-circle-boundary.svg" alt="Circular-boundary golden-ratio 2.5D signal" /></div></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Boundary system</h2><p>large circles keep the curvature restrained</p></div>
+        <div class="formula">
+          <div><b>R₁ = rφ⁵</b><span>The center S uses a 487.967-unit source radius.</span></div>
+          <div><b>R₂ / R₁ = φ</b><span>Inner and outer arc radii rise in exact golden steps.</span></div>
+          <div><b>edges = R ± r</b><span>Both sides are true concentric-circle arcs; terminals remain radius-r circles.</span></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Circular construction</h2><p>no Bézier curves</p></div>
+        <img class="construction" src="construction-circle-boundary.svg" alt="Golden-ratio circular-boundary construction sheet" />
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Curvature study</h2><p>selected C avoids the ball-like silhouette</p></div>
+        <img class="construction" src="circle-boundary-options.svg" alt="Comparison of four golden-ratio circular-boundary directions" />
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Depth system</h2><p>the radius is divided, not guessed</p></div>
+        <div class="formula">
+          <div><b>dx = r / φ²</b><span>16.807 units of horizontal depth.</span></div>
+          <div><b>dy = r / φ</b><span>27.193 units of vertical depth.</span></div>
+          <div><b>dx + dy = r</b><span>The full extrusion consumes exactly one 44-unit radius.</span></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Circular-boundary lockups</h2><p>dark / light</p></div>
+        <div class="lockups">
+          <div class="lockup dark"><img src="lockup-circle-boundary-dark.svg" alt="Dark circular-boundary 2.5D Midwess lockup" /></div>
+          <div class="lockup light"><img src="lockup-circle-boundary-light.svg" alt="Light circular-boundary 2.5D Midwess lockup" /></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Applications</h2><p>app tile / small sizes</p></div>
+        <div class="applications">
+          <div class="icon-stage"><img src="app-icon-circle-boundary.svg" alt="Circular-boundary 2.5D Midwess app icon" /></div>
+          <div class="sizes"><div><div class="size-row"><img src="mark-circle-boundary.svg" alt="32 pixel mark"/><img src="mark-circle-boundary.svg" alt="64 pixel mark"/><img src="mark-circle-boundary.svg" alt="128 pixel mark"/></div><p>32 / 64 / 128 px</p></div></div>
+        </div>
+      </section>
+
+      <footer><span>No live logo assets were changed.</span><span><a href="mark.svg">Original 2.5D SVG</a> · <a href="mark-circle-boundary.svg">Circular-boundary SVG</a></span></footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Midwess circular-boundary 2.5D app icon</title>
+  <desc id="description">The golden-ratio circular-boundary Midwess signal floating above a midnight app tile.</desc>
+  <defs>
+    <radialGradient id="tile" cx="0" cy="0" r="1" gradientTransform="translate(354 284) rotate(48) scale(868)">
+      <stop stop-color="#242331"/>
+      <stop offset=".618" stop-color="#171720"/>
+      <stop offset="1" stop-color="#101017"/>
+    </radialGradient>
+    <radialGradient id="shadow" cx="0" cy="0" r="1" gradientTransform="translate(512 716) rotate(90) scale(94 350)">
+      <stop stop-color="#000" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <g id="signal" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+    <linearGradient id="face" x1="42" y1="28" x2="610" y2="548" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffbd7d"/>
+      <stop offset=".382" stop-color="#ffa157"/>
+      <stop offset=".618" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <ellipse cx="512" cy="716" rx="350" ry="94" fill="url(#shadow)"/>
+  <g transform="translate(128 176) scale(1.12)">
+    <use href="#signal" transform="translate(16.806504 27.193496)" stroke="#76200e"/>
+    <use href="#signal" transform="translate(14.220888 23.009881)" stroke="#882610"/>
+    <use href="#signal" transform="translate(11.635272 18.826266)" stroke="#9a2c12"/>
+    <use href="#signal" transform="translate(9.049656 14.642651)" stroke="#ac3314"/>
+    <use href="#signal" transform="translate(6.464040 10.459037)" stroke="#be3a16"/>
+    <use href="#signal" transform="translate(3.878424 6.275422)" stroke="#d04118"/>
+    <use href="#signal" transform="translate(1.292808 2.091807)" stroke="#e2491a"/>
+    <use href="#signal" stroke="url(#face)"/>
+  </g>
+</svg>

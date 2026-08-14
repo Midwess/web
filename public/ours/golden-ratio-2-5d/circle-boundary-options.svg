@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 820" role="img" aria-labelledby="title description">
+  <title id="title">Midwess circular-boundary direction study</title>
+  <desc id="description">Four ways of curving the faithful signal from circular centerlines whose radii advance in golden-ratio steps.</desc>
+  <defs>
+    <linearGradient id="face" x1="30" y1="20" x2="610" y2="535" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb46f"/>
+      <stop offset=".382" stop-color="#ff9d52"/>
+      <stop offset=".618" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+
+    <!-- Balanced inward curvature: rφ⁶ / rφ⁵ / rφ⁴. -->
+    <g id="balanced" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A789.547964 789.547964 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A487.967478 487.967478 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A301.580487 301.580487 0 0 0 320 280 A301.580487 301.580487 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A487.967478 487.967478 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A789.547964 789.547964 0 0 1 567.193496 482.095195"/>
+    </g>
+
+    <!-- Same radii, with alternating curvature through each half. -->
+    <g id="alternating" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A789.547964 789.547964 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A487.967478 487.967478 0 0 1 218.403252 387.236652"/>
+      <path d="M320 230 A301.580487 301.580487 0 0 0 320 280 A301.580487 301.580487 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A487.967478 487.967478 0 0 0 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A789.547964 789.547964 0 0 1 567.193496 482.095195"/>
+    </g>
+
+    <!-- Quieter curvature: every construction radius advances one φ step. -->
+    <g id="subtle" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+
+    <!-- Stronger curvature: every construction radius drops one φ step. -->
+    <g id="expressive" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A487.967478 487.967478 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A301.580487 301.580487 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A186.386991 186.386991 0 0 0 320 280 A186.386991 186.386991 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A301.580487 301.580487 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A487.967478 487.967478 0 0 1 567.193496 482.095195"/>
+    </g>
+
+    <filter id="shadow" x="-30%" y="-30%" width="170%" height="180%">
+      <feDropShadow dx="5" dy="9" stdDeviation="7" flood-color="#000" flood-opacity=".42"/>
+    </filter>
+  </defs>
+
+  <rect width="1480" height="820" fill="#0d0d14"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <g transform="translate(70 88)">
+      <rect width="640" height="290" rx="24" fill="#141420" stroke="#302e3a"/>
+      <text x="28" y="42" fill="#ffb37c" font-size="14" letter-spacing="2">A — BALANCED INWARD</text>
+      <g transform="translate(144 23) scale(.55)" filter="url(#shadow)">
+        <use href="#balanced" transform="translate(16.806504 27.193496)" stroke="#842711"/>
+        <use href="#balanced" transform="translate(8.403252 13.596748)" stroke="#bc3816"/>
+        <use href="#balanced" stroke="url(#face)"/>
+      </g>
+    </g>
+
+    <g transform="translate(770 88)">
+      <rect width="640" height="290" rx="24" fill="#141420" stroke="#302e3a"/>
+      <text x="28" y="42" fill="#ffb37c" font-size="14" letter-spacing="2">B — ALTERNATING WING</text>
+      <g transform="translate(144 23) scale(.55)" filter="url(#shadow)">
+        <use href="#alternating" transform="translate(16.806504 27.193496)" stroke="#842711"/>
+        <use href="#alternating" transform="translate(8.403252 13.596748)" stroke="#bc3816"/>
+        <use href="#alternating" stroke="url(#face)"/>
+      </g>
+    </g>
+
+    <g transform="translate(70 442)">
+      <rect width="640" height="290" rx="24" fill="#141420" stroke="#ff8a3d" stroke-width="2"/>
+      <text x="28" y="42" fill="#ffb37c" font-size="14" letter-spacing="2">C — SUBTLE INWARD</text>
+      <text x="612" y="42" fill="#ffb37c" font-size="12" letter-spacing="2" text-anchor="end">SELECTED</text>
+      <g transform="translate(144 23) scale(.55)" filter="url(#shadow)">
+        <use href="#subtle" transform="translate(16.806504 27.193496)" stroke="#842711"/>
+        <use href="#subtle" transform="translate(8.403252 13.596748)" stroke="#bc3816"/>
+        <use href="#subtle" stroke="url(#face)"/>
+      </g>
+    </g>
+
+    <g transform="translate(770 442)">
+      <rect width="640" height="290" rx="24" fill="#141420" stroke="#302e3a"/>
+      <text x="28" y="42" fill="#ffb37c" font-size="14" letter-spacing="2">D — EXPRESSIVE INWARD</text>
+      <g transform="translate(144 23) scale(.55)" filter="url(#shadow)">
+        <use href="#expressive" transform="translate(16.806504 27.193496)" stroke="#842711"/>
+        <use href="#expressive" transform="translate(8.403252 13.596748)" stroke="#bc3816"/>
+        <use href="#expressive" stroke="url(#face)"/>
+      </g>
+    </g>
+  </g>
+</svg>

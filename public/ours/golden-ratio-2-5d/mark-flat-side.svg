@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 560" role="img" aria-labelledby="title description">
+  <title id="title">Midwess golden-ratio 2.5D signal, flat-color edition</title>
+  <desc id="description">The faithful orange Midwess signal with an exact golden-ratio burnt-orange extrusion.</desc>
+  <defs>
+    <g id="signal" fill="none" stroke-width="88" stroke-linecap="round">
+      <path d="M72.806504 77.904805V482.095195"/>
+      <path d="M191.209757 172.763348 218.403252 387.236652"/>
+      <path d="M320 230V330"/>
+      <path d="M448.790243 172.763348 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805V482.095195"/>
+    </g>
+  </defs>
+  <g stroke="#9b2d14">
+    <use href="#signal" transform="translate(16.806504 27.193496)"/>
+    <use href="#signal" transform="translate(14.220888 23.009881)"/>
+    <use href="#signal" transform="translate(11.635272 18.826266)"/>
+    <use href="#signal" transform="translate(9.049656 14.642651)"/>
+    <use href="#signal" transform="translate(6.464040 10.459037)"/>
+    <use href="#signal" transform="translate(3.878424 6.275422)"/>
+    <use href="#signal" transform="translate(1.292808 2.091807)"/>
+  </g>
+  <use href="#signal" stroke="#ff8a3d"/>
+</svg>

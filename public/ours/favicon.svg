@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Midwess">
+  <defs>
+    <g id="signal" fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+    <linearGradient id="face" x1="42" y1="28" x2="610" y2="548" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb46f"/>
+      <stop offset=".382" stop-color="#ff9d52"/>
+      <stop offset=".618" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" rx="120" fill="#141420"/>
+  <g transform="translate(0 40)">
+    <use href="#signal" transform="translate(16.806504 27.193496)" stroke="#76200e"/>
+    <use href="#signal" transform="translate(12.605 20.395)" stroke="#922a12"/>
+    <use href="#signal" transform="translate(8.403252 13.596748)" stroke="#ae3415"/>
+    <use href="#signal" transform="translate(4.202 6.798)" stroke="#ca3f18"/>
+    <use href="#signal" stroke="url(#face)"/>
+  </g>
+</svg>

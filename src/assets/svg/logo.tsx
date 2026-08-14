@@ -1,59 +1,88 @@
-import type { SVGAttributes } from 'react'
+import { useId } from "react";
+import type { SVGAttributes } from "react";
 
 const Logo = (props: SVGAttributes<SVGElement>) => {
-  return (
-    <svg width='1em' height='1em' viewBox='0 0 328 329' fill='none' xmlns='http://www.w3.org/2000/svg' {...props}>
-      <rect y='0.5' width='328' height='328' rx='164' fill='black' className='dark:fill-white' />
-      <path
-        d='M165.018 72.3008V132.771C165.018 152.653 148.9 168.771 129.018 168.771H70.2288'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-      <path
-        d='M166.627 265.241L166.627 204.771C166.627 184.889 182.744 168.771 202.627 168.771L261.416 168.771'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-      <line
-        x1='238.136'
-        y1='98.8184'
-        x2='196.76'
-        y2='139.707'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-      <line
-        x1='135.688'
-        y1='200.957'
-        x2='94.3128'
-        y2='241.845'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-      <line
-        x1='133.689'
-        y1='137.524'
-        x2='92.5566'
-        y2='96.3914'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-      <line
-        x1='237.679'
-        y1='241.803'
-        x2='196.547'
-        y2='200.671'
-        stroke='white'
-        strokeWidth='20'
-        className='dark:stroke-black'
-      />
-    </svg>
-  )
-}
+  const id = useId().replace(/:/g, "");
+  const signalId = `midwess-circular-signal-${id}`;
+  const faceId = `midwess-circular-face-${id}`;
 
-export default Logo
+  return (
+    <svg
+      width="1em"
+      height="1em"
+      viewBox="0 0 640 560"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label="Midwess"
+      {...props}
+    >
+      <defs>
+        <g
+          id={signalId}
+          strokeWidth="88"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195" />
+          <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652" />
+          <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330" />
+          <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652" />
+          <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195" />
+        </g>
+        <linearGradient
+          id={faceId}
+          x1="42"
+          y1="28"
+          x2="610"
+          y2="548"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#ffb46f" />
+          <stop offset=".382" stopColor="#ff9d52" />
+          <stop offset=".618" stopColor="#ff8a3d" />
+          <stop offset="1" stopColor="#f66e24" />
+        </linearGradient>
+      </defs>
+      <g fill="none">
+        <use
+          href={`#${signalId}`}
+          transform="translate(16.806504 27.193496)"
+          stroke="#76200e"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(14.220888 23.009881)"
+          stroke="#882610"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(11.635272 18.826266)"
+          stroke="#9a2c12"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(9.049656 14.642651)"
+          stroke="#ac3314"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(6.46404 10.459037)"
+          stroke="#be3a16"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(3.878424 6.275422)"
+          stroke="#d04118"
+        />
+        <use
+          href={`#${signalId}`}
+          transform="translate(1.292808 2.091807)"
+          stroke="#e2491a"
+        />
+        <use href={`#${signalId}`} stroke={`url(#${faceId})`} />
+      </g>
+    </svg>
+  );
+};
+
+export default Logo;

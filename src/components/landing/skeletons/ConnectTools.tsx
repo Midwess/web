@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { DivideX } from "../Divide";
 import { Scale } from "../Scale";
-import { LogoSVG } from "../Logo";
+import { MarkSVG } from "../Logo";
 import {
   AnthropicLogo,
   OpenAILogo,
@@ -99,7 +99,7 @@ export const ConnectYourToolsSkeleton = () => {
       >
         <div className="absolute -top-4 -left-4 flex h-14 w-14 items-center justify-center rounded-lg bg-white shadow-xl dark:bg-neutral-800">
           <Scale />
-          <LogoSVG className="relative z-20 h-8 w-8" />
+          <MarkSVG className="relative z-20" />
         </div>
         <div className="mt-12 flex items-center gap-2">
           <IntegrationsLogo className="dark:text-neutral-200" />

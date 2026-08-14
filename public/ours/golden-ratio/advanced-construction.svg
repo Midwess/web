@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title description">
+  <title id="title">Construction of the advanced golden feather signal</title>
+  <desc id="description">Ten intersecting circles create five tapered feathers arranged with the proportions of the original Midwess waveform.</desc>
+  <rect x="1" y="1" width="998" height="758" rx="32" fill="#141420" stroke="#353440" stroke-width="2"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text x="48" y="62" fill="#f7f7fa" font-size="22" font-weight="700" letter-spacing="1">BASELINE B — FEATHER GRID</text>
+    <text x="952" y="62" fill="#8d8b99" font-size="18" text-anchor="end">φ = 1.61803398875</text>
+  </g>
+
+  <g transform="translate(324 145) scale(.55)">
+    <g fill="#ff8a3d" fill-opacity=".88">
+      <path d="M72.806504 33.904805 A492.190390 492.190390 0 0 0 72.806504 526.095195 A492.190390 492.190390 0 0 0 72.806504 33.904805Z"/>
+      <path d="M191.209757 128.513774 A304.190390 304.190390 0 0 0 218.403252 431.486226 A304.190390 304.190390 0 0 0 191.209757 128.513774Z"/>
+      <path d="M320 186 A188 188 0 0 0 320 374 A188 188 0 0 0 320 186Z"/>
+      <path d="M421.596748 431.486226 A304.190390 304.190390 0 0 0 448.790243 128.513774 A304.190390 304.190390 0 0 0 421.596748 431.486226Z"/>
+      <path d="M567.193496 526.095195 A492.190390 492.190390 0 0 0 567.193496 33.904805 A492.190390 492.190390 0 0 0 567.193496 526.095195Z"/>
+    </g>
+    <g fill="none" stroke="#ffb37c" stroke-width="2" stroke-dasharray="7 8" opacity=".78">
+      <circle cx="-353.442877" cy="280" r="492.190390"/><circle cx="499.055886" cy="280" r="492.190390"/>
+      <circle cx="-57.575336" cy="303.550258" r="304.190390"/><circle cx="467.188345" cy="256.449742" r="304.190390"/>
+      <circle cx="157.187224" cy="280" r="188"/><circle cx="482.812776" cy="280" r="188"/>
+      <circle cx="697.575336" cy="303.550258" r="304.190390"/><circle cx="172.811655" cy="256.449742" r="304.190390"/>
+      <circle cx="993.442877" cy="280" r="492.190390"/><circle cx="140.944114" cy="280" r="492.190390"/>
+    </g>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="15">
+    <text x="48" y="662" fill="#f7f7fa">10 construction circles</text>
+    <text x="48" y="690" fill="#8d8b99">2 per feather</text>
+    <text x="500" y="662" fill="#f7f7fa" text-anchor="middle">heights 1 : φ : φ²</text>
+    <text x="500" y="690" fill="#8d8b99" text-anchor="middle">same five-beat rhythm, new edge language</text>
+    <text x="952" y="662" fill="#f7f7fa" text-anchor="end">tips = circle intersections</text>
+    <text x="952" y="690" fill="#8d8b99" text-anchor="end">no freehand Bézier curves</text>
+  </g>
+</svg>

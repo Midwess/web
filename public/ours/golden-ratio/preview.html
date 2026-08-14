@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Midwess — Golden-ratio baselines</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0d0d14;
+        color: #f7f7fa;
+      }
+
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      img { display: block; max-width: 100%; }
+
+      main {
+        width: min(1240px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 72px 0 96px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 32px;
+        align-items: end;
+        padding-bottom: 28px;
+        border-bottom: 1px solid #2c2b35;
+      }
+
+      h1, h2, h3, p { margin: 0; }
+      h1 { max-width: 850px; font-size: clamp(38px, 6vw, 72px); line-height: .98; letter-spacing: -.055em; }
+      h2 { font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: #aaa8b3; }
+      h3 { font-size: 25px; letter-spacing: -.03em; }
+      .lede { max-width: 760px; margin-top: 22px; color: #aaa8b3; font-size: 17px; line-height: 1.65; }
+      .pill { padding: 8px 12px; border: 1px solid #4c3629; border-radius: 999px; color: #ffb37c; background: #241711; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+
+      section { margin-top: 64px; }
+      .section-head { display: flex; justify-content: space-between; gap: 20px; align-items: baseline; margin-bottom: 18px; }
+      .section-head p { color: #777483; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+      .comparison { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .card { min-height: 390px; border: 1px solid #2c2b35; border-radius: 24px; overflow: hidden; position: relative; background-color: #111118; background-image: linear-gradient(45deg, #171720 25%, transparent 25%), linear-gradient(-45deg, #171720 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #171720 75%), linear-gradient(-45deg, transparent 75%, #171720 75%); background-size: 32px 32px; background-position: 0 0, 0 16px, 16px -16px, -16px 0; }
+      .card-label { position: absolute; top: 18px; left: 20px; z-index: 1; color: #aaa8b3; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .mark-wrap { height: 100%; min-height: 390px; display: grid; place-items: center; padding: 62px 34px 32px; }
+      .mark-wrap img { width: min(100%, 330px); max-height: 290px; }
+      .current img { width: min(100%, 310px); }
+
+      .baselines { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .baseline { overflow: hidden; border: 1px solid #2c2b35; border-radius: 24px; background: #111118; }
+      .baseline-copy { min-height: 184px; padding: 30px; border-bottom: 1px solid #2c2b35; }
+      .baseline-copy .tag { display: block; margin-bottom: 12px; color: #ffb37c; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+      .baseline-copy p { margin-top: 12px; color: #8d8b99; line-height: 1.6; }
+      .baseline-copy a { display: inline-block; margin-top: 18px; color: #ffb37c; font-size: 13px; text-decoration: none; }
+      .baseline > img { width: 100%; }
+
+      .lockups { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .lockup { min-height: 230px; display: grid; place-items: center; padding: 38px; border: 1px solid #2c2b35; border-radius: 24px; background: #141420; position: relative; }
+      .lockup img { width: min(100%, 760px); }
+      .lockup span { position: absolute; top: 18px; left: 20px; color: #777483; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .1em; }
+
+      .applications { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .icon-stage { min-height: 470px; display: grid; place-items: center; background: #191821; border: 1px solid #2c2b35; border-radius: 24px; padding: 54px; position: relative; }
+      .icon-stage img { width: min(100%, 340px); border-radius: 22.5%; box-shadow: 0 32px 80px rgba(0,0,0,.42); }
+      .icon-stage span { position: absolute; top: 18px; left: 20px; color: #777483; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .1em; }
+
+      footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #2c2b35; display: flex; justify-content: space-between; gap: 24px; color: #777483; font-size: 13px; }
+      footer a { color: #ffb37c; text-decoration: none; }
+
+      @media (max-width: 900px) {
+        .comparison { grid-template-columns: 1fr; }
+        .card, .mark-wrap { min-height: 340px; }
+      }
+
+      @media (max-width: 760px) {
+        main { width: min(100% - 24px, 1240px); padding-top: 42px; }
+        header { grid-template-columns: 1fr; }
+        .pill { justify-self: start; }
+        .baselines, .lockups, .applications { grid-template-columns: 1fr; }
+        footer { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Keep the signal.<br />Advance the system.</h1>
+          <p class="lede">Both baselines begin with the current five-part Midwess waveform. Baseline A regularizes the original mark without changing its character. Baseline B keeps the same rhythm but rebuilds every element from intersecting circle arcs.</p>
+        </div>
+        <span class="pill">Two baselines</span>
+      </header>
+
+      <section>
+        <div class="section-head"><h2>Direct comparison</h2><p>current / faithful / advanced</p></div>
+        <div class="comparison">
+          <div class="card current">
+            <span class="card-label">Current</span>
+            <div class="mark-wrap"><img src="../web-flat.png" alt="Current Midwess logo" /></div>
+          </div>
+          <div class="card">
+            <span class="card-label">A · faithful signal</span>
+            <div class="mark-wrap"><img src="mark.svg" alt="Faithful golden-ratio Midwess signal" /></div>
+          </div>
+          <div class="card">
+            <span class="card-label">B · feather grid</span>
+            <div class="mark-wrap"><img src="advanced-mark.svg" alt="Advanced golden feather Midwess signal" /></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Construction systems</h2><p>geometry serves the existing idea</p></div>
+        <div class="baselines">
+          <article class="baseline">
+            <div class="baseline-copy">
+              <span class="tag">Baseline A · recommended starting point</span>
+              <h3>Faithful golden signal</h3>
+              <p>Preserves the five capsules, silhouette, tilt, and friendly terminal circles. Heights follow 1 : φ : φ²; the gaps and tilt derive from the same base radius.</p>
+              <a href="mark.svg">Open standalone SVG →</a>
+            </div>
+            <img src="construction.svg" alt="Construction of faithful golden signal" />
+          </article>
+          <article class="baseline">
+            <div class="baseline-copy">
+              <span class="tag">Baseline B · advanced exploration</span>
+              <h3>Golden feather grid</h3>
+              <p>Keeps all five beats in their familiar positions, but replaces capsules with tapered feather forms. Ten circles define the complete silhouette—no freehand Bézier contours.</p>
+              <a href="advanced-mark.svg">Open standalone SVG →</a>
+            </div>
+            <img src="advanced-construction.svg" alt="Construction of advanced golden feather signal" />
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Lockups</h2><p>same wordmark context</p></div>
+        <div class="lockups">
+          <div class="lockup"><span>Baseline A</span><img src="lockup-dark.svg" alt="Faithful Midwess lockup" /></div>
+          <div class="lockup"><span>Baseline B</span><img src="advanced-lockup-dark.svg" alt="Advanced Midwess lockup" /></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>App icons</h2><p>production-scale context</p></div>
+        <div class="applications">
+          <div class="icon-stage"><span>Baseline A</span><img src="app-icon.svg" alt="Faithful signal app icon" /></div>
+          <div class="icon-stage"><span>Baseline B</span><img src="advanced-app-icon.svg" alt="Advanced feather app icon" /></div>
+        </div>
+      </section>
+
+      <footer>
+        <span>No live logo references were changed.</span>
+        <a href="README.md">Read the geometry notes</a>
+      </footer>
+    </main>
+  </body>
+</html>

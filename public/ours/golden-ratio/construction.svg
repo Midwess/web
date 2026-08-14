@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title description">
+  <title id="title">Construction of the faithful golden signal</title>
+  <desc id="description">The current five-bar waveform shown with golden-ratio height circles, circular terminals, center axes, and proportional gaps.</desc>
+  <rect x="1" y="1" width="998" height="758" rx="32" fill="#141420" stroke="#353440" stroke-width="2"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text x="48" y="62" fill="#f7f7fa" font-size="22" font-weight="700" letter-spacing="1">BASELINE A — FAITHFUL SIGNAL</text>
+    <text x="952" y="62" fill="#8d8b99" font-size="18" text-anchor="end">φ = 1.61803398875</text>
+  </g>
+
+  <g transform="translate(180 100)">
+    <g fill="none" stroke="#8d8b99" stroke-width="1.5" stroke-dasharray="5 8" opacity=".7">
+      <path d="M0 280H640M320 0V560"/>
+      <circle cx="320" cy="280" r="94"/>
+      <circle cx="320" cy="280" r="152.095195"/>
+      <circle cx="320" cy="280" r="246.095195"/>
+    </g>
+
+    <g fill="none" stroke="#ff8a3d" stroke-width="88" stroke-linecap="round">
+      <path d="M72.806504 77.904805V482.095195"/>
+      <path d="M191.209757 172.763348 218.403252 387.236652"/>
+      <path d="M320 230V330"/>
+      <path d="M448.790243 172.763348 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805V482.095195"/>
+    </g>
+
+    <g fill="none" stroke="#fff1e6" stroke-width="1.5" stroke-dasharray="4 5">
+      <circle cx="72.806504" cy="77.904805" r="44"/><circle cx="72.806504" cy="482.095195" r="44"/>
+      <circle cx="191.209757" cy="172.763348" r="44"/><circle cx="218.403252" cy="387.236652" r="44"/>
+      <circle cx="320" cy="230" r="44"/><circle cx="320" cy="330" r="44"/>
+      <circle cx="448.790243" cy="172.763348" r="44"/><circle cx="421.596748" cy="387.236652" r="44"/>
+      <circle cx="567.193496" cy="77.904805" r="44"/><circle cx="567.193496" cy="482.095195" r="44"/>
+    </g>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="15">
+    <text x="48" y="690" fill="#f7f7fa">same five-beat silhouette</text>
+    <text x="500" y="662" fill="#f7f7fa" text-anchor="middle">heights 188 / 304.190 / 492.190</text>
+    <text x="500" y="690" fill="#8d8b99" text-anchor="middle">1 : φ : φ²</text>
+    <text x="952" y="662" fill="#f7f7fa" text-anchor="end">terminal radius = 44</text>
+    <text x="952" y="690" fill="#8d8b99" text-anchor="end">gaps = 44/φ and 44</text>
+  </g>
+</svg>

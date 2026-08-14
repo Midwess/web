@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 840" role="img" aria-labelledby="title description">
+  <title id="title">Midwess golden-ratio circular-boundary construction</title>
+  <desc id="description">Construction sheet showing the restrained circular signal, its true-circle side boundaries, terminal circles, golden-step centerline radii, and golden-partition depth.</desc>
+  <defs>
+    <clipPath id="mark-window"><rect width="640" height="560" rx="20"/></clipPath>
+    <g id="signal" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+    <linearGradient id="face" x1="42" y1="28" x2="610" y2="548" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb46f"/>
+      <stop offset=".382" stop-color="#ff9d52"/>
+      <stop offset=".618" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#f66e24"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="838" rx="32" fill="#141420" stroke="#353440" stroke-width="2"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text x="48" y="62" fill="#f7f7fa" font-size="22" font-weight="700" letter-spacing="1">CIRCULAR-BOUNDARY CONSTRUCTION</text>
+    <text x="1152" y="62" fill="#8d8b99" font-size="18" text-anchor="end">restrained edition · φ = 1.61803398875</text>
+  </g>
+
+  <!-- The complete source circles are shown clipped around the mark. -->
+  <g transform="translate(48 106) scale(.88)" clip-path="url(#mark-window)">
+    <rect width="640" height="560" rx="20" fill="#101017"/>
+    <g fill="none" stroke="#454351" stroke-width="1.4" stroke-dasharray="5 7">
+      <path d="M0 280H640M320 0V560"/>
+      <circle cx="1334.235549" cy="280" r="1277.515442"/>
+      <circle cx="-694.235549" cy="280" r="1277.515442"/>
+      <circle cx="980.708024" cy="181.621910" r="789.547964"/>
+      <circle cx="-340.708024" cy="181.621910" r="789.547964"/>
+      <circle cx="807.326645" cy="255" r="487.967478"/>
+      <circle cx="-167.326645" cy="305" r="487.967478"/>
+    </g>
+    <use href="#signal" transform="translate(16.806504 27.193496)" stroke="#76200e" stroke-width="88"/>
+    <use href="#signal" stroke="url(#face)" stroke-width="88"/>
+    <use href="#signal" stroke="#fff1e6" stroke-width="1.8" stroke-dasharray="5 6" opacity=".92"/>
+    <g fill="none" stroke="#fff1e6" stroke-width="1.4" stroke-dasharray="4 5" opacity=".9">
+      <circle cx="72.806504" cy="77.904805" r="44"/><circle cx="72.806504" cy="482.095195" r="44"/>
+      <circle cx="191.209757" cy="172.763348" r="44"/><circle cx="218.403252" cy="387.236652" r="44"/>
+      <circle cx="320" cy="230" r="44"/><circle cx="320" cy="330" r="44"/>
+      <circle cx="448.790243" cy="172.763348" r="44"/><circle cx="421.596748" cy="387.236652" r="44"/>
+      <circle cx="567.193496" cy="77.904805" r="44"/><circle cx="567.193496" cy="482.095195" r="44"/>
+    </g>
+  </g>
+
+  <g transform="translate(650 112)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text fill="#ffb37c" font-size="14" font-weight="700" letter-spacing="2">GOLDEN RADIUS LADDER</text>
+    <g transform="translate(0 30)" font-size="17">
+      <rect width="500" height="52" rx="12" fill="#191821" stroke="#302e3a"/>
+      <text x="18" y="33" fill="#f7f7fa">R₁ = rφ⁵</text><text x="474" y="33" fill="#aaa8b3" text-anchor="end">487.967</text>
+      <rect y="64" width="500" height="52" rx="12" fill="#191821" stroke="#302e3a"/>
+      <text x="18" y="97" fill="#f7f7fa">R₂ = rφ⁶</text><text x="474" y="97" fill="#aaa8b3" text-anchor="end">789.548</text>
+      <rect y="128" width="500" height="52" rx="12" fill="#191821" stroke="#302e3a"/>
+      <text x="18" y="161" fill="#f7f7fa">R₃ = rφ⁷</text><text x="474" y="161" fill="#aaa8b3" text-anchor="end">1277.515</text>
+    </g>
+    <text x="250" y="238" fill="#ffb37c" font-size="16" text-anchor="middle">R₃ / R₂ = R₂ / R₁ = φ</text>
+
+    <text y="290" fill="#ffb37c" font-size="14" font-weight="700" letter-spacing="2">TRUE-CIRCLE BOUNDARY</text>
+    <g transform="translate(22 318)">
+      <path d="M128 0 A280 280 0 0 0 128 190" fill="none" stroke="#ff8a3d" stroke-width="40" stroke-linecap="round"/>
+      <path d="M128 0 A280 280 0 0 0 128 190" fill="none" stroke="#fff1e6" stroke-width="1.5" stroke-dasharray="5 6"/>
+      <circle cx="128" cy="0" r="20" fill="none" stroke="#fff1e6" stroke-width="1.5" stroke-dasharray="4 5"/>
+      <circle cx="128" cy="190" r="20" fill="none" stroke="#fff1e6" stroke-width="1.5" stroke-dasharray="4 5"/>
+      <path d="M190 34H336M179 93H336M189 153H336" stroke="#565362" stroke-width="1"/>
+      <text x="350" y="40" fill="#f7f7fa" font-size="15">outer side = R + r</text>
+      <text x="350" y="99" fill="#aaa8b3" font-size="15">centerline = R</text>
+      <text x="350" y="159" fill="#f7f7fa" font-size="15">inner side = R − r</text>
+      <text x="350" y="202" fill="#8d8b99" font-size="14">terminal = circle r</text>
+    </g>
+  </g>
+
+  <path d="M48 660H1152" stroke="#353440"/>
+  <g transform="translate(48 702)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text fill="#f7f7fa" font-size="16">caps r = 44 · face heights 1 : φ : φ²</text>
+    <text y="34" fill="#8d8b99" font-size="15">Each side is a concentric offset of its source circle; no Bézier curve is used.</text>
+    <text x="1104" fill="#f7f7fa" font-size="16" text-anchor="end">depth dx = r/φ² · dy = r/φ</text>
+    <text x="1104" y="34" fill="#8d8b99" font-size="15" text-anchor="end">13 circular silhouettes · dx + dy = r</text>
+  </g>
+</svg>

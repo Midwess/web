@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Midwess GitHub mark</title>
+  <desc id="description">The golden-ratio circular-boundary Midwess signal on an orange dimensional package.</desc>
+  <g transform="translate(0 -10)">
+    <path d="M512 216 763 361 512 506 261 361Z" fill="#ffb066"/>
+    <path d="M261 361 512 506V796L261 651Z" fill="#ff7010"/>
+    <path d="M763 361 512 506V796L763 651Z" fill="#c83b08"/>
+    <g transform="translate(300 410) scale(.39)" fill="none" stroke="#ffe09a" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M72.806504 77.904805 A1277.515442 1277.515442 0 0 0 72.806504 482.095195"/>
+      <path d="M191.209757 172.763348 A789.547964 789.547964 0 0 0 218.403252 387.236652"/>
+      <path d="M320 230 A487.967478 487.967478 0 0 0 320 280 A487.967478 487.967478 0 0 1 320 330"/>
+      <path d="M448.790243 172.763348 A789.547964 789.547964 0 0 1 421.596748 387.236652"/>
+      <path d="M567.193496 77.904805 A1277.515442 1277.515442 0 0 1 567.193496 482.095195"/>
+    </g>
+  </g>
+  <g fill="none" stroke="#ffc940" stroke-width="24" stroke-linecap="round">
+    <path d="M512 58v20"/><path d="M662 87l-7 19"/><path d="M792 164l-13 16"/><path d="M889 282l-18 10"/><path d="M941 427l-20 4"/>
+    <path d="M927 580l-20-4"/><path d="M850 714l-17-11"/><path d="M730 811l-13-16"/><path d="M585 860l-4-20"/>
+    <path d="M431 853l4-20"/><path d="M289 794l12-16"/><path d="M177 689l16-12"/><path d="M110 550l19-5"/>
+    <path d="M106 396l20 4"/><path d="M164 253l18 10"/><path d="M268 140l13 16"/><path d="M404 72l5 20"/>
+  </g>
+</svg>

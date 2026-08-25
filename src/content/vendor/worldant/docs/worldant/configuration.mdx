@@ -1,0 +1,83 @@
+---
+title: Configuration
+description: Application and host identity, native platform settings, middleware, and event policy.
+---
+
+The root `worldant.ts` exports explicit application, world, application-node, host-node, platform,
+and middleware settings. `worldant serve` requires a complete native platform configuration:
+
+```ts
+import type { NodeConfig } from "worldant"
+
+export default {
+  application: "todo",
+  world: "todo",
+  node: { name: "todo-app" },
+  host: { name: "todo-host" },
+  platform: {
+    kind: "native",
+    wire: {
+      bindAddress: "127.0.0.1",
+      port: 8787,
+      webTransport: true,
+      webSocket: true,
+    },
+    pgpaw: {
+      builtin: true,
+      dataDir: ".worldant/data",
+      databaseName: "postgres",
+      minConnections: 0,
+      maxConnections: 2,
+    },
+    runtime: { maxWorkflowWorkers: 2 },
+  },
+  middleware: [
+    async function auth(request, context, next) {
+      if (!request.headers.authorization) throw new Error("unauthorized")
+      return next(request.payload, context)
+    },
+  ],
+} satisfies NodeConfig
+```
+
+The CLI keeps runtime settings out of flags. Runtime settings belong in `worldant.ts`.
+`application` owns public callable addresses. `world` identifies the compiled world. `node` is the
+application node that owns the Worldant profile, while `host` is the caller-owned network node to
+which Worldant links it.
+
+`platform.pgpaw` is the single source of truth for database configuration and is a strict union. Set
+`builtin: true` with `dataDir`, `databaseName`, `minConnections`, and `maxConnections` to run the
+embedded PostgreSQL engine. `databaseName` selects the database created and used by that embedded
+engine. Set `builtin: false` with `remoteAddress`, `minConnections`, and `maxConnections` to connect
+to remote PostgreSQL; `remoteAddress` is the DSN, and its database component selects the remote
+database. Embedded-only and remote-only fields cannot be mixed.
+
+`platform.wire.bindAddress` must be an IPv4 or IPv6 literal, `platform.wire.port` is shared by
+enabled transports and may be `0` for an ephemeral shared port, and at least one of
+`platform.wire.webTransport` and `platform.wire.webSocket` must be true. Unknown or incomplete settings
+fail closed. WebSocket enables the complete TCP surface, including HTTP knowledge routes; disabling
+it leaves those routes unavailable even when WebTransport is enabled.
+
+Embedded PgPaw child routing requires no additional configuration. Worldant derives an owner-only
+temporary Unix socket, expects the `pgpaw` child identity, and attaches the child before public
+hosting. Do not expose or persist that private socket as a client endpoint.
+
+Middleware runs before unary decoding and once when a subscription is established. It may reject,
+replace payload, replace opaque context, or return a unary response. Streaming middleware cannot
+return a unary response.
+
+Subject, operation, origin, and original headers are immutable. SQL RLS sees original request
+headers through `request.headers`.
+
+An optional root `worldant.policy.json` declaratively selects kernel event visibility:
+
+```json
+{
+  "ownerHeader": "authorization",
+  "events": "ownerOrPublic"
+}
+```
+
+`events` accepts `hidden`, `public`, `owner`, or `ownerOrPublic` and defaults to `hidden`.
+`owner` and `ownerOrPublic` require `ownerHeader`. Worldant validates and snapshots this JSON, then
+applies fixed generated SQL during activation. Application-table RLS remains in migrations.

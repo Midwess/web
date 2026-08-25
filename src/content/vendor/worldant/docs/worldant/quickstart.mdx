@@ -1,0 +1,74 @@
+---
+title: Quickstart
+description: Create, check, serve, and call a minimal Worldant world.
+---
+
+Create a world:
+
+```bash
+worldant init todo
+cd todo
+```
+
+`init` downloads the latest public template and creates a single-app world:
+
+```text
+todo/
+  worldant.ts
+  src/
+    main.ts
+  generated/
+```
+
+The generated `worldant.ts` names the application, world, application node, and host node
+separately. Native-only PgPaw, listener, module, and runtime settings live under
+`platform: { kind: "native", ... }`.
+
+Add a migration under `migrations/0001_init.sql`:
+
+```sql
+create table todo_items (
+  id bigint generated always as identity primary key,
+  title text not null,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+```
+
+Replace `src/main.ts` with a Command. The file path is organizational; the directive declares the
+artifact and the `add` binding supplies its name:
+
+```ts
+import { session } from "worldant/client"
+
+async function add(input: { title: string }) {
+  "worldant::command"
+  const reply = await session.request("pgpaw.sql", {
+    sql: "insert into todo_items (title) values ($1) returning id, title, done, created_at",
+    params: [input.title],
+  })
+  return reply.rows[0]
+}
+```
+
+Check and serve:
+
+```bash
+worldant check
+worldant serve
+```
+
+Serve validates the complete generated native platform configuration. It publishes a snapshot,
+loads configuration from that snapshot, links the application node to the host node, and binds each
+enabled transport on the host before reporting readiness.
+
+Call it:
+
+```ts
+import { createWorld } from "@midwess/worldant/client"
+
+const world = createWorld({ url: "ws://127.0.0.1:8787/__worldant/v1/ws" })
+const todo = await world.todo.add({ title: "Buy milk" }, { key: "todo:add:buy-milk" })
+```
+
+Use Workflows for work that must survive retries, waits, process failure, or restart.
